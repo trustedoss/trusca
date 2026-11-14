@@ -14,8 +14,7 @@
  *
  * Tone reference:
  *   - Vercel light deployments / domains / deployment detail
- *     → background / surface / border / sidebar tint / dense rows / primary
- *       near-black button
+ *     → background / surface / border / sidebar tint / dense rows
  *   - Linear feature / dashboard
  *     → typography hierarchy (heading semibold), focus ring (visible 2 + 2
  *       offset), hover transitions (150 ms ease-out), elevation shadows,
@@ -28,8 +27,9 @@
  *   a full-width bar above the sidebar; --layout-header now governs only
  *   the in-page PageHeader.)
  *
- * Risk severity colors (unchanged — domain semantics fixed):
- *   Critical / High / Medium / Low / Info.
+ * Risk severity colors (domain semantics; theme-independent):
+ *   Critical / High / Medium / Low / Info. Low moved from blue to cyan in
+ *   2026-11 so it no longer shares a hue with the accent.
  *
  * Forward-compat note:
  *   Dark mode tokens are NOT defined in this phase (2026-05-27 user decision).
@@ -74,10 +74,11 @@
     --border: 240 5% 91%; /* #e7e7e9 */
     --input: 240 5% 91%;
 
-    /* Primary CTA — Vercel-style warm near-black instead of navy.
-     * Reads as "important action" without leaning blue. */
-    --primary: 240 6% 10%; /* #18181b */
-    --primary-foreground: 0 0% 98%;
+    /* Primary CTA (2026-11): a navy fill, the same hue as the accent
+     * (`--brand`), so the important action and the active marks read as one
+     * family. The same value in both themes: white label 6.70:1. */
+    --primary: 224.3 76.3% 48%; /* #1d4ed8 */
+    --primary-foreground: 0 0% 100%; /* #ffffff */
 
     /* Secondary / accent share the muted tint — used for ghost-style
      * surfaces and hover row backgrounds. */
@@ -97,9 +98,10 @@
     --destructive: 0 72% 50.6%; /* #dc2626 */
     --destructive-foreground: 0 0% 98%;
 
-    /* Focus ring — matches primary tone so the 2 px outline reads as
-     * "the same thing this button is", per Linear polish. */
-    --ring: 240 6% 10%;
+    /* Focus ring: the accent navy, the same hue as the primary fill, so
+     * the 2 px outline reads as "the same thing this button is". 6.42:1 on
+     * --background, 6.70:1 on --card. */
+    --ring: 224.3 76.3% 48%; /* #1d4ed8 */
 
     /* Scrim behind a dialog or drawer.
      *
@@ -172,7 +174,7 @@
     --risk-critical: #dc2626;
     --risk-high: #ea580c;
     --risk-medium: #ca8a04;
-    --risk-low: #2563eb;
+    --risk-low: #0891b2;
     --risk-info: #71717a;
 
     /* -------------------------------------------------------------------
@@ -204,7 +206,10 @@
      * Contrast on `bg-risk-X/20` over --background (the densest tint on
      * the darker of the two surfaces — worst case; asserted in
      * tests/unit/design/statusTokenContrast.test.ts):
-     *   critical 4.55 · high 5.51 · medium 5.43 · low 4.86 · info 5.80
+     *   critical 4.55 · high 5.51 · medium 5.43 · low 5.51 · info 5.80
+     *
+     * Low is cyan-800 rather than cyan-700: `#0e7490` measured 4.06:1 on
+     * the /20 tint, under AA.
      *
      * The three shades added here are not new values. `design-system.md` had
      * been listing all five as though they were declared since G0-1 — these
@@ -214,7 +219,7 @@
     --risk-critical-foreground: #b91c1c;
     --risk-high-foreground: #9a3412;
     --risk-medium-foreground: #854d0e;
-    --risk-low-foreground: #1d4ed8;
+    --risk-low-foreground: #155e75;
     --risk-info-foreground: #52525b;
 
 
@@ -239,12 +244,13 @@
      * these numbers are for readers):
      *   foreground on subtle: success 5.21 · warning 6.84 · danger 5.91
      *                         · info 6.16
-     *   solid on --background: success 3.61 · danger 4.70
+     *   solid on --background: success 3.61 · danger 4.70 · info 6.42
      *
-     * `success` and `danger` declare a solid; `warning` and `info` do not.
+     * `success`, `danger` and `info` declare a solid; `warning` does not.
      * A solid exists only where something paints a non-text mark with it —
      * the finished-scan progress bar for success, the dashboard trend's
-     * "new findings" bars for danger — because a solid nobody paints with
+     * "new findings" bars for danger, the running-scan dot for info,
+     * because a solid nobody paints with
      * is a contrast promise nobody has tested (`tokenConsumers.test.ts`
      * enforces that). When a warning dot appears, declare that solid then,
      * and measure it then.
@@ -274,18 +280,21 @@
     --status-danger-border: #fca5a5;
     --status-danger-foreground: #b91c1c;
 
+    /* In progress / informational. The same blue family as the accent by
+     * design (2026-11): "something is happening" is the accent's hue. */
+    --status-info: #1d4ed8;
     --status-info-subtle: #eff6ff;
     --status-info-border: #93c5fd;
     --status-info-foreground: #1d4ed8;
 
     /* Layout density (unchanged). */
     /* -------------------------------------------------------------------
-     * Brand accent (W14).
+     * Brand accent (W14; navy since 2026-11).
      *
-     * The mark has carried teal since the 2026-06 rebrand, but it never
-     * reached the interface — leaving the product neutral-on-neutral while
-     * the sister project, which mirrored this design system, added its own
-     * accent on top. Same tokens, no identity.
+     * W14 gave the interface an accent for the first time, in the mark's
+     * teal. In 2026-11 the accent moved to navy; teal now lives only in the
+     * logo (`--brand-on-ink`). The token names did not change: `--brand`
+     * is "the accent", whatever hue that is.
      *
      * Applied to a whitelist — active nav row, active tab underline,
      * progress indicator — and never to severity: risk colour is domain
@@ -297,12 +306,14 @@
      * against the surfaces the accent is actually painted on, not against
      * white — the indicator sits on --brand-subtle, the progress bar on
      * --muted:
-     *   --brand on --brand-subtle      3.59:1  (UI, ≥3)
-     *   --brand on --muted             3.40:1  (UI, ≥3)
+     *   --brand on --brand-subtle      6.16:1  (also text: the `accent`
+     *                                          badge tone, ≥4.5)
+     *   --brand on --muted             6.10:1  (UI, ≥3)
+     *   --brand on --card              6.70:1  (links, ≥4.5)
      *   --brand-on-ink on --topbar     9.52:1
      * ----------------------------------------------------------------- */
-    --brand: #0d9488;
-    --brand-subtle: #f0fdfa;
+    --brand: #1d4ed8;
+    --brand-subtle: #eff6ff;
     /* The logo's own teal. Too light for white surfaces (2.49:1) but the
      * right note on the ink bar, where it is the one spot of colour. */
     --brand-on-ink: #2dd4bf;
@@ -312,9 +323,9 @@
      *
      * The bar is near-black while everything below it stays light, so it
      * needs its own foreground scale; without these tokens every call site
-     * would reach for a palette class, which the token lint blocks. Ink
-     * matches --primary, so the bar and the primary CTA read as the same
-     * material.
+     * would reach for a palette class, which the token lint blocks. The
+     * ink is the W11 near-black; it no longer matches --primary, which
+     * became the accent navy in 2026-11.
      *
      * Contrast on --topbar: foreground 16.97:1, muted 6.91:1.
      * ----------------------------------------------------------------- */
@@ -347,9 +358,9 @@
    *   - Neutrals, `-foreground` shades, status tints, the brand accent and
    *     the bar are all redeclared here.
    *   - The five risk hexes are NOT. They are domain semantics and survive
-   *     the theme (CLAUDE.md, W11: "Severity 색 변경 0"). Measured on both
-   *     dark surfaces they still clear the 3:1 that WCAG 1.4.11 asks of a
-   *     non-text mark — the weakest is `--risk-low` on `--card` at 3.38.
+   *     the theme. Measured on both dark surfaces they still clear the 3:1
+   *     that WCAG 1.4.11 asks of a non-text mark; the weakest are
+   *     `--risk-critical` and `--risk-info` on `--card` at 3.62.
    *   - Layout, radius and motion tokens are geometry and timing. A theme
    *     has no opinion about them.
    *
@@ -390,12 +401,13 @@
     --border: 218 30% 25%; /* #2d3b53 */
     --input: 218 30% 25%;
 
-    /* The primary CTA inverts: near-black on near-white becomes near-white
-     * on the card slate. 16.30:1, within a rounding of the light theme's
-     * 16.97:1, so "the important action on the page" reads with the same
-     * force in both. */
-    --primary: 210 40% 96%; /* #f1f5f9 */
-    --primary-foreground: 221 46% 12%; /* #11192d */
+    /* The primary CTA does not invert (2026-11): the same navy fill and
+     * white label as light, 6.70:1, so "the important action on the page"
+     * is the same object in both themes. Text that wants the accent on a
+     * dark ground uses `--brand`, not `text-primary`: navy as text on a
+     * dark card measures 2.61:1. */
+    --primary: 224.3 76.3% 48%; /* #1d4ed8 */
+    --primary-foreground: 0 0% 100%; /* #ffffff */
 
     --secondary: 222 39% 18%;
     --secondary-foreground: 210 40% 96%;
@@ -429,9 +441,10 @@
     --destructive: 0 90.6% 70.8%; /* #f87171 */
     --destructive-foreground: 221 46% 12%; /* #11192d */
 
-    /* Light matches the ring to `--primary`; so does this. 6.76:1 against
-     * a card, which a 2 px outline needs to be seen at all. */
-    --ring: 215 20% 65%; /* #94a3b8 */
+    /* The dark accent (`--brand`), not `--primary`: the navy fill measures
+     * 2.61:1 on a card, and a 2 px outline needs 3:1 to be seen at all.
+     * This one is 6.88:1. */
+    --ring: 213.1 93.9% 67.8%; /* #60a5fa */
 
     /* Pure black, not the canvas. The canvas is already dark, so a scrim
      * made of it at 40 % would barely register — the dialog would float
@@ -441,18 +454,20 @@
     /* -----------------------------------------------------------------
      * Risk tint foregrounds — the 400-level shades (note 2 above).
      * Worst case 5.49:1, on `--risk-critical`'s /20 tint over a card.
+     * Low is cyan-400; its worst case is 7.48:1.
      * ----------------------------------------------------------------- */
     --risk-critical-foreground: #f87171;
     --risk-high-foreground: #fb923c;
     --risk-medium-foreground: #facc15;
-    --risk-low-foreground: #60a5fa;
+    --risk-low-foreground: #22d3ee;
     --risk-info-foreground: #a1a1aa;
 
     /* -----------------------------------------------------------------
      * Status surfaces. The subtle tints become dark tints of the same hue
      * and the foregrounds lighten; the two declared solids do not move,
      * both still clearing 3:1 as non-text marks (success 5.19, danger
-     * 4.05). Borders stay decorative and ungated, per the light block.
+     * 4.05). The info solid lightens with the accent (7.69). Borders stay
+     * decorative and ungated, per the light block.
      * ----------------------------------------------------------------- */
     --status-success: #059669;
     --status-success-subtle: #052e22;
@@ -468,25 +483,21 @@
     --status-danger-border: #b91c1c;
     --status-danger-foreground: #f87171; /* 6.11:1 */
 
+    --status-info: #60a5fa;
     --status-info-subtle: #0a1a2e;
     --status-info-border: #1d4ed8;
     --status-info-foreground: #60a5fa; /* 6.88:1 */
 
     /* -----------------------------------------------------------------
-     * Brand accent — the two teals swap which one leads.
+     * Brand accent: the navy lightens to blue-400.
      *
-     * In light, `--brand` (teal-600) is for pale surfaces and
-     * `--brand-on-ink` (teal-400, the mark's own teal) is for the ink bar.
-     * In dark almost every surface is dark, so the mark's teal becomes the
-     * general case: 9.39:1 on a card against teal-600's 4.63:1, which
-     * clears AA but only barely and looks muddy next to slate.
-     *
-     * The names still hold. `--brand` is "the accent", whatever the theme
-     * decides that is; `--brand-on-ink` is "the teal on the bar", and the
-     * bar is dark in both themes — so here they simply agree.
+     * Light's `#1d4ed8` measures 2.61:1 on a dark card; blue-400 measures
+     * 6.88:1 there, 6.88:1 on its own subtle ground and 5.84:1 on
+     * `--muted`, so it works as text as well as a mark. `--brand-on-ink`
+     * stays the logo's teal in both themes: it is the mark, not the accent.
      * ----------------------------------------------------------------- */
-    --brand: #2dd4bf;
-    --brand-subtle: #0b2b28; /* body text 13.79:1, teal 8.11:1 */
+    --brand: #60a5fa;
+    --brand-subtle: #0a1a2e; /* body text 15.97:1, accent 6.88:1 */
     --brand-on-ink: #2dd4bf;
 
     /* -----------------------------------------------------------------

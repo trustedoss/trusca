@@ -262,7 +262,7 @@ function SourceLineRow({ line }: SourceLineRowProps) {
     <div
       className={cn(
         "group flex items-start gap-2 px-2 font-mono text-xs leading-5",
-        highlighted && "bg-risk-low/10",
+        highlighted && "bg-brand-subtle",
       )}
       data-testid="source-line"
       data-line={line.number}
@@ -273,14 +273,14 @@ function SourceLineRow({ line }: SourceLineRowProps) {
         aria-hidden
         className={cn(
           "w-12 shrink-0 select-none border-r pr-2 text-right tabular-nums text-muted-foreground",
-          highlighted && "border-risk-low/40 text-risk-low-foreground",
+          highlighted && "border-brand text-brand",
         )}
       >
         {line.number}
       </span>
       {highlighted ? (
         <span
-          className="mt-0.5 shrink-0 rounded-sm bg-risk-low/20 px-1 text-[9px] font-medium uppercase tracking-wide text-risk-low-foreground"
+          className="mt-0.5 shrink-0 rounded-sm border border-brand bg-card px-1 text-[9px] font-medium uppercase tracking-wide text-brand"
           data-testid="source-line-license-chip"
           data-spdx-ids={spdxIds}
         >

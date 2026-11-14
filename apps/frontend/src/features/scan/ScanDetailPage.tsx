@@ -90,10 +90,10 @@ const SCAN_DETAIL_POLL_MS = 4000;
 
 function statusBadgeTone(
   status: ScanStatus | null | undefined,
-): "info" | "low" | "success" | "critical" {
+): "info" | "progress" | "success" | "critical" {
   switch (status) {
     case "running":
-      return "low";
+      return "progress";
     case "succeeded":
       return "success";
     case "failed":

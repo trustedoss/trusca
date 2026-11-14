@@ -304,7 +304,7 @@ export function ScanProgress({
                 />
               ) : isCurrent ? (
                 <Loader2
-                  className="h-3.5 w-3.5 animate-spin text-primary"
+                  className="h-3.5 w-3.5 animate-spin text-brand"
                   aria-hidden
                 />
               ) : isFailedAtThisStep ? (

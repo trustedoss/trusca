@@ -69,7 +69,7 @@ _SEVERITY_COLOR: dict[str, str] = {
     "critical": "#dc2626",
     "high": "#ea580c",
     "medium": "#ca8a04",
-    "low": "#2563eb",
+    "low": "#0891b2",
     "info": "#71717a",
     "none": "#71717a",
     "unknown": "#71717a",

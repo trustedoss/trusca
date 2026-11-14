@@ -15,9 +15,11 @@
  * and this file stays as the design record (other candidates remain for
  * reference, same as the rest of this gallery).
  *
- * Palette intentionally reuses existing tokens only: warm near-black #18181b
- * (foreground / primary), off-white #fafafa (background), and #2563eb — the
- * blue already used as the de-facto brand accent (README badges, Low/info).
+ * Palette intentionally reused the tokens of its time: warm near-black
+ * #18181b (then foreground / primary), off-white #fafafa (background), and
+ * #2563eb, the blue then used as the de-facto accent (README badges,
+ * Low/info). Kept as recorded. Since 2026-11 the interface accent and the
+ * primary fill are #1d4ed8 and Low is cyan #0891b2.
  */
 
 type SymbolProps = {

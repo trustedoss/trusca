@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
 
 const STATUS_TONE_CLASS: Record<ScanStatus, string> = {
   succeeded: "border-status-success-border bg-status-success-subtle text-status-success-foreground",
-  running: "border-blue-300 bg-blue-50 text-blue-700",
+  running: "border-status-info-border bg-status-info-subtle text-status-info-foreground",
   queued: "border-amber-300 bg-amber-50 text-amber-700",
   failed: "border-status-danger-border bg-status-danger-subtle text-status-danger-foreground",
   cancelled: "border-muted bg-muted text-muted-foreground",

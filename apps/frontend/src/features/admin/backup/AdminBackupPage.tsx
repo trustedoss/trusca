@@ -80,10 +80,10 @@ function shortRevision(rev: string | null | undefined): string {
 }
 
 function kindBadgeClass(kind: BackupKind): string {
-  // Auto = blue (informational, system-driven); Manual = neutral gray.
+  // Auto = info (system-driven); Manual = neutral gray.
   // Pair color with the literal label so the badge is not color-only.
   return kind === "auto"
-    ? "border-blue-300 bg-blue-50 text-blue-700"
+    ? "border-status-info-border bg-status-info-subtle text-status-info-foreground"
     : "border-muted bg-muted text-muted-foreground";
 }
 

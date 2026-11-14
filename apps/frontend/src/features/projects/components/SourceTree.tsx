@@ -254,7 +254,7 @@ function SourceTreeRow({
           ) : null}
         </span>
         {entry.is_dir ? (
-          <Folder className="h-3.5 w-3.5 shrink-0 text-risk-low" aria-hidden />
+          <Folder className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
         ) : (
           <File className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
         )}
@@ -269,7 +269,7 @@ function SourceTreeRow({
             {entry.license_spdx_ids.slice(0, 2).map((spdx) => (
               <Badge
                 key={spdx}
-                tone="low"
+                tone="accent"
                 className="px-1 py-0 text-[9px]"
                 data-testid="source-tree-license-badge"
                 data-spdx-id={spdx}

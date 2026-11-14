@@ -162,6 +162,7 @@ const config: Config = {
             foreground: "var(--status-danger-foreground)",
           },
           info: {
+            DEFAULT: "var(--status-info)",
             subtle: "var(--status-info-subtle)",
             border: "var(--status-info-border)",
             foreground: "var(--status-info-foreground)",

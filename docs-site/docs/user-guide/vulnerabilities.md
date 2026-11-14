@@ -32,7 +32,7 @@ The banner is *informational*, not an error — `0 findings` on a project that i
 | **Critical** | `#dc2626` | 9.0–10.0 | Exits 1 (default) |
 | **High** | `#ea580c` | 7.0–8.9 | Configurable per project |
 | **Medium** | `#ca8a04` | 4.0–6.9 | No effect |
-| **Low** | `#2563eb` | 0.1–3.9 | No effect |
+| **Low** | `#0891b2` | 0.1–3.9 | No effect |
 | **Info** | `#71717a` | — | No effect |
 
 The default policy fails the build only on `Critical`. Project owners can lower the threshold to `High` per project.

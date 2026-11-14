@@ -130,7 +130,7 @@ export function ResetPasswordPage() {
         footer={
           <Link
             to="/forgot-password"
-            className="font-medium text-primary hover:underline"
+            className="font-medium text-brand hover:underline"
             data-testid="reset-forgot-link"
           >
             {t("reset.request_new")}
@@ -153,7 +153,7 @@ export function ResetPasswordPage() {
       footer={
         <Link
           to="/login"
-          className="font-medium text-primary hover:underline"
+          className="font-medium text-brand hover:underline"
           data-testid="reset-back-link"
         >
           {t("reset.back_to_login")}
@@ -175,7 +175,7 @@ export function ResetPasswordPage() {
             <p className="text-center text-sm">
               <Link
                 to="/forgot-password"
-                className="font-medium text-primary hover:underline"
+                className="font-medium text-brand hover:underline"
                 data-testid="reset-forgot-link"
               >
                 {t("reset.request_new")}

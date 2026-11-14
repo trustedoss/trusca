@@ -501,7 +501,7 @@ function G7ClusterCard({ group }: { group: G7Group }) {
 }
 
 /**
- * Source badge tones (BomLens SourceBadge parity): auto = low (blue),
+ * Source badge tones (BomLens SourceBadge parity): auto = accent,
  * inferred = info (slate), na = medium (yellow — needs a human), declared =
  * muted. Every badge carries the localized text label, so tone is never the
  * only signal.
@@ -513,7 +513,7 @@ function G7SourceBadge({ source }: { source?: string | null }) {
   if (!label) return null;
   const toneProps =
     source === "auto"
-      ? ({ tone: "low" } as const)
+      ? ({ tone: "accent" } as const)
       : source === "inferred"
         ? ({ tone: "info" } as const)
         : source === "na"
@@ -638,7 +638,7 @@ function G7CheckRow({ check }: { check: SbomConformanceCheck }) {
             className="mt-1"
             data-testid={`check-${check.id}-guidance`}
           >
-            <summary className="cursor-pointer text-xs font-medium text-primary hover:underline">
+            <summary className="cursor-pointer text-xs font-medium text-brand hover:underline">
               {t("conformance.fragment_summary")}
             </summary>
             <pre className="mt-1 overflow-x-auto rounded-sm border bg-muted px-2 py-1.5 font-mono text-[11px] text-foreground">
@@ -649,7 +649,7 @@ function G7CheckRow({ check }: { check: SbomConformanceCheck }) {
                 href={fragment.docUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="mt-1 inline-block text-xs font-medium text-primary hover:underline"
+                className="mt-1 inline-block text-xs font-medium text-brand hover:underline"
               >
                 {t("conformance.g7.learn_more")}
               </a>

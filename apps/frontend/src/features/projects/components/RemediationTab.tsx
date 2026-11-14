@@ -278,7 +278,7 @@ function PreviewResult({ preview }: { preview: NpmDryRunResponse }) {
                 {rec.current_version}
               </td>
               <td className="py-2 font-mono text-xs">
-                <span className="text-risk-low-foreground">
+                <span className="text-status-success-foreground">
                   {rec.recommended_version}
                 </span>
               </td>
@@ -435,7 +435,7 @@ function PrLink({
       href={pr.pr_url}
       target="_blank"
       rel="noopener noreferrer"
-      className="truncate text-sm font-medium text-risk-low-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      className="truncate text-sm font-medium text-brand hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
       data-testid={testId}
     >
       {label}

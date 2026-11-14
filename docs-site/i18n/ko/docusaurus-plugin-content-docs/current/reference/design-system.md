@@ -26,7 +26,7 @@ TRUSCA는 **리스크 우선 · 정보 밀도 · 모던 엔터프라이즈** SCA
 
 1. **한눈에 심각도 전달.** Severity 색 (Critical / High / Medium / Low / Info)은 항상 텍스트 라벨 + 아이콘/dot와 함께 — 색은 신호의 단독 수단이 아닙니다.
 2. **답답하지 않게 데이터 밀도.** 40 px compact 행 · 256 px 사이드바 · 56 px 글로벌 바 · 16/20/24 px 카드 padding 표준화.
-3. **모던 엔터프라이즈 제품 톤.** Navy `#0f172a`가 아닌 warm near-black `#18181b` · 순수 흰색이 아닌 off-white canvas `#fafafa` · subtle shadow · semibold heading · 가시 focus ring.
+3. **모던 엔터프라이즈 제품 톤.** 텍스트와 글로벌 바는 warm near-black `#18181b` · primary 버튼, focus ring, 활성 표식은 네이비 액센트 `#1d4ed8` · 순수 흰색이 아닌 off-white canvas `#fafafa` · subtle shadow · semibold heading · 가시 focus ring.
 4. **필요한 만큼만 움직임.** Hover/focus 150 ms · drawer slide 200 ms · 페이지 크롬 250 ms. ease-out 만. Bounce 없음, fade-in delay 없음.
 
 ### W11 (2026-05-27) — 시각 재정의
@@ -46,7 +46,7 @@ W11 마일스톤에서 기존 "enterprise-style 2015" 미감을 Vercel+Linear �
 | Focus ring | shadcn 기본 | 2 px outline + 2 px offset (a11y) |
 | 디테일 surface | 드로어 전용 | dual surface — 드로어 (빠른 확인) + 페이지 nav (깊은 작업) |
 
-Severity 팔레트 (Critical / High / Medium / Low / Info)는 **의도적으로 유지** — 브랜드 의미가 릴리스 간 고정입니다. Severity hex가 light tint 위 본문 텍스트로 사용될 때 WCAG AA가 안 나오면, 같은 hue family의 더 짙은 shade로 텍스트 색만 어둡게 — 아래 [Severity 색 접근성](#severity-색-접근성) 참고.
+W11은 Severity 팔레트 (Critical / High / Medium / Low / Info)를 바꾸지 않았습니다. Severity hex가 light tint 위 본문 텍스트로 사용될 때 WCAG AA가 안 나오면, 같은 hue family의 더 짙은 shade로 텍스트 색만 어둡게 — 아래 [Severity 색 접근성](#severity-색-접근성) 참고. 2026-11의 Low 변경은 아래 변경 이력에 기록했습니다.
 
 ## 색 토큰
 
@@ -63,24 +63,24 @@ Severity 팔레트 (Critical / High / Medium / Low / Info)는 **의도적으로 
 | `--muted-foreground` | `#6c6c75` | `240 4% 44%` | 보조 텍스트 · caption · 테이블 컬럼 헤더. |
 | `--border` | `#e7e7e9` | `240 5% 91%` | Hairline border. 장식용 separator 만 — UI 영역 식별의 유일한 수단이 되지 않습니다. |
 | `--input` | `#e7e7e9` | `240 5% 91%` | Input outline. |
-| `--primary` | `#18181b` | `240 6% 10%` | Primary CTA — "이 페이지의 중요 액션". |
-| `--primary-foreground` | `#fafafa` | `0 0% 98%` | Primary 위 텍스트. |
+| `--primary` | `#1d4ed8` | `224.3 76.3% 48%` | Primary CTA, "이 페이지의 중요 액션". 액센트와 같은 색상의 네이비 채움이며 두 테마에서 같습니다. |
+| `--primary-foreground` | `#ffffff` | `0 0% 100%` | Primary 위 텍스트, 6.70:1. |
 | `--destructive` | `#dc2626` | `0 72% 50.6%` | Destructive CTA. `--risk-critical`와 같아서 destructive 버튼이 severity와 같은 시각 언어. 소수점이 의미를 갖습니다 — `51%`는 `#dc2828`로 렌더되어 그 hex가 아닙니다. |
 | `--destructive-foreground` | `#fafafa` | `0 0% 98%` | Destructive 위 텍스트. |
-| `--ring` | `#18181b` | `240 6% 10%` | Focus ring. Primary와 매칭 — outline이 액션과 같은 색 패밀리로 읽힘. |
+| `--ring` | `#1d4ed8` | `224.3 76.3% 48%` | Focus ring. primary 채움과 같은 네이비라서 outline이 액션과 같은 색 패밀리로 읽힙니다. `--background` 위 6.42:1. |
 | `--overlay` | `#18181b` | `240 6% 10%` | 다이얼로그·드로어 뒤의 스크림, 40 % 로 씁니다. `--foreground`가 아니라 별도 토큰인 이유는 스크림이 두 테마 모두에서 덮는 것보다 어두워야 하기 때문입니다. 텍스트는 그렇지 않습니다. |
 
-### Severity (도메인 의미 — 고정)
+### Severity (도메인 의미)
 
 | 토큰 | Hex | 용도 |
 |---|---|---|
 | `--risk-critical` | `#dc2626` | Critical CVE · forbidden 라이선스 · build-blocking finding. |
 | `--risk-high` | `#ea580c` | High-severity CVE · conditional 라이선스 위험. |
 | `--risk-medium` | `#ca8a04` | Medium CVE · 검토 대기 conditional 라이선스. |
-| `--risk-low` | `#2563eb` | Low CVE · 정보성 상태. |
+| `--risk-low` | `#0891b2` | Low CVE. |
 | `--risk-info` | `#71717a` | 중립 정보. |
 
-Severity hex는 **릴리스 간 변경하지 않습니다**. 사용처:
+Severity hex는 두 테마에서 같고, 기록된 결정이 있을 때만 바뀝니다. 가장 최근 결정(2026-11)은 Low를 파랑 `#2563eb`에서 청록 `#0891b2`로 옮겨 네이비 액센트와 색상이 겹치지 않게 했습니다. Severity 토큰은 심각도에만 씁니다. 분류, 링크, 진행 중 상태에는 액센트나 status 토큰을 씁니다. 사용처:
 
 - Recharts fill · 차트 범례 (raw hex, `--risk-X` 변수 참조).
 - 배지 · 콜아웃 · 격자 셀의 `bg-risk-X/N` tint.
@@ -107,7 +107,7 @@ Severity hex는 차트용 색입니다. tint **위에** 얹는 텍스트는 별�
 | `--risk-critical-foreground` | `#b91c1c` | 4.55:1 |
 | `--risk-high-foreground` | `#9a3412` | 5.51:1 |
 | `--risk-medium-foreground` | `#854d0e` | 5.43:1 |
-| `--risk-low-foreground` | `#1d4ed8` | 4.86:1 |
+| `--risk-low-foreground` | `#155e75` | 5.51:1 |
 | `--risk-info-foreground` | `#52525b` | 5.80:1 |
 
 ```tsx
@@ -125,21 +125,21 @@ Severity hex는 차트용 색입니다. tint **위에** 얹는 텍스트는 별�
 
 ### 브랜드 액센트 (W14)
 
-로고는 리브랜딩 이후 계속 틸을 써 왔지만 인터페이스까지 내려오지 않아, 제품이 중립색만으로 남아 있었습니다. 이제 액센트에 토큰이 생겼고, 전면이 아니라 **화이트리스트**에만 적용합니다 — 사이드바 활성 행, 탭 활성 밑줄, 진행 표시, 빈 상태, 로그인 관문.
+W14에서 인터페이스에 액센트가 생겼고, 전면이 아니라 **화이트리스트**에만 적용합니다. 사이드바 활성 행, 탭 활성 밑줄, 진행 표시, 빈 상태, 로그인 관문이 그 대상입니다. 2026-11까지는 로고의 틸이었고, 지금은 네이비이며 틸은 로고에만 남았습니다. 링크와 `accent` 배지 톤(라이선스 ID나 보고서 유형 같은 분류·장식 라벨)도 `--brand`를 씁니다.
 
 | 토큰 | Hex | 용도 | 대비 |
 |---|---|---|---|
-| `--brand` | `#0d9488` | 인디케이터·진행·활성 표식 | `--card` 위 3.74:1 (UI, 3 이상) |
-| `--brand-subtle` | `#f0fdfa` | 활성 행의 tint 배경 | 본문 텍스트 16.99:1 |
-| `--brand-on-ink` | `#2dd4bf` | 로고 자체의 틸 — **잉크 표면 전용**: 글로벌 바와 게이트웨이 브랜드 패널 | `--topbar` 위 9.52:1, 흰 배경 2.49:1 |
+| `--brand` | `#1d4ed8` | 인디케이터·진행·활성 표식·링크·`accent` 배지 텍스트 | `--card` 위 6.70:1, `--brand-subtle` 위 6.16:1 |
+| `--brand-subtle` | `#eff6ff` | 활성 행과 `accent` 배지의 tint 배경 | 본문 텍스트 16.28:1 |
+| `--brand-on-ink` | `#2dd4bf` | 로고의 틸, **잉크 표면 전용**: 글로벌 바와 게이트웨이 브랜드 패널 | `--topbar` 위 9.52:1, 흰 배경 2.49:1 |
 
 `--brand-strong`(teal-700, 액센트를 텍스트로 쓰는 용도)은 W14에서 선언했다가 다시 뺐습니다. 그 색으로 그리는 곳이 없었고, `tokenConsumers.test.ts`는 아무도 쓰지 않는 토큰 선언을 실패로 처리합니다. 쓰이지 않는 색은 실제 표면에서 대비를 확인한 적이 없는 약속이기 때문입니다. 필요한 호출부가 생기면 그때 다시 선언하고 그때 측정합니다.
 
 
 
-틸이 둘인 이유는 하나로 두 역할을 못 하기 때문입니다. 로고 틸은 흰 표면에 쓰기엔 너무 밝고, 인터페이스용 짙은 틸은 잉크 바에서 묻힙니다.
+토큰이 둘인 이유는 한 색으로 두 역할을 못 하기 때문입니다. 네이비 액센트는 잉크 바에서 묻히고(2.64:1), 로고 틸은 흰 표면에 쓰기엔 너무 밝습니다.
 
-**액센트를 쓰지 않는 곳**: risk 색상, `--destructive`, primary CTA, focus ring. severity는 도메인 의미이고, 브랜드로 물들이면 신호가 흐려집니다. 또 위의 모든 적용에서 액센트는 **두 번째** 표식입니다 — 활성 행의 라벨도, 활성 탭의 제목도 잉크색을 유지하므로 상태가 색에만 의존하지 않습니다.
+**액센트를 쓰지 않는 곳**: risk 색상, `--destructive`. severity는 도메인 의미이고, 액센트로 물들이면 신호가 흐려집니다. primary CTA와 focus ring은 의도적으로 액센트와 같은 색상을 씁니다(2026-11). 또 위의 모든 적용에서 액센트는 **두 번째** 표식입니다 — 활성 행의 라벨도, 활성 탭의 제목도 잉크색을 유지하므로 상태가 색에만 의존하지 않습니다.
 
 ### 글로벌 바 (W14)
 
@@ -147,7 +147,7 @@ Severity hex는 차트용 색입니다. tint **위에** 얹는 텍스트는 별�
 
 | 토큰 | Hex | 용도 |
 |---|---|---|
-| `--topbar` | `#18181b` | 바 배경. `--primary`와 같아 바와 primary CTA가 같은 재질로 읽힙니다 |
+| `--topbar` | `#18181b` | 바 배경. W11의 near-black 잉크입니다. 2026-11에 primary 채움이 네이비로 바뀌기 전까지는 `--primary`와 같았습니다 |
 | `--topbar-foreground` | `#fafafa` | 주 텍스트·아이콘 — 16.97:1 |
 | `--topbar-muted-foreground` | `#a1a1aa` | 보조 텍스트 — 6.91:1 |
 | `--topbar-border` | `#27272a` | 하단 경계, 컨트롤 외곽선 |
@@ -173,9 +173,9 @@ status 마다 토큰 4종을 제공합니다.
 | `success` | `#059669` | `#ecfdf5` | `#6ee7b7` | `#047857` | 5.21:1 |
 | `warning` | — | `#fffbeb` | `#fcd34d` | `#92400e` | 6.84:1 |
 | `danger` | `#dc2626` | `#fef2f2` | `#fca5a5` | `#b91c1c` | 5.91:1 |
-| `info` | — | `#eff6ff` | `#93c5fd` | `#1d4ed8` | 6.16:1 |
+| `info` | `#1d4ed8` | `#eff6ff` | `#93c5fd` | `#1d4ed8` | 6.16:1 |
 
-solid은 그 색으로 텍스트가 아닌 표식을 실제로 그리는 곳이 있을 때만 선언합니다. `success`는 스캔 완료 진행 바, `danger`는 대시보드 추이 패널의 "신규" 막대가 그 자리입니다. `tokenConsumers.test.ts`는 아무도 쓰지 않는 토큰 선언을 실패로 처리합니다. 그리는 곳이 없는 색은 실제 표면에서 대비를 확인한 적이 없는 약속이기 때문입니다. warning dot이 생기면 그때 solid를 선언하고 그때 측정합니다. 이때 amber-600은 쓸 수 없습니다. `#fafafa` 대비 3.05:1로 3:1 기준선에 너무 가깝습니다.
+solid은 그 색으로 텍스트가 아닌 표식을 실제로 그리는 곳이 있을 때만 선언합니다. `success`는 스캔 완료 진행 바, `danger`는 대시보드 추이 패널의 "신규" 막대, `info`는 실행 중인 스캔의 dot이 그 자리입니다. `info`는 진행 중 상태(실행 중인 스캔, 검토 중인 승인)를 뜻하며 의도적으로 액센트와 같은 파랑을 씁니다. 배지에서는 `progress` 톤으로 씁니다. `tokenConsumers.test.ts`는 아무도 쓰지 않는 토큰 선언을 실패로 처리합니다. 그리는 곳이 없는 색은 실제 표면에서 대비를 확인한 적이 없는 약속이기 때문입니다. warning dot이 생기면 그때 solid를 선언하고 그때 측정합니다. 이때 amber-600은 쓸 수 없습니다. `#fafafa` 대비 3.05:1로 3:1 기준선에 너무 가깝습니다.
 
 `--status-danger`는 `--risk-critical` 및 destructive와 같은 hex 입니다. finding의 심각도와 동작의 상태는 서로 다른 질문이므로 이름은 계속 구분하지만, "잘못됐다"를 뜻하는 빨강이 미묘하게 다른 두 가지 빨강일 이유는 없습니다.
 
@@ -200,7 +200,7 @@ Zinc가 아니라 slate 입니다. 라이트 테마는 zinc(hue 240, 중립 회�
 
 ### 테마가 바꾸지 않는 것
 
-- **severity 5색 hex.** 장식이 아니라 도메인 의미입니다(W11 "Severity 색 변경 0"). 다크의 두 표면 모두에서 WCAG 1.4.11이 비텍스트 마크에 요구하는 3:1을 넘습니다. 가장 빠듯한 것은 `--card` 위의 `--risk-low`로 3.38:1 입니다.
+- **severity 5색 hex.** 장식이 아니라 도메인 의미입니다. 다크의 두 표면 모두에서 WCAG 1.4.11이 비텍스트 마크에 요구하는 3:1을 넘습니다. 가장 빠듯한 것은 `--card` 위의 `--risk-critical`과 `--risk-info`로 3.62:1 입니다.
 - **레이아웃 · radius · 모션 토큰.** 테마는 형태나 타이밍에 관여하지 않습니다.
 
 ### 라이트가 거저 얻는 것
@@ -225,15 +225,15 @@ Zinc가 아니라 slate 입니다. 라이트 테마는 zinc(hue 240, 중립 회�
 | `--muted-foreground` | `#94a3b8` | `215 20% 65%` | 캔버스 위 7.62:1, 카드 위 6.76:1, `--muted` 위 5.79:1 — 라이트 테마가 걸렸던 그 표면입니다. |
 | `--border` | `#2d3b53` | `218 30% 25%` | 카드 경계를 맡습니다. |
 | `--input` | `#2d3b53` | `218 30% 25%` | |
-| `--primary` | `#f1f5f9` | `210 40% 96%` | 반전 — 카드 슬레이트 위 near-white, 16.30:1로 라이트의 16.97:1과 반올림 차이입니다. |
-| `--primary-foreground` | `#11192d` | `221 46% 12%` | |
+| `--primary` | `#1d4ed8` | `224.3 76.3% 48%` | 반전하지 않습니다. 라이트와 같은 네이비 채움과 흰 라벨이며 6.70:1 입니다. 어두운 바탕 위 액센트 텍스트는 `--brand`를 씁니다. 네이비 텍스트는 카드 위에서 2.61:1 입니다. |
+| `--primary-foreground` | `#ffffff` | `0 0% 100%` | |
 | `--secondary` | `#1c2740` | `222 39% 18%` | |
 | `--secondary-foreground` | `#f1f5f9` | `210 40% 96%` | |
 | `--accent` | `#1c2740` | `222 39% 18%` | |
 | `--accent-foreground` | `#f1f5f9` | `210 40% 96%` | |
 | `--destructive` | `#f87171` | `0 90.6% 70.8%` | 반전. 아래 설명 참조. |
 | `--destructive-foreground` | `#11192d` | `221 46% 12%` | |
-| `--ring` | `#94a3b8` | `215 20% 65%` | 카드 위 6.76:1 — 보이지 않는 2 px outline은 focus 표시가 아닙니다. |
+| `--ring` | `#60a5fa` | `213.1 93.9% 67.8%` | `--primary` 대신 다크 액센트를 씁니다. 카드 위 6.88:1 이고, 네이비 채움은 2.61:1 입니다. 보이지 않는 2 px outline은 focus 표시가 아닙니다. |
 | `--overlay` | `#000000` | `0 0% 0%` | 캔버스가 아니라 순수 검정입니다. 캔버스는 이미 어두워서 그것으로 만든 40 % 스크림은 거의 드러나지 않습니다. |
 
 `--destructive`는 두 가지를 겸합니다 — destructive 버튼의 배경, 그리고 shadcn의 `text-destructive`를 통한 오류 문장의 색입니다. 라이트에서는 `#dc2626`이 둘 다 해내지만, 다크 카드 위에서 텍스트로는 3.62:1 입니다. 밝게 바꾸면 텍스트가 해결되고 배경도 관례에 맞으며, 설계 주장도 살아남습니다. 라이트는 `--risk-critical`과, 다크는 `--risk-critical-foreground`와 짝을 이룹니다 — 다크 텍스트에 필요한 밝기의 같은 빨강입니다.
@@ -247,7 +247,7 @@ severity 배경색은 그대로이고 텍스트 shade 만 뒤집힙니다.
 | `--risk-critical-foreground` | `#f87171` | 5.49:1 |
 | `--risk-high-foreground` | `#fb923c` | 6.20:1 |
 | `--risk-medium-foreground` | `#facc15` | 8.54:1 |
-| `--risk-low-foreground` | `#60a5fa` | 5.66:1 |
+| `--risk-low-foreground` | `#22d3ee` | 7.48:1 |
 | `--risk-info-foreground` | `#a1a1aa` | 5.51:1 |
 
 최악 실측은 다크의 두 바탕과 텍스트를 담는 두 tint 단계(`/10`, `/20`)를 통틀어 잰 값입니다.
@@ -263,31 +263,31 @@ severity 배경색은 그대로이고 텍스트 shade 만 뒤집힙니다.
 | `success` | `#059669` | `#052e22` | `#15803d` | `#4ade80` | 8.48:1 |
 | `warning` | — | `#2e2205` | `#a16207` | `#facc15` | 10.18:1 |
 | `danger` | `#dc2626` | `#3a0d0d` | `#b91c1c` | `#f87171` | 6.11:1 |
-| `info` | — | `#0a1a2e` | `#1d4ed8` | `#60a5fa` | 6.88:1 |
+| `info` | `#60a5fa` | `#0a1a2e` | `#1d4ed8` | `#60a5fa` | 6.88:1 |
 
-선언된 solid 두 개는 값이 그대로이고 비텍스트 마크로서 3:1을 넘습니다(success 5.19:1, danger 4.05:1). border는 라이트와 마찬가지로 장식이며 게이트 대상이 아닙니다.
+success와 danger solid는 값이 그대로이고 비텍스트 마크로서 3:1을 넘습니다(success 5.19:1, danger 4.05:1). info solid는 액센트를 따라 밝아지며 캔버스 위 7.69:1 입니다. border는 라이트와 마찬가지로 장식이며 게이트 대상이 아닙니다.
 
 ### 브랜드 액센트와 글로벌 바
 
 | 토큰 | 다크 | 설명 |
 |---|---|---|
-| `--brand` | `#2dd4bf` | 다크에서는 마크의 틸이 전면에 섭니다 — 카드 위 9.39:1 이고, teal-600은 4.63:1로 AA는 넘지만 여유가 없고 슬레이트 옆에서 탁하게 보입니다. |
-| `--brand-subtle` | `#0b2b28` | 활성 내비게이션 바탕 — 본문 텍스트 13.79:1, 틸 8.11:1. |
-| `--brand-on-ink` | `#2dd4bf` | 바는 두 테마 모두 어두우므로 여기서는 두 틸이 같아집니다. |
+| `--brand` | `#60a5fa` | 네이비가 blue-400으로 밝아집니다. 카드 위 6.88:1 이고, 라이트의 `#1d4ed8`은 2.61:1 입니다. |
+| `--brand-subtle` | `#0a1a2e` | 활성 내비게이션 바탕. 본문 텍스트 15.97:1, 액센트 6.88:1. |
+| `--brand-on-ink` | `#2dd4bf` | 로고의 틸이며 라이트와 같습니다. |
 | `--topbar` | `#17213a` | popover 평면에 둡니다. `#18181b`은 이 캔버스에서 1.06:1로 바가 사라졌습니다. |
 | `--topbar-foreground` | `#f1f5f9` | |
 | `--topbar-muted-foreground` | `#94a3b8` | |
 | `--topbar-border` | `#2d3b53` | 바 대비 1.55:1 — 캔버스와 바를 가르는 것이 이 선입니다. |
 | `--topbar-accent` | `#1c2740` | 바 안쪽 hover 바탕. |
 
-틸 두 개의 역할이 뒤바뀌는데, 계획이 예측한 그대로입니다. 이름은 그대로 유효합니다. `--brand`는 "테마가 무엇으로 정하든 그 액센트" 이고, `--brand-on-ink`는 "바 위의 틸" 입니다.
+이름은 그대로 유효합니다. `--brand`는 "테마가 무엇으로 정하든 그 액센트" 이고, `--brand-on-ink`는 "바 위의 틸" 입니다.
 
 ### 미러링 범위
 
 TRUSCA와 BomLens는 계보를 공유하고 서로를 기준으로 검토됩니다. 그 검토에는 경계가 있고, 경계는 여기입니다.
 
 - **중립 토큰은 패밀리 공유 자산입니다.** 캔버스 · 카드 · border · muted · shadcn 시맨틱 세트 — 이것들은 관례이고, 맞춘다고 해서 모방이 아닙니다.
-- **액센트 · 다크 팔레트 · 셸 골격은 제품 정체성입니다.** 틸, 슬레이트 다크 테마, 잉크 글로벌 바, 사이드바 그룹 구성. 어느 방향으로도 미러링하지 않으며, 이것을 수렴시키자는 파리티 검토 제안은 제품이 만들려는 차이를 지우자는 제안입니다.
+- **액센트 · 다크 팔레트 · 셸 골격은 제품 정체성입니다.** 네이비 액센트와 틸 로고, 슬레이트 다크 테마, 잉크 글로벌 바, 사이드바 그룹 구성. 어느 방향으로도 미러링하지 않으며, 이것을 수렴시키자는 파리티 검토 제안은 제품이 만들려는 차이를 지우자는 제안입니다.
 
 `bomlens-parity-review.md`에 같은 경계가 한 문장으로 들어가 있습니다.
 
@@ -386,7 +386,7 @@ focus-visible:ring-ring
 focus-visible:ring-offset-2
 ```
 
-`--ring`이 `--primary`와 같아서 outline이 액션과 같은 색 패밀리로 읽힘. `ring-offset-2`가 2 px 숨돌이를 만들어 tinted 배경 (severity 배지 · alert 카드) 위에서도 ring이 보입니다.
+`--ring`은 primary 채움과 같은 네이비 액센트라서 outline이 액션과 같은 색 패밀리로 읽힙니다(다크에서는 채움이 카드 위 2.61:1 이므로 더 밝은 `#60a5fa`를 씁니다). `ring-offset-2`가 2 px 숨돌이를 만들어 tinted 배경 (severity 배지 · alert 카드) 위에서도 ring이 보입니다.
 
 **Focus ring을 절대 끄지 마세요.** 2 px outline은 키보드 사용자의 1차 affordance — 제거하면 UI가 도달 불가.
 
@@ -411,7 +411,7 @@ stacked 변형에는 선택적 `meta` 슬롯도 있습니다 — 부제 아래�
 
 `apps/frontend/src/components/ui/button.tsx`
 
-- 기본 variant: `bg-primary text-primary-foreground` — solid warm near-black.
+- 기본 variant: `bg-primary text-primary-foreground`, solid 네이비 채움.
 - `outline` variant: `border-input bg-background` — 보조 액션.
 - `ghost` variant: 배경 없음, hover tint 만 — nav 항목 · toolbar 액션.
 - `destructive`: `bg-destructive` — Critical-aligned 빨강, 되돌릴 수 없는 액션 전용 (delete · revoke · reject).
@@ -473,6 +473,8 @@ stacked 변형에는 선택적 `meta` 슬롯도 있습니다 — 부제 아래�
 
 Risk-tinted variant는 상태 단어와 디자인 시스템 색을 짝지움. 배경은 `bg-risk-X/10` — 칩이 색 tint로 읽히도록. 텍스트는 그 severity의 `-foreground` 토큰 — 렌더링 대비가 WCAG AA 4.5:1을 통과 — [Severity 색 접근성](#severity-색-접근성) 참고.
 
+Risk 톤은 심각도에만 씁니다. 그 밖의 톤이 두 가지 있습니다. `accent`(`bg-brand-subtle text-brand`)는 분류와 장식 라벨에, `progress`(`bg-status-info-subtle text-status-info-foreground`)는 실행 중인 스캔이나 진행 중인 검토처럼 진행 중인 상태에 씁니다. 두 톤 모두 `statusTokenContrast.test.ts`가 라이트와 다크에서 대비를 확인합니다.
+
 ### Toast
 
 `apps/frontend/src/components/ui/toast.tsx`
@@ -516,22 +518,22 @@ W11-F polish phase가 모든 인터랙티브 transition의 타이밍 · easing�
 | `--foreground` on `--card` | 17.72:1 | 카드 위 본문. AAA. |
 | `--muted-foreground` on `--background` | 4.98:1 | Caption · 보조 텍스트. AA. |
 | `--muted-foreground` on `--card` | 5.20:1 | 카드 위 caption. AA. |
-| `--primary-foreground` on `--primary` | 16.97:1 | Primary 버튼 라벨. AAA. |
+| `--primary-foreground` on `--primary` | 6.70:1 | Primary 버튼 라벨. AA. |
 | `--destructive-foreground` on `--destructive` | 4.63:1 | Destructive 버튼 라벨. AA. |
-| `--ring` on `--background` | 16.97:1 | Focus ring. AAA. |
+| `--ring` on `--background` | 6.42:1 | Focus ring. |
 
 장식용 border (`--border` on `--background`, 1.20:1)는 **의도적으로 저대비** — 시각 분리용일 뿐 정보성 UI 요소가 아니며 WCAG 1.4.11이 면제 대상.
 
 ### Severity 색 접근성
 
-Severity hex (`#dc2626` / `#ea580c` / `#ca8a04` / `#2563eb` / `#71717a`)는 브랜드 고정. Light tint 위 **본문 텍스트**로 쓰이면 2.5:1까지 떨어져 AA 실패. 해결은 색이 아닌 구조 — severity 톤이 텍스트로 쓰일 때 렌더링 텍스트 색은 같은 hue의 더 짙은 shade, 곧 그 severity의 `-foreground` 토큰입니다.
+Severity hex (`#dc2626` / `#ea580c` / `#ca8a04` / `#0891b2` / `#71717a`)는 채움 색입니다. Light tint 위 **본문 텍스트**로 쓰이면 2.5:1까지 떨어져 AA 실패. 해결은 색이 아닌 구조 — severity 톤이 텍스트로 쓰일 때 렌더링 텍스트 색은 같은 hue의 더 짙은 shade, 곧 그 severity의 `-foreground` 토큰입니다.
 
 | Tone | Tint 배경 | 텍스트 색 | 카드 위 대비 |
 |---|---|---|---|
 | `critical` | `bg-risk-critical/10` | `text-risk-critical-foreground` (`#b91c1c`) | 5.54:1 |
 | `high` | `bg-risk-high/10` | `text-risk-high-foreground` (`#9a3412`) | 6.46:1 |
 | `medium` | `bg-risk-medium/10` | `text-risk-medium-foreground` (`#854d0e`) | 6.21:1 |
-| `low` | `bg-risk-low/10` | `text-risk-low-foreground` (`#1d4ed8`) | 5.82:1 |
+| `low` | `bg-risk-low/10` | `text-risk-low-foreground` (`#155e75`) | 6.45:1 |
 | `info` | `bg-risk-info/10` | `text-risk-info-foreground` (`#52525b`) | 6.85:1 |
 
 G0-7 이전에는 이 색들을 Tailwind 팔레트 클래스(`text-red-700`)로 적고 측정값은 코드 주석에 남겼습니다. 지금은 토큰이므로 같은 조합을 어디서나 재사용하고, 위 수치는 주석이 아니라 테스트에서 나옵니다.
@@ -587,6 +589,7 @@ Severity가 표시되는 모든 곳에서 색은 다음 중 하나와 짝지움:
 | W12-C | 2026-06-11 | **Craft 격상 — 모션 (CSS-only).** 라우트 전환 진입 페이드(`<main>`을 pathname으로 key, 250 ms), 사이드바 접기 250 ms 정렬, 전역 `prefers-reduced-motion` 가드. 새 의존성 없음(tailwindcss-animate 만). 스켈레톤 문서를 실제 2000 ms `animate-pulse`로 정정. |
 | W12-D | 2026-06-12 | **Craft 격상 — 빈 상태 · 로딩 폴리시.** EmptyState에 레이어드 아이콘 메달리온 + 선택적 `illustration` 슬롯 추가, 신규 `TableRowsSkeleton`이 Scans · Admin Users 테이블에서 컬럼별 로딩 셀(전폭 바 대체)을 렌더링. |
 | W12-E/F | 2026-06-12 | **Craft 격상 — 가드레일 + 문서.** `/dev/design-preview`를 살아있는 컴포넌트 레퍼런스(타이포그래피 · 배지 · 빈 / 로딩 · 피드백)로 확장하고, 기여자 coding standards에 "프론트엔드 UI" 섹션 추가. 시각 회귀 베이스라인 확장(4 → ~15)은 CI / 운영자 후속 — darwin 개발 머신에서는 올바른 linux 베이스라인을 생성할 수 없음. |
+| Accent | 2026-11 | **네이비 액센트와 청록 Low.** `--brand`, `--primary`, `--ring`을 네이비 `#1d4ed8`로 옮겼습니다(다크의 `--brand`·`--ring`은 `#60a5fa`). 틸은 로고(`--brand-on-ink`)에만 남습니다. `--risk-low`는 액센트와 색상이 겹치지 않도록 `#2563eb`에서 `#0891b2`로 옮겼고, foreground는 `#155e75` / `#22d3ee` 입니다. Low 색을 빌려 쓰던 심각도 외 호출부는 새 `accent`·`progress` 배지 톤, `--brand`, status 토큰으로 옮겼습니다. |
 
 이전 "enterprise-style 2015" 미감 (`#0f172a` navy · 순백 canvas · 일관 8 px radius · shadow 없음 · 브라우저 기본 easing)은 W11로 완전 은퇴.
 

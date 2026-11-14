@@ -20,7 +20,7 @@ export interface ProjectStatusBadgeProps {
   className?: string;
 }
 
-type Tone = "info" | "low" | "high" | "critical" | "success";
+type Tone = "info" | "progress" | "high" | "critical" | "success";
 
 interface Visual {
   tone: Tone;
@@ -39,7 +39,7 @@ export function visualFor(status: ProjectStatusBadgeProps["status"]): Visual {
     case "queued":
       return { tone: "info", i18nKey: "status.queued", testid: "queued" };
     case "running":
-      return { tone: "low", i18nKey: "status.running", testid: "running" };
+      return { tone: "progress", i18nKey: "status.running", testid: "running" };
     case "succeeded":
       return {
         tone: "success",
@@ -66,7 +66,7 @@ export function visualFor(status: ProjectStatusBadgeProps["status"]): Visual {
 
 const DOT_COLOR_BY_TONE: Record<Tone, string> = {
   info: "bg-risk-info",
-  low: "bg-risk-low",
+  progress: "bg-status-info",
   high: "bg-risk-high",
   critical: "bg-risk-critical",
   success: "bg-emerald-500",

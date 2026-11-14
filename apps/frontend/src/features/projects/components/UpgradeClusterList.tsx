@@ -111,7 +111,7 @@ function UpgradeClusterCard({
         {isUpgradeable ? (
           <PackageCheck
             aria-hidden
-            className="h-4 w-4 shrink-0 text-risk-low"
+            className="h-4 w-4 shrink-0 text-status-success"
           />
         ) : (
           <PackageX

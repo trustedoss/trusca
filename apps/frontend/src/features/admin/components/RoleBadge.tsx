@@ -34,9 +34,9 @@ export function RoleBadge({ role, className }: RoleBadgeProps) {
           : User;
   const variantClass =
     role === "super_admin"
-      ? "bg-primary/10 text-primary border-transparent"
+      ? "bg-foreground/10 text-foreground border-transparent"
       : role === "group_admin"
-        ? "bg-risk-low/10 text-risk-low-foreground border-transparent"
+        ? "bg-brand-subtle text-brand border-transparent"
         : "bg-muted text-muted-foreground border-transparent";
 
   return (

@@ -58,25 +58,25 @@ export function DemoCredentialsHint({ onFill }: DemoCredentialsHintProps) {
     <Alert
       variant="default"
       data-testid="login-demo-hint"
-      className="border-sky-200 bg-sky-50 text-sky-900"
+      className="border-status-info-border bg-status-info-subtle text-foreground"
     >
-      <Info className="h-4 w-4 text-sky-600" aria-hidden />
+      <Info className="h-4 w-4 text-status-info" aria-hidden />
       <AlertDescription className="space-y-2">
         <p className="font-medium">{t("login.demo.title")}</p>
-        <p className="text-sky-800">{t("login.demo.detail")}</p>
-        <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 font-mono text-xs text-sky-900">
-          <dt className="text-sky-700">{t("login.demo.email_label")}</dt>
+        <p className="text-status-info-foreground">{t("login.demo.detail")}</p>
+        <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 font-mono text-xs text-foreground">
+          <dt className="text-status-info-foreground">{t("login.demo.email_label")}</dt>
           <dd data-testid="login-demo-email">{DEMO_LOGIN_EMAIL}</dd>
-          <dt className="text-sky-700">{t("login.demo.password_label")}</dt>
+          <dt className="text-status-info-foreground">{t("login.demo.password_label")}</dt>
           <dd data-testid="login-demo-password">{DEMO_LOGIN_PASSWORD}</dd>
         </dl>
-        <p className="text-xs text-sky-700">{t("login.demo.password_note")}</p>
-        <p className="text-xs text-sky-700">{t("login.demo.scan_note")}</p>
+        <p className="text-xs text-status-info-foreground">{t("login.demo.password_note")}</p>
+        <p className="text-xs text-status-info-foreground">{t("login.demo.scan_note")}</p>
         <Button
           type="button"
           size="sm"
           variant="outline"
-          className="border-sky-300 bg-white/60 text-sky-900 hover:bg-white"
+          className="border-status-info-border bg-card text-foreground hover:bg-background"
           data-testid="login-demo-fill"
           onClick={() =>
             onFill({ email: DEMO_LOGIN_EMAIL, password: DEMO_LOGIN_PASSWORD })

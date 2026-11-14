@@ -307,7 +307,7 @@ export function LoginPage() {
             {t("login.no_account")}{" "}
             <Link
               to="/register"
-              className="font-medium text-primary hover:underline"
+              className="font-medium text-brand hover:underline"
               data-testid="login-signup-link"
             >
               {t("login.signup_link")}
@@ -446,7 +446,7 @@ export function LoginPage() {
           <div className="flex items-center justify-end">
             <Link
               to="/forgot-password"
-              className="text-xs font-medium text-primary hover:underline"
+              className="text-xs font-medium text-brand hover:underline"
               data-testid="login-forgot-link"
             >
               {t("login.forgot_link")}

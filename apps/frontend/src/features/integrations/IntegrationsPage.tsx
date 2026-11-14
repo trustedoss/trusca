@@ -108,7 +108,7 @@ function ScopeBadge({ scope }: { scope: APIKeyScope }) {
   const { t } = useTranslation("integrations");
   const toneClass: Record<APIKeyScope, string> = {
     org: "border-purple-300 bg-purple-50 text-purple-700",
-    team: "border-blue-300 bg-blue-50 text-blue-700",
+    team: "border-transparent bg-brand-subtle text-brand",
     project: "border-status-success-border bg-status-success-subtle text-status-success-foreground",
   };
   return (

@@ -67,7 +67,7 @@ export function ScanStatusBadge({ status }: { status: AdminScanStatus }) {
         "gap-1 font-mono text-xs",
         tone === "ok" && "border-status-success-border bg-status-success-subtle text-status-success-foreground",
         tone === "running" &&
-          "border-blue-300 bg-blue-50 text-blue-700",
+          "border-status-info-border bg-status-info-subtle text-status-info-foreground",
         tone === "down" && "border-status-danger-border bg-status-danger-subtle text-status-danger-foreground",
         tone === "muted" && "border-muted bg-muted text-muted-foreground",
       )}

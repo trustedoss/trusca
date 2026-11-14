@@ -1,6 +1,5 @@
 {
   "about": {
-    "color-contrast": 2,
     "scrollable-region-focusable": 1
   },
   "about-dark": {
@@ -34,14 +33,22 @@
   "inventory-dark": {},
   "login": {},
   "login-dark": {},
+  "notifications": {},
+  "notifications-dark": {},
   "policies": {},
   "policies-dark": {},
   "profile": {},
   "profile-dark": {},
   "project-create": {},
   "project-create-dark": {},
+  "project-detail-compliance": {},
+  "project-detail-compliance-dark": {},
+  "project-detail-components": {},
+  "project-detail-components-dark": {},
   "project-detail-overview": {},
   "project-detail-overview-dark": {},
+  "project-detail-settings": {},
+  "project-detail-settings-dark": {},
   "project-detail-vulnerabilities": {},
   "project-detail-vulnerabilities-dark": {},
   "projects-list": {},
