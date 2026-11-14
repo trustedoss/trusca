@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -386,6 +387,132 @@ def test_each_font_family_ships_its_licence_text() -> None:
             f"{family}: {rel.as_posix()} carries no copyright line, so it does "
             "not satisfy OFL-1.1 section 2 on its own"
         )
+
+
+# ---------------------------------------------------------------------------
+# npm dependencies in the frontend bundle
+# ---------------------------------------------------------------------------
+
+FRONTEND = REPO_ROOT / "apps" / "frontend"
+FRONTEND_NOTICES_NAME = "frontend-third-party.txt"
+
+#: Production packages whose licence (BSD-3-Clause) requires the notice to be
+#: reproduced "in the documentation and/or other materials provided with the
+#: distribution". They arrive through @primer/react, and the first two tarballs
+#: do not all carry a LICENSE file, which is why the collector has a fallback.
+BSD_PACKAGES = ("@lit-labs/react", "@lit-labs/ssr-dom-shim", "@oddbird/popover-polyfill")
+PRIMER_PACKAGE = "@primer/react"
+
+
+def _lock_production_packages() -> dict[str, str]:
+    """Name -> licence id of every non-dev entry of the frontend lockfile."""
+    lock = json.loads(_read(FRONTEND / "package-lock.json"))
+    found: dict[str, str] = {}
+    for key, entry in lock["packages"].items():
+        if not key or entry.get("link") or entry.get("dev"):
+            continue
+        name = key.rsplit("node_modules/", 1)[-1]
+        found[name] = str(entry.get("license", ""))
+    return found
+
+
+def _fallback_files(name: str) -> list[Path]:
+    """Committed licence texts that may stand in for the package's own file."""
+    candidates = [FRONTEND / "licenses" / (name.replace("/", "-") + ".txt")]
+    if name.startswith("@"):
+        candidates.append(FRONTEND / "licenses" / (name.split("/")[0] + ".txt"))
+    return candidates
+
+
+def test_lockfile_lists_primer_and_its_bsd_dependencies() -> None:
+    """The packages the notices must cover are really in the production tree.
+
+    Without this the checks below could pass over a lockfile that no longer
+    contains them (for instance after Primer is removed) and say nothing.
+    """
+    packages = _lock_production_packages()
+    assert PRIMER_PACKAGE in packages
+    for name in BSD_PACKAGES:
+        assert packages.get(name) == "BSD-3-Clause", (name, packages.get(name))
+
+
+def test_frontend_packages_without_a_licence_file_have_a_committed_text() -> None:
+    """A package whose tarball ships no LICENSE needs licenses/<name>.txt.
+
+    @primer/react is the known case: its npm tarball has no licence file.
+    Checked from the lockfile and the licences directory, so it runs without
+    node_modules; the generator test below covers the installed tree.
+    """
+    assert _fallback_files(PRIMER_PACKAGE)[0].is_file(), (
+        "apps/frontend/licenses/@primer-react.txt is missing: @primer/react "
+        "publishes no LICENSE file, so its MIT text must be committed."
+    )
+    text = _fallback_files(PRIMER_PACKAGE)[0].read_text(encoding="utf-8")
+    assert "MIT License" in text
+    assert "GitHub, Inc." in text
+    assert "Permission is hereby granted" in text
+
+
+def test_build_generates_the_notices_and_the_image_ships_them() -> None:
+    """`npm run build` writes the file, and Dockerfile.prod carries it twice.
+
+    Once inside /usr/share/nginx/html (served with the web build, where the
+    code a browser downloads is) and once under /licenses/ with the other
+    notices.
+    """
+    package = json.loads(_read(FRONTEND / "package.json"))
+    build = package["scripts"]["build"]
+    assert build.index("vite build") < build.index("collect-licenses.mjs"), (
+        "collect-licenses.mjs must run after vite build, which empties dist/"
+    )
+
+    dockerfile = _read(FRONTEND / "Dockerfile.prod")
+    assert "COPY --from=build /app/dist /usr/share/nginx/html" in dockerfile
+    copies = [
+        line
+        for line in dockerfile.splitlines()
+        if line.startswith("COPY --from=build")
+        and f"/app/dist/licenses/{FRONTEND_NOTICES_NAME}" in line
+        and f"/licenses/{FRONTEND_NOTICES_NAME}" in line.split()[-1]
+    ]
+    assert copies, (
+        f"Dockerfile.prod does not copy dist/licenses/{FRONTEND_NOTICES_NAME} to "
+        f"/licenses/{FRONTEND_NOTICES_NAME}"
+    )
+
+
+def test_notices_file_points_at_the_generated_frontend_notices(notices_text: str) -> None:
+    assert f"/licenses/{FRONTEND_NOTICES_NAME}" in notices_text
+
+
+def test_generated_frontend_notices_list_primer_and_the_bsd_packages(tmp_path: Path) -> None:
+    """Run the real generator and read its output.
+
+    Needs node and an installed node_modules (CI's frontend jobs have both; the
+    backend job may not). It is skipped, with the reason, rather than passing
+    without looking when either is missing.
+    """
+    node = shutil.which("node")
+    if node is None or not (FRONTEND / "node_modules" / "@primer" / "react").is_dir():
+        pytest.skip("node or apps/frontend/node_modules is not available")
+
+    out = tmp_path / FRONTEND_NOTICES_NAME
+    result = subprocess.run(
+        [node, "scripts/collect-licenses.mjs", "--out", str(out)],
+        cwd=FRONTEND,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    body = out.read_text(encoding="utf-8")
+
+    assert re.search(rf"^{re.escape(PRIMER_PACKAGE)}@\S+\nLicense: MIT$", body, re.MULTILINE)
+    for name in BSD_PACKAGES:
+        pattern = rf"^{re.escape(name)}@\S+\nLicense: BSD-3-Clause$"
+        assert re.search(pattern, body, re.MULTILINE), f"{name} is not listed as BSD-3-Clause"
+    # Each BSD-3-Clause entry carries the licence text, not just a name.
+    assert body.count("Redistributions in binary form must reproduce") >= len(BSD_PACKAGES)
 
 
 # ---------------------------------------------------------------------------

@@ -79,6 +79,14 @@ COPY --from=build /app/dist /usr/share/nginx/html
 # /licenses/ is not left guessing.
 COPY LICENSE NOTICE THIRD_PARTY_NOTICES.md /licenses/
 
+# The bundle's npm dependencies are a second set of notices. `npm run build`
+# generates them (scripts/collect-licenses.mjs) into dist/licenses/, so they
+# reach the image twice: served with the web build at
+# /licenses/frontend-third-party.txt, next to the code a browser downloads
+# (MIT and BSD-3-Clause want the notice with every copy), and here beside the
+# other notices. THIRD_PARTY_NOTICES.md section 5 points at this file.
+COPY --from=build /app/dist/licenses/frontend-third-party.txt /licenses/frontend-third-party.txt
+
 # Run as the unprivileged `nginx` user that the base image already
 # provisions. We listen on :8080 (>1024) so the non-root user can bind.
 #

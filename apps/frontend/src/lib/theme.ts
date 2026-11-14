@@ -34,6 +34,20 @@ export const THEME_STORAGE_KEY = "trusca-theme";
 /** Shared with the inline script in `index.html`, and with Tailwind's `darkMode: ["class"]`. */
 export const DARK_CLASS = "dark";
 
+/**
+ * Primer reads its colours from three attributes on <html> instead of a class
+ * (`data-color-mode`, `data-light-theme`, `data-dark-theme`). They are written
+ * next to the `dark` class, in `applyTheme` and in the inline script of
+ * `index.html`, so Primer and Tailwind never disagree. The theme names are the
+ * two @primer/primitives themes `main.tsx` loads. `data-color-mode` carries the
+ * resolved mode, never "auto".
+ */
+export const PRIMER_COLOR_MODE_ATTR = "data-color-mode";
+export const PRIMER_LIGHT_THEME_ATTR = "data-light-theme";
+export const PRIMER_DARK_THEME_ATTR = "data-dark-theme";
+export const PRIMER_LIGHT_THEME = "light";
+export const PRIMER_DARK_THEME = "dark";
+
 const PREFERENCES: readonly ThemePreference[] = ["light", "dark", "system"];
 
 function isPreference(value: unknown): value is ThemePreference {
@@ -88,7 +102,8 @@ export function resolvePreference(preference: ThemePreference): ResolvedTheme {
 }
 
 /**
- * Put the resolved theme on the document element.
+ * Put the resolved theme on the document element: the `dark` class and the
+ * three Primer attributes together.
  *
  * Also updates `theme-color`, the strip of browser chrome around the page on
  * mobile. Leaving it fixed framed a dark app in a bar belonging to neither
@@ -102,6 +117,9 @@ export function resolvePreference(preference: ThemePreference): ResolvedTheme {
 export function applyTheme(theme: ResolvedTheme): void {
   const root = document.documentElement;
   root.classList.toggle(DARK_CLASS, theme === "dark");
+  root.setAttribute(PRIMER_COLOR_MODE_ATTR, theme);
+  root.setAttribute(PRIMER_LIGHT_THEME_ATTR, PRIMER_LIGHT_THEME);
+  root.setAttribute(PRIMER_DARK_THEME_ATTR, PRIMER_DARK_THEME);
   root.style.colorScheme = theme;
 
   const meta = document.querySelector('meta[name="theme-color"]');
@@ -109,4 +127,35 @@ export function applyTheme(theme: ResolvedTheme): void {
   // Read after the class change above, so this picks up the theme just set.
   const bar = getComputedStyle(root).getPropertyValue("--topbar").trim();
   if (bar) meta.setAttribute("content", bar);
+}
+
+/** Primer's colour mode names for our two themes (its ThemeProvider takes day and night). */
+export function primerColorMode(theme: ResolvedTheme): "day" | "night" {
+  return theme === "dark" ? "night" : "day";
+}
+
+/** The mode <html> shows right now, read from the `dark` class. */
+export function readDocumentTheme(root: HTMLElement = document.documentElement): ResolvedTheme {
+  return root.classList.contains(DARK_CLASS) ? "dark" : "light";
+}
+
+/**
+ * Call `onChange` when something flips the `dark` class on <html>. Theme state
+ * is a module variable, not React state, so the Primer provider follows the
+ * element instead. Returns the unsubscribe function.
+ */
+export function watchDocumentTheme(
+  onChange: (theme: ResolvedTheme) => void,
+  root: HTMLElement = document.documentElement,
+): () => void {
+  let last = readDocumentTheme(root);
+  const observer = new MutationObserver(() => {
+    const next = readDocumentTheme(root);
+    if (next !== last) {
+      last = next;
+      onChange(next);
+    }
+  });
+  observer.observe(root, { attributes: true, attributeFilter: ["class"] });
+  return () => observer.disconnect();
 }

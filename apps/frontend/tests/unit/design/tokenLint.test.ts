@@ -180,3 +180,95 @@ describe("diff — the ratchet", () => {
     expect(result.shrank).toEqual([{ file: "src/b.tsx", count: 0, budget: 1 }]);
   });
 });
+
+describe("Primer colour bypasses", () => {
+  it("flags Primer colour variables read directly in a component", () => {
+    write(
+      "features/Direct.tsx",
+      [
+        'const a = { color: "var(--fgColor-danger)" };',
+        'const b = "var(--bgColor-success-muted)";',
+        'const c = "var( --borderColor-default )";',
+      ].join("\n"),
+    );
+
+    const { counts, findings } = run();
+
+    expect(counts["src/features/Direct.tsx"]).toBe(3);
+    expect(findings.map((f) => [f.line, f.text])).toEqual([
+      [1, "var(--fgColor-danger"],
+      [2, "var(--bgColor-success-muted"],
+      [3, "var(--borderColor-default"],
+    ]);
+  });
+
+  it("flags colour keys in an sx prop, on one line or many", () => {
+    write(
+      "features/Sx.tsx",
+      [
+        "export const A = () => <Box sx={{ color: 'danger.fg', p: 2 }} />;",
+        "export const B = () => (",
+        "  <Box",
+        "    sx={{",
+        "      p: 2,",
+        "      bg: 'canvas.subtle',",
+        "      ':hover': { borderColor: 'accent.fg' },",
+        "    }}",
+        "  />",
+        ");",
+      ].join("\n"),
+    );
+
+    const { counts, findings } = run();
+
+    expect(counts["src/features/Sx.tsx"]).toBe(3);
+    expect(findings.map((f) => [f.line, f.text])).toEqual([
+      [1, "sx color:"],
+      [6, "sx bg:"],
+      [7, "sx borderColor:"],
+    ]);
+  });
+
+  it("leaves layout-only sx, our own tokens and primer.css alone", () => {
+    write("features/Layout.tsx", "export const A = () => <Box sx={{ p: 2, display: 'flex', gap: 1 }} />;");
+    write("features/Tokened.tsx", 'const a = "var(--risk-critical)"; const b = "hsl(var(--primary))";');
+    write("primer.css", ":root { --x: var(--fgColor-default); --y: var(--bgColor-muted); }");
+
+    expect(run().findings).toEqual([]);
+  });
+
+  it("does not read a colour key outside the sx object as an sx colour", () => {
+    write(
+      "features/Outside.tsx",
+      [
+        "const style = { color: 'inherit' };",
+        "export const A = () => <Box sx={{ p: 2 }} style={style} />;",
+      ].join("\n"),
+    );
+
+    expect(run().findings).toEqual([]);
+  });
+
+  it("ignores them in comments and in tests", () => {
+    write("features/Doc.tsx", "// do not use var(--fgColor-danger) or sx={{ color: 'x' }}\nexport const x = 1;");
+    write("features/Doc.test.tsx", 'const a = "var(--fgColor-danger)";');
+
+    expect(run().findings).toEqual([]);
+  });
+
+  it("fails the ratchet when one appears in a file with no budget", () => {
+    write("features/New.tsx", 'const a = "var(--bgColor-danger-emphasis)";');
+
+    const result = diff(run().counts, {});
+
+    expect(result.ok).toBe(false);
+    expect(result.added).toEqual([{ file: "src/features/New.tsx", count: 1 }]);
+  });
+
+  it("passes the ratchet on a clean tree", () => {
+    write("features/Clean.tsx", "export const A = () => <Box sx={{ p: 2 }} />;");
+
+    expect(diff(run().counts, {}).ok).toBe(true);
+  });
+});
+

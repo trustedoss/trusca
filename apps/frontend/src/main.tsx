@@ -10,6 +10,20 @@ import { installChunkReloadHandler } from "@/lib/chunkReload";
 import "@/lib/i18n";
 import "@/index.css";
 
+// Primer design tokens: sizes, type, motion and the light and dark themes only
+// (no high-contrast or colour-blind themes). src/primer.css follows them so its
+// overrides come later in the cascade.
+import "@primer/primitives/dist/css/base/size/size.css";
+import "@primer/primitives/dist/css/base/typography/typography.css";
+import "@primer/primitives/dist/css/base/motion/motion.css";
+import "@primer/primitives/dist/css/functional/size/border.css";
+import "@primer/primitives/dist/css/functional/size/radius.css";
+import "@primer/primitives/dist/css/functional/size/size.css";
+import "@primer/primitives/dist/css/functional/typography/typography.css";
+import "@primer/primitives/dist/css/functional/themes/light.css";
+import "@primer/primitives/dist/css/functional/themes/dark.css";
+import "@/primer.css";
+
 const container = document.getElementById("root");
 if (!container) {
   throw new Error("Root container #root not found");

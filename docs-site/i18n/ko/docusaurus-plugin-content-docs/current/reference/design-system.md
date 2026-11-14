@@ -485,6 +485,19 @@ Risk 톤은 심각도에만 씁니다. 그 밖의 톤이 두 가지 있습니다
 - **test-id 계약.** `testId` 기본값은 `"admin-toast"` 이고 토스트는 `data-tone` + `data-toast-key`를 달아, 모든 e2e 하네스가 선택하는 마크업(`[data-testid="admin-toast"][data-tone][data-toast-key]`)을 그대로 냅니다. `tone`(`success` / `error`)과 locale 독립 `key`를 넘깁니다. ScanCancelButton 만 `testId: "scan-cancel-toast"`로 덮어씁니다.
 - **예외.** 두 표면은 자체 로컬 토스트를 유지합니다: 스캔 상세의 다운로드 알림(success / error 톤이 아닌 중립 `data-toast-variant`)과 Settings 탭의 인라인 `settings-toast` 저장 확인. 둘 다 자체 테스트 계약이 있고 success / error 모델에 맞지 않습니다.
 
+## 컴포넌트 기반
+
+새 컴포넌트는 `@primer/react` 패키지 위에 만듭니다. 디자인 토큰은 `@primer/primitives`, 아이콘은 `@primer/octicons-react`를 씁니다. 세 패키지는 정확한 버전으로 고정합니다. 기반만 마련된 상태이고 아직 이를 쓰는 화면이 없으므로, 화면을 옮기기 전에는 화면이 바뀌지 않습니다.
+
+- **색 모드.** Primer는 `<html>`의 속성 세 개(`data-color-mode`, `data-light-theme`, `data-dark-theme`)로 테마를 읽습니다. 이 속성은 `dark` 클래스와 함께 `index.html`의 첫 페인트 스크립트와 `applyTheme`에서 씁니다. 그래서 두 체계가 어긋나지 않고 화면이 깜박이지 않습니다. `data-color-mode`에는 `auto`가 아니라 확정된 모드(`light` 또는 `dark`)가 들어갑니다. `themeGuard.test.ts`가 라이트, 다크, 시스템(OS 설정별)에서 클래스와 속성이 일치하는지 확인합니다.
+- **프로바이더.** `PrimerRoot`가 앱 전체를 컨텍스트 전용 `ThemeProvider`로 감쌉니다. 테마 상태가 React 상태가 아니라 모듈 변수이므로, 색 모드는 `MutationObserver`로 `<html>`의 `dark` 클래스를 따라갑니다.
+- **덮어쓰기 파일.** `src/primer.css`는 primitives 테마 파일 뒤에 불러오며, Primer 변수(글꼴 스택, 강조색, 초점 윤곽선, 주 버튼, 선택된 컨트롤, 밑줄 탐색의 현재 표시)를 `index.css`의 토큰에 연결합니다. 색 리터럴은 쓰지 않습니다. primitives 테마 파일의 선택자가 이미 속성 두 개를 요구하므로, 덮어쓰기 선택자는 색 모드 속성 세 개를 모두 가져야 우선합니다. 테스트는 선택자, 모든 값이 올바른 표기로 실제 토큰을 가리키는지, 덮어쓴 변수가 설치된 primitives에 있는지를 확인합니다.
+- **`BaseStyles` 금지.** Primer의 전역 스타일시트는 문서 전체의 초점, 링크, 글꼴 규칙을 바꾸므로 Primer를 쓰지 않는 화면까지 달라집니다. 그래서 쓰지 않습니다. 글꼴과 색은 `src/primer.css`만 거쳐 Primer 컴포넌트에 전달됩니다.
+- **왼쪽 강조선 금지.** Primer는 탐색 목록, 필터 목록, 트리 뷰에서 현재 항목의 왼쪽 가장자리에 장식용 막대를 그립니다. 이 디자인은 굵은 왼쪽 막대를 쓰지 않으므로 `src/primer.css`가 숨깁니다. 테스트는 설치된 Primer 스타일시트에서 이런 막대를 그리는 규칙을 모두 찾아, 각각에 숨김 규칙이 있는지 확인합니다.
+- **상표 아이콘 금지.** `@primer/octicons-react`에는 로고와 제품 마스코트가 들어 있습니다. ESLint `no-restricted-imports` 규칙이 이를 막고, 규칙을 우회하는 하위 경로 import도 함께 막습니다. 예외는 `src/features/integrations/GitHubMark.tsx` 한 파일뿐입니다.
+- **색 경로.** `npm run token:lint`는 `src/primer.css` 밖에서 Primer의 `sx` 색 키와 `var(--fgColor-*)`, `var(--bgColor-*)`, `var(--borderColor-*)`를 직접 읽는 코드도 잡아냅니다. 이런 코드는 위험도·상태 토큰을 우회합니다.
+- **예산과 고지.** `npm run bundle:budget`은 진입 청크 400 KB 외에 CSS gzip 합계도 60 KB로 제한합니다. `npm run build`는 모든 운영 의존성의 라이선스 전문을 담은 `dist/licenses/frontend-third-party.txt`도 만듭니다. 웹 빌드가 이 파일을 제공하고 이미지의 `/licenses/`에도 들어갑니다.
+
 ## 마이크로인터랙션 가이드
 
 W11-F polish phase가 모든 인터랙티브 transition의 타이밍 · easing을 표준화. 컴포넌트는 토큰에서 motion을 가져옵니다 — 새 값을 hand-roll 하지 않습니다.

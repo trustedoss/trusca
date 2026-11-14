@@ -438,5 +438,11 @@ published with every release (`trusca-<version>.cdx.json`, attached to the
 GitHub release and signed with cosign). Lockfiles in the source tree are
 `apps/backend/requirements.txt` and `apps/frontend/package-lock.json`.
 
+The npm dependencies that end up in the frontend bundle are the exception: their
+copyright notices and licence texts (MIT, BSD-3-Clause and the others in that
+tree) are generated at build time into the image at
+`/licenses/frontend-third-party.txt`, and the web build serves the same file at
+`/licenses/frontend-third-party.txt`.
+
 TRUSCA can also generate this inventory for itself — the `sca-self` and
 `dogfood-scan` CI workflows scan this repository with the product.

@@ -19,6 +19,13 @@
          tests/unit/design/themeGuard.test.ts holds the two copies together. -->
     <script>
       (function () {
+        var root = document.documentElement;
+        /* Primer's colour mode lives in three attributes next to the class.
+           Light and the two theme names are written first, so a failure
+           reading storage still leaves a complete, consistent set. */
+        root.setAttribute("data-color-mode", "light");
+        root.setAttribute("data-light-theme", "light");
+        root.setAttribute("data-dark-theme", "dark");
         try {
           var stored = window.localStorage.getItem("trusca-theme");
           var dark =
@@ -26,8 +33,9 @@
             (stored !== "light" &&
               window.matchMedia("(prefers-color-scheme: dark)").matches);
           if (dark) {
-            document.documentElement.classList.add("dark");
-            document.documentElement.style.colorScheme = "dark";
+            root.classList.add("dark");
+            root.style.colorScheme = "dark";
+            root.setAttribute("data-color-mode", "dark");
           }
         } catch (e) {
           /* No storage (private mode) — light is a safe first frame. */
