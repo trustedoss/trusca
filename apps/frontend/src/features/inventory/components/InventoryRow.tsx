@@ -2,7 +2,7 @@
 // Copyright 2026 TRUSCA contributors
 import { useTranslation } from "react-i18next";
 
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/components/primer/badge";
 import type { InventoryComponentRow } from "@/features/inventory/api/inventoryApi";
 import { CurrencyBadge } from "@/features/projects/components/CurrencyBadge";
 import { EolBadge } from "@/features/projects/components/EolBadge";

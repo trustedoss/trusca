@@ -29,7 +29,7 @@
 import { useTranslation } from "react-i18next";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/components/primer/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -37,8 +37,8 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
+} from "@/components/primer/card";
+import { Skeleton } from "@/components/primer/Skeleton";
 import { useProjectOverview } from "@/features/projects/api/useProjectOverview";
 import {
   useCreateNpmPullRequest,

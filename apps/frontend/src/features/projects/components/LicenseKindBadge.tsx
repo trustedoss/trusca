@@ -3,7 +3,7 @@
 import { FileSearch, Package, Stamp } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/components/primer/badge";
 import type { LicenseFindingKind } from "@/features/projects/api/licensesApi";
 import { cn } from "@/lib/utils";
 

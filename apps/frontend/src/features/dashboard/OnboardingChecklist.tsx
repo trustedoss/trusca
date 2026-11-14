@@ -20,20 +20,20 @@
  * feature.
  */
 import {
-  Boxes,
-  Check,
-  FolderPlus,
-  KeyRound,
-  Scale,
-  ScanLine,
-  X,
-} from "lucide-react";
-import type { ComponentType, SVGProps } from "react";
+  CheckIcon,
+  FileDirectoryIcon,
+  KeyIcon,
+  LawIcon,
+  PackageIcon,
+  WorkflowIcon,
+  XIcon,
+  type Icon,
+} from "@primer/octicons-react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/primer/Button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/primer/card";
 import { useApiKeys } from "@/features/integrations/useApiKeys";
 import { useLicensePolicies } from "@/features/policies/useLicensePolicies";
 import { useActiveTeam } from "@/hooks/useActiveTeam";
@@ -50,7 +50,7 @@ export type ChecklistStepKey = "project" | "scan" | "policy" | "apiKey";
 
 interface ChecklistStep {
   key: ChecklistStepKey;
-  icon: ComponentType<SVGProps<SVGSVGElement>>;
+  icon: Icon;
   to: string;
   done: boolean;
 }
@@ -93,7 +93,7 @@ export function useOnboardingChecklist({
   const steps: ChecklistStep[] = [
     {
       key: "project",
-      icon: FolderPlus,
+      icon: FileDirectoryIcon,
       to: "/projects/new",
       done: projects.length > 0,
     },
@@ -111,7 +111,7 @@ export function useOnboardingChecklist({
       // The card is dismissible, and this is the page size to widen if that
       // ever stops being an acceptable trade.
       key: "scan",
-      icon: ScanLine,
+      icon: WorkflowIcon,
       to: "/projects",
       done: projects.some((project) => project.release_count > 0),
     },
@@ -124,7 +124,7 @@ export function useOnboardingChecklist({
       // happens meanwhile is in the hint: the built-in categories apply, so
       // an unticked box is a decision not yet made rather than a hole.
       key: "policy",
-      icon: Scale,
+      icon: LawIcon,
       to: "/policies",
       done: (policiesQuery.data?.total ?? 0) > 0,
     },
@@ -134,7 +134,7 @@ export function useOnboardingChecklist({
       // checks expiry too. So this counts keys that were issued and not
       // taken back, which is what the done copy claims and no more.
       key: "apiKey",
-      icon: KeyRound,
+      icon: KeyIcon,
       to: "/integrations",
       done: (apiKeysQuery.data?.total ?? 0) > 0,
     },
@@ -195,7 +195,7 @@ export function OnboardingChecklist(props: OnboardingChecklistProps) {
       <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
         <div>
           <CardTitle className="flex items-center gap-2 text-base">
-            <Boxes className="h-4 w-4 text-brand" aria-hidden />
+            <PackageIcon size={16} className="text-brand" />
             {t("onboarding.title")}
           </CardTitle>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -224,7 +224,7 @@ export function OnboardingChecklist(props: OnboardingChecklistProps) {
             data-testid="onboarding-dismiss"
             aria-label={t("onboarding.dismiss")}
           >
-            <X className="h-4 w-4" aria-hidden />
+            <XIcon size={16} />
           </Button>
         </div>
       </CardHeader>
@@ -282,9 +282,9 @@ function ChecklistRow({
         aria-hidden
       >
         {step.done ? (
-          <Check className="h-3.5 w-3.5" />
+          <CheckIcon size={14} />
         ) : (
-          <Icon className="h-3.5 w-3.5" />
+          <Icon size={14} />
         )}
       </span>
       <div className="min-w-0 flex-1">

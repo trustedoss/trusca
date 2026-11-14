@@ -6,8 +6,8 @@ import { useTranslation } from "react-i18next";
 import { Virtuoso } from "react-virtuoso";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/primer/badge";
+import { Skeleton } from "@/components/primer/Skeleton";
 import type { SourceTreeEntry } from "@/features/projects/api/sourceTreeApi";
 import { useSourceTree } from "@/features/projects/api/useSourceTree";
 import { ProblemError } from "@/lib/problem";

@@ -4,7 +4,7 @@ import { ChevronDown, ChevronRight, Package } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/components/primer/badge";
 import { SeverityBadge } from "@/features/projects/components/SeverityBadge";
 import type { TreeNode } from "@/features/projects/lib/sbomGraph";
 import { cn } from "@/lib/utils";

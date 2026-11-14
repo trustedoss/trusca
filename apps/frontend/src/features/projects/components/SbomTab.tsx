@@ -23,7 +23,7 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
+} from "@/components/primer/card";
 import { SbomSignatureSection } from "@/features/projects/components/SbomSignatureSection";
 import { formatAbsoluteTime } from "@/lib/absoluteTime";
 import { triggerBlobDownload } from "@/lib/download";

@@ -554,7 +554,7 @@ describe("non-severity badge tones", () => {
     "..",
     "src",
     "components",
-    "ui",
+    "primer",
     "badge.tsx",
   );
   const badge = fs.readFileSync(BADGE_PATH, "utf8");

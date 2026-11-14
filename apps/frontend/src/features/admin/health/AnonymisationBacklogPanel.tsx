@@ -32,8 +32,8 @@ import { useTranslation } from "react-i18next";
 
 import { EmptyState } from "@/components/EmptyState";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/primer/badge";
+import { Skeleton } from "@/components/primer/Skeleton";
 import { type AwaitingExecutionItem } from "@/features/admin/health/api/adminAnonymisationApi";
 import { useAdminAnonymisation } from "@/features/admin/health/api/useAdminAnonymisation";
 import { adminErrorMessageKey } from "@/features/admin/lib/adminErrorMessage";

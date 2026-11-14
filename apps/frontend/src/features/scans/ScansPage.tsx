@@ -22,7 +22,7 @@ import { Link } from "react-router-dom";
 import { EmptyState } from "@/components/EmptyState";
 import { PageHeader } from "@/components/PageHeader";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/components/primer/badge";
 import { Button } from "@/components/ui/button";
 import { TableRowsSkeleton } from "@/components/ui/skeletons";
 import { ScanCancelButton } from "@/features/scans/ScanCancelButton";

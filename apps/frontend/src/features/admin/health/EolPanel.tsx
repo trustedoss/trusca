@@ -34,8 +34,8 @@ import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/primer/badge";
+import { Skeleton } from "@/components/primer/Skeleton";
 import { type EolStatus } from "@/features/admin/health/api/adminEolHealthApi";
 import { useAdminEolHealth } from "@/features/admin/health/api/useAdminEolHealth";
 import { adminErrorMessageKey } from "@/features/admin/lib/adminErrorMessage";
