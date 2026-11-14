@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
 import { zodResolver } from "@hookform/resolvers/zod";
-import { AlertCircle, CheckCircle2, Clock } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
@@ -15,8 +14,8 @@ import { z } from "zod";
 
 import { AuthLayout } from "@/pages/auth/AuthLayout";
 import { DemoCredentialsHint } from "@/pages/auth/DemoCredentialsHint";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
+import { Notice } from "@/components/primer/Notice";
+import { Button, TextInput } from "@primer/react";
 import { ProviderIcon } from "@/components/ProviderIcon";
 import { useDemoMode } from "@/hooks/useDemoMode";
 import {
@@ -26,9 +25,7 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-} from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+} from "@/components/primer/form";
 import { useOAuthProviders } from "@/hooks/useOAuthProviders";
 import {
   fetchMe,
@@ -317,41 +314,24 @@ export function LoginPage() {
       }
     >
       {oauthErrorKey ? (
-        <Alert variant="destructive" data-testid="login-oauth-error">
-          <AlertCircle className="h-4 w-4" aria-hidden />
-          <AlertDescription>{t(oauthErrorKey)}</AlertDescription>
-        </Alert>
+        <Notice tone="error" data-testid="login-oauth-error">{t(oauthErrorKey)}</Notice>
       ) : null}
 
       {/* A5: a session ending is not the user's mistake, so it is stated
           rather than warned about. It gives way to a submit error, which is
           about the attempt in front of them. */}
       {sessionExpired && !apiError ? (
-        <Alert variant="default" data-testid="login-session-expired">
-          <Clock className="h-4 w-4" aria-hidden />
-          <AlertDescription>{t("login.session_expired")}</AlertDescription>
-        </Alert>
+        <Notice tone="info" data-testid="login-session-expired">{t("login.session_expired")}</Notice>
       ) : null}
 
       {justRegistered && !apiError ? (
-        // shadcn Alert ships only `default` and `destructive` variants. We use
-        // default + success-toned text/icon so the message reads as positive
-        // confirmation, not an error. Color is paired with an icon (a11y).
-        <Alert
-          variant="default"
-          className="border-emerald-500/50 text-emerald-700 dark:text-emerald-400 [&>svg]:text-emerald-600"
-          data-testid="login-registered-success"
-        >
-          <CheckCircle2 className="h-4 w-4" aria-hidden />
-          <AlertDescription>{t("login.registered_success")}</AlertDescription>
-        </Alert>
+        <Notice tone="success" data-testid="login-registered-success">
+          {t("login.registered_success")}
+        </Notice>
       ) : null}
 
       {apiError ? (
-        <Alert variant="destructive" data-testid="login-error">
-          <AlertCircle className="h-4 w-4" aria-hidden />
-          <AlertDescription>{apiError}</AlertDescription>
-        </Alert>
+        <Notice tone="error" data-testid="login-error">{apiError}</Notice>
       ) : null}
 
       {demoReadOnly ? (
@@ -376,8 +356,10 @@ export function LoginPage() {
         >
           <p className="text-sm text-muted-foreground">{t("login.mfa.prompt")}</p>
           <div className="space-y-2">
-            <Label htmlFor="login-mfa-code">{t("login.mfa.code_label")}</Label>
-            <Input
+            <label htmlFor="login-mfa-code" className="block text-sm font-medium leading-none">
+              {t("login.mfa.code_label")}
+            </label>
+            <TextInput block
               id="login-mfa-code"
               value={code}
               onChange={(event) => setCode(event.target.value)}
@@ -392,7 +374,8 @@ export function LoginPage() {
           </div>
           <Button
             type="submit"
-            className="w-full"
+            variant="primary"
+            block
             disabled={submitting || code.trim().length === 0}
             data-testid="login-mfa-submit"
           >
@@ -414,7 +397,7 @@ export function LoginPage() {
               <FormItem>
                 <FormLabel>{t("login.email_label")}</FormLabel>
                 <FormControl>
-                  <Input
+                  <TextInput block
                     type="email"
                     autoComplete="email"
                     data-testid="login-email"
@@ -432,7 +415,7 @@ export function LoginPage() {
               <FormItem>
                 <FormLabel>{t("login.password_label")}</FormLabel>
                 <FormControl>
-                  <Input
+                  <TextInput block
                     type="password"
                     autoComplete="current-password"
                     data-testid="login-password"
@@ -454,7 +437,8 @@ export function LoginPage() {
           </div>
           <Button
             type="submit"
-            className="w-full"
+            variant="primary"
+            block
             disabled={submitting}
             data-testid="login-submit"
           >
@@ -486,7 +470,6 @@ export function LoginPage() {
               <Button
                 key={provider}
                 type="button"
-                variant="outline"
                 onClick={() => startOAuth(provider)}
                 data-testid={`login-oauth-${provider}`}
               >

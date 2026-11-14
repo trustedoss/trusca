@@ -26,15 +26,14 @@
  * The email domain is always `@demo.trustedoss.dev` regardless of the deploy
  * hostname, so it is safe to print verbatim.
  *
- * Design: a single, restrained info box built from the shared `Alert` primitive
+ * Design: a single, restrained info box built from the shared `Notice` component
  * (default variant + sky tones) so it reads as guidance, not an error. Color is
  * paired with an icon (a11y — color is never the only signal).
  */
-import { Info } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
+import { Notice } from "@/components/primer/Notice";
+import { Button } from "@primer/react";
 
 /**
  * Seeded demo account offered to first-time visitors. Must match
@@ -55,28 +54,21 @@ export function DemoCredentialsHint({ onFill }: DemoCredentialsHintProps) {
   const { t } = useTranslation("auth");
 
   return (
-    <Alert
-      variant="default"
-      data-testid="login-demo-hint"
-      className="border-status-info-border bg-status-info-subtle text-foreground"
-    >
-      <Info className="h-4 w-4 text-status-info" aria-hidden />
-      <AlertDescription className="space-y-2">
-        <p className="font-medium">{t("login.demo.title")}</p>
-        <p className="text-status-info-foreground">{t("login.demo.detail")}</p>
+    <Notice tone="info" data-testid="login-demo-hint">
+      <div className="space-y-2">
+        <p className="font-medium text-foreground">{t("login.demo.title")}</p>
+        <p>{t("login.demo.detail")}</p>
         <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 font-mono text-xs text-foreground">
           <dt className="text-status-info-foreground">{t("login.demo.email_label")}</dt>
           <dd data-testid="login-demo-email">{DEMO_LOGIN_EMAIL}</dd>
           <dt className="text-status-info-foreground">{t("login.demo.password_label")}</dt>
           <dd data-testid="login-demo-password">{DEMO_LOGIN_PASSWORD}</dd>
         </dl>
-        <p className="text-xs text-status-info-foreground">{t("login.demo.password_note")}</p>
-        <p className="text-xs text-status-info-foreground">{t("login.demo.scan_note")}</p>
+        <p className="text-xs">{t("login.demo.password_note")}</p>
+        <p className="text-xs">{t("login.demo.scan_note")}</p>
         <Button
           type="button"
-          size="sm"
-          variant="outline"
-          className="border-status-info-border bg-card text-foreground hover:bg-background"
+          size="small"
           data-testid="login-demo-fill"
           onClick={() =>
             onFill({ email: DEMO_LOGIN_EMAIL, password: DEMO_LOGIN_PASSWORD })
@@ -84,7 +76,7 @@ export function DemoCredentialsHint({ onFill }: DemoCredentialsHintProps) {
         >
           {t("login.demo.fill_button")}
         </Button>
-      </AlertDescription>
-    </Alert>
+      </div>
+    </Notice>
   );
 }

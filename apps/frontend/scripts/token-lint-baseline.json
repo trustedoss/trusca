@@ -26,6 +26,5 @@
   "src/features/scan/SbomConformancePanel.tsx": 2,
   "src/features/scan/ScanProgress.tsx": 2,
   "src/features/scan/ToolLogLine.tsx": 3,
-  "src/pages/auth/LoginPage.tsx": 4,
   "src/pages/dev/BrandCandidates.tsx": 5
 }

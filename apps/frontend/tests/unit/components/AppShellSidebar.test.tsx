@@ -251,11 +251,20 @@ describe("AppShell - skip link and profile menu (C1)", () => {
     await user.click(screen.getByTestId("header-profile-menu"));
     await screen.findByTestId("logout-button");
 
+    // Primer's menu moves focus on the next frame, so wait for each press to
+    // take effect instead of firing twenty presses at a menu that has handled
+    // two of them (it did, on a slow runner).
+    await screen.findByRole("menu");
     const reached = new Set<string>();
     // Generous rather than exact: a fixed count sized to today's six rows
     // turns into a false failure the day someone adds a seventh above them.
     for (let press = 0; press < 20; press += 1) {
+      const before = document.activeElement;
       await user.keyboard("{ArrowDown}");
+      await waitFor(
+        () => expect(document.activeElement).not.toBe(before),
+        { timeout: 300 },
+      ).catch(() => undefined);
       const testId = document.activeElement?.getAttribute("data-testid");
       if (testId) reached.add(testId);
     }

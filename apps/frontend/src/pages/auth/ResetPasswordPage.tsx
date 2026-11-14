@@ -17,7 +17,6 @@
  *     the user can request a fresh link.
  */
 import { zodResolver } from "@hookform/resolvers/zod";
-import { AlertCircle, CheckCircle2 } from "lucide-react";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
@@ -25,8 +24,8 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { z } from "zod";
 
 import { AuthLayout } from "@/pages/auth/AuthLayout";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
+import { Notice } from "@/components/primer/Notice";
+import { Button, TextInput } from "@primer/react";
 import {
   Form,
   FormControl,
@@ -34,8 +33,7 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-} from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
+} from "@/components/primer/form";
 import { postResetPassword } from "@/lib/api";
 import { ProblemError } from "@/lib/problem";
 
@@ -137,10 +135,7 @@ export function ResetPasswordPage() {
           </Link>
         }
       >
-        <Alert variant="destructive" data-testid="reset-invalid-link">
-          <AlertCircle className="h-4 w-4" aria-hidden />
-          <AlertDescription>{t("reset.errors.missing_token")}</AlertDescription>
-        </Alert>
+        <Notice tone="error" data-testid="reset-invalid-link">{t("reset.errors.missing_token")}</Notice>
       </AuthLayout>
     );
   }
@@ -162,10 +157,7 @@ export function ResetPasswordPage() {
     >
       {apiErrorKey ? (
         <>
-          <Alert variant="destructive" data-testid="reset-error">
-            <AlertCircle className="h-4 w-4" aria-hidden />
-            <AlertDescription>{t(apiErrorKey)}</AlertDescription>
-          </Alert>
+          <Notice tone="error" data-testid="reset-error">{t(apiErrorKey)}</Notice>
           {TOKEN_INVALID_ERROR_KEYS.has(apiErrorKey) ? (
             // M-14: a dead token cannot be fixed by retyping the password —
             // give the user the path to a fresh link right where the error
@@ -184,10 +176,7 @@ export function ResetPasswordPage() {
           ) : null}
         </>
       ) : (
-        <Alert data-testid="reset-info">
-          <CheckCircle2 className="h-4 w-4" aria-hidden />
-          <AlertDescription>{t("reset.info")}</AlertDescription>
-        </Alert>
+        <Notice tone="success" data-testid="reset-info">{t("reset.info")}</Notice>
       )}
 
       <Form {...form}>
@@ -204,7 +193,7 @@ export function ResetPasswordPage() {
               <FormItem>
                 <FormLabel>{t("reset.password_label")}</FormLabel>
                 <FormControl>
-                  <Input
+                  <TextInput block
                     type="password"
                     autoComplete="new-password"
                     data-testid="reset-password"
@@ -223,7 +212,7 @@ export function ResetPasswordPage() {
               <FormItem>
                 <FormLabel>{t("reset.confirm_label")}</FormLabel>
                 <FormControl>
-                  <Input
+                  <TextInput block
                     type="password"
                     autoComplete="new-password"
                     data-testid="reset-confirm"
@@ -237,7 +226,8 @@ export function ResetPasswordPage() {
           />
           <Button
             type="submit"
-            className="w-full"
+            variant="primary"
+            block
             disabled={submitting}
             data-testid="reset-submit"
           >
