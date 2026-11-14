@@ -51,3 +51,13 @@ export function diff(
   counts: Record<string, number>,
   baseline: Record<string, number>,
 ): TokenDiffResult;
+
+/**
+ * Primer colour bypasses in comment-stripped source: direct reads of Primer's
+ * `--fgColor-*`, `--bgColor-*`, `--borderColor-*` variables and colour keys in
+ * `sx={{ ... }}` objects. `src/primer.css` may name the variables.
+ */
+export function primerBypasses(
+  code: string,
+  relPath: string,
+): Array<{ line: number; text: string }>;

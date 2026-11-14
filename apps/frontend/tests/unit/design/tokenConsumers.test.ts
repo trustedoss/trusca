@@ -25,6 +25,14 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FRONTEND_ROOT = path.join(__dirname, "..", "..", "..");
 const SRC_ROOT = path.join(FRONTEND_ROOT, "src");
 const CSS_PATH = path.join(SRC_ROOT, "index.css");
+/**
+ * The Primer overrides map Primer's variables onto our tokens, so they are a
+ * consumer in their own right. When screens move to Primer components the
+ * Tailwind utilities that used to consume `--brand` and friends disappear; the
+ * tokens must stay "used" through this file or this guard would fail the
+ * migration for removing code it should be happy to lose.
+ */
+const PRIMER_CSS_PATH = path.join(SRC_ROOT, "primer.css");
 
 /**
  * Token families in scope: the colour vocabularies this project owns.
@@ -87,6 +95,16 @@ function sourceFiles(dir: string, out: string[] = []): string[] {
   return out;
 }
 
+/** Whether `text` consumes the token, as a variable or as a Tailwind utility. */
+function consumes(text: string, name: string): boolean {
+  // The negative lookahead matters: `bg-status-success` must not be counted as
+  // a use of `--status-success` when the file really says
+  // `bg-status-success-subtle`.
+  const asVariable = new RegExp(`var\\(--${name}[),]`);
+  const asUtility = new RegExp(`\\b(?:${UTILITIES.join("|")})-${name}(?![\\w-])`);
+  return asVariable.test(text) || asUtility.test(text);
+}
+
 describe("colour token consumers", () => {
   const sources = sourceFiles(SRC_ROOT)
     .concat(path.join(FRONTEND_ROOT, "tailwind.config.ts"))
@@ -105,20 +123,35 @@ describe("colour token consumers", () => {
 
   it.each(declaredTokens())("--%s is used somewhere in src/", (name) => {
     // Two ways a token legitimately reaches a component: the CSS variable
-    // directly, or the Tailwind utility the config derives from it. The
-    // negative lookahead matters — `bg-status-success` must not be counted
-    // as a use of `--status-success` when the file really says
-    // `bg-status-success-subtle`.
-    const asVariable = new RegExp(`var\\(--${name}[),]`);
-    const asUtility = new RegExp(
-      `\\b(?:${UTILITIES.join("|")})-${name}(?![\\w-])`,
-    );
-
+    // directly, or the Tailwind utility the config derives from it.
     expect(
-      asVariable.test(sources) || asUtility.test(sources),
+      consumes(sources, name),
       `--${name} is declared in index.css but nothing consumes it. ` +
         `Use it or remove it — a token nobody paints with is vocabulary ` +
         `that has never been checked against a real surface.`,
     ).toBe(true);
   });
 });
+
+describe("Primer overrides as a token consumer", () => {
+  const primerCss = fs.readFileSync(PRIMER_CSS_PATH, "utf8");
+
+  it("is part of the scanned sources", () => {
+    expect(sourceFiles(SRC_ROOT)).toContain(PRIMER_CSS_PATH);
+  });
+
+  it("keeps the accent tokens used when no Tailwind utility is left", () => {
+    // The state after the migration: only primer.css still names them.
+    for (const name of ["brand", "brand-subtle"]) {
+      expect(consumes(primerCss, name), `--${name}`).toBe(true);
+    }
+  });
+
+  it("recognises both spellings of a reference", () => {
+    expect(consumes("a { --x: var(--brand); }", "brand")).toBe(true);
+    expect(consumes("a { --x: color-mix(in srgb, var(--brand) 40%, transparent); }", "brand")).toBe(true);
+    expect(consumes("a { --x: var(--brand-subtle); }", "brand")).toBe(false);
+    expect(consumes("bg-brand-subtle", "brand")).toBe(false);
+  });
+});
+

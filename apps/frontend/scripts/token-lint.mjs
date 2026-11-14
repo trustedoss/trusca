@@ -119,6 +119,25 @@ const EXEMPT = [
   /\.spec\.(ts|tsx)$/,
 ];
 
+/**
+ * Primer colour paths that skip our tokens (migration to Primer, stage 2).
+ *
+ * Primer's own variables (`--fgColor-*`, `--bgColor-*`, `--borderColor-*`) and
+ * its `sx` prop colour keys are not wired to our risk and status tokens, so a
+ * component that reads them directly paints a colour no theme test has checked
+ * (a severity shown in Primer's red rather than `--risk-critical`). The only
+ * place allowed to touch them is src/primer.css, which maps them onto index.css
+ * tokens once for every component.
+ */
+const PRIMER_VARIABLE = /var\(\s*--(?:fgColor|bgColor|borderColor)-[A-Za-z0-9-]+/g;
+
+/** `sx` object keys that carry a colour. */
+const SX_COLOUR_KEY =
+  /(?:^|[{,\s])(?:color|bg|backgroundColor|background|borderColor|borderTopColor|borderRightColor|borderBottomColor|borderLeftColor|outlineColor|fill|stroke|boxShadow|caretColor|accentColor|textDecorationColor)\s*:/g;
+
+/** The one file that may name Primer's colour variables: it defines the mapping. */
+const PRIMER_VARIABLE_ALLOWED = /^src\/primer\.css$/;
+
 const SCANNED_EXTENSIONS = new Set([".ts", ".tsx", ".css"]);
 
 function isExempt(relPath) {
@@ -136,6 +155,51 @@ export function stripComments(source) {
   return source
     .replace(/\/\*[\s\S]*?\*\//g, blank)
     .replace(/\/\/[^\n]*/g, blank);
+}
+
+/** Index of the `}` matching the `{` at `open`, or -1. Strings are not tracked; sx objects hold none with braces. */
+function matchingBrace(text, open) {
+  let depth = 0;
+  for (let i = open; i < text.length; i++) {
+    if (text[i] === "{") depth++;
+    else if (text[i] === "}" && --depth === 0) return i;
+  }
+  return -1;
+}
+
+/**
+ * Primer colour bypasses in comment-stripped source: direct `var(--fgColor-*)`
+ * style reads and colour keys inside `sx={{ ... }}` objects.
+ *
+ * @param {string} code  source with comments already blanked
+ * @param {string} relPath  path relative to apps/frontend, POSIX separators
+ * @returns {Array<{line: number, text: string}>}
+ */
+export function primerBypasses(code, relPath) {
+  const hits = [];
+  const lineOf = (index) => code.slice(0, index).split("\n").length;
+
+  if (!PRIMER_VARIABLE_ALLOWED.test(relPath)) {
+    for (const m of code.matchAll(PRIMER_VARIABLE)) {
+      hits.push({ line: lineOf(m.index), text: m[0].replace(/\s+/g, "") });
+    }
+  }
+
+  if (/\.tsx?$/.test(relPath)) {
+    for (const m of code.matchAll(/\bsx\s*=\s*\{\s*\{/g)) {
+      const open = code.indexOf("{", code.indexOf("{", m.index) + 1);
+      const close = matchingBrace(code, open);
+      if (close < 0) continue;
+      const body = code.slice(open, close + 1);
+      for (const k of body.matchAll(SX_COLOUR_KEY)) {
+        hits.push({
+          line: lineOf(open + k.index),
+          text: `sx ${k[0].replace(/^[\s{,]+/, "").trim()}`,
+        });
+      }
+    }
+  }
+  return hits;
 }
 
 function walk(dir, out = []) {
@@ -169,7 +233,12 @@ export function scan(root = SRC_ROOT, frontendRoot = FRONTEND_ROOT) {
     // Linting prose would train people to phrase comments around the
     // linter, so comments are blanked before matching — blanked in place,
     // so reported line numbers still point at real source lines.
-    const lines = stripComments(fs.readFileSync(absolute, "utf8")).split("\n");
+    const stripped = stripComments(fs.readFileSync(absolute, "utf8"));
+    for (const hit of primerBypasses(stripped, rel)) {
+      counts[rel] = (counts[rel] ?? 0) + 1;
+      findings.push({ file: rel, line: hit.line, text: hit.text });
+    }
+    const lines = stripped.split("\n");
     lines.forEach((code, index) => {
       const hits = [
         ...(code.match(PALETTE_CLASS) ?? []),
