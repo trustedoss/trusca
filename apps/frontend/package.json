@@ -32,6 +32,9 @@
   },
   "dependencies": {
     "@hookform/resolvers": "3.10.0",
+    "@primer/octicons-react": "19.42.0",
+    "@primer/primitives": "11.10.0",
+    "@primer/react": "38.43.0",
     "@radix-ui/react-dialog": "1.1.2",
     "@radix-ui/react-dropdown-menu": "2.1.2",
     "@radix-ui/react-label": "2.1.8",
@@ -91,6 +94,8 @@
     "vitest": "4.1.9"
   },
   "overrides": {
-    "ws": "8.21.0"
+    "ws": "8.21.0",
+    "@tanstack/react-virtual": "3.14.24",
+    "@tanstack/virtual-core": "3.19.9"
   }
 }
