@@ -10,7 +10,8 @@ import { Button, useTheme } from "@primer/react";
 import { act, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import PrimerRoot, { primerColorMode } from "../../../src/components/primer/PrimerRoot";
+import PrimerRoot from "../../../src/components/primer/PrimerRoot";
+import { primerColorMode } from "../../../src/lib/theme";
 
 function Probe() {
   const { colorMode } = useTheme();

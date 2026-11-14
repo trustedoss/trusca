@@ -129,6 +129,11 @@ export function applyTheme(theme: ResolvedTheme): void {
   if (bar) meta.setAttribute("content", bar);
 }
 
+/** Primer's colour mode names for our two themes (its ThemeProvider takes day and night). */
+export function primerColorMode(theme: ResolvedTheme): "day" | "night" {
+  return theme === "dark" ? "night" : "day";
+}
+
 /** The mode <html> shows right now, read from the `dark` class. */
 export function readDocumentTheme(root: HTMLElement = document.documentElement): ResolvedTheme {
   return root.classList.contains(DARK_CLASS) ? "dark" : "light";

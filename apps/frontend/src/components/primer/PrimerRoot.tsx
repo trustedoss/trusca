@@ -3,15 +3,15 @@
 import { ThemeProvider } from "@primer/react/next";
 import { useEffect, useState, type ReactNode } from "react";
 
-import { readDocumentTheme, watchDocumentTheme, type ResolvedTheme } from "@/lib/theme";
+import {
+  primerColorMode,
+  readDocumentTheme,
+  watchDocumentTheme,
+  type ResolvedTheme,
+} from "@/lib/theme";
 
 interface Props {
   children: ReactNode;
-}
-
-/** Primer's colour mode names for our two themes. */
-export function primerColorMode(theme: ResolvedTheme): "day" | "night" {
-  return theme === "dark" ? "night" : "day";
 }
 
 /**
