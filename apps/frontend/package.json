@@ -7,7 +7,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b tsconfig.app.json tsconfig.node.json && vite build",
+    "build": "tsc -b tsconfig.app.json tsconfig.node.json && vite build && node scripts/collect-licenses.mjs",
     "preview": "vite preview",
     "lint": "eslint . && npm run mock:lint",
     "typecheck": "tsc -b --noEmit",
@@ -25,6 +25,7 @@
     "problem:lint:update": "node scripts/problem-detail-lint.mjs --update",
     "mock:lint": "node scripts/mock-audit.mjs",
     "mock:lint:update": "node scripts/mock-audit.mjs --update",
+    "licenses:collect": "node scripts/collect-licenses.mjs",
     "bundle:budget": "node scripts/bundle-size-budget.mjs",
     "test:a11y": "playwright test --config=playwright.a11y.config.ts",
     "test:a11y:update": "A11Y_UPDATE_BASELINE=1 playwright test --config=playwright.a11y.config.ts",
