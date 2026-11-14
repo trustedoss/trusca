@@ -33,7 +33,8 @@
  * notices use a toast; form-validation errors stay inline next to the field
  * (RFC 7807 `detail`), never a toast the user might miss.
  */
-import { X } from "lucide-react";
+import { AlertIcon, CheckCircleIcon, XIcon } from "@primer/octicons-react";
+import { IconButton } from "@primer/react";
 import {
   createContext,
   useCallback,
@@ -47,7 +48,6 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { registerToastDispatcher } from "@/lib/toastBus";
 import { useAuthStore } from "@/stores/authStore";
 import { cn } from "@/lib/utils";
@@ -226,27 +226,34 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       data-toast-key={t.key ?? ""}
       className="pointer-events-auto animate-in fade-in-0 slide-in-from-bottom-2 duration-base ease-out-soft"
     >
-      <Alert
-        variant={t.tone === "error" ? "destructive" : "default"}
+      <div
         className={cn(
-          "pr-10 shadow-lg",
-          t.tone === "success" &&
-            "border-emerald-200 bg-emerald-50 text-emerald-900",
+          "relative flex items-start gap-2 rounded-md border py-3 pl-3 pr-10 text-sm shadow-lg",
+          t.tone === "error"
+            ? "border-status-danger-border bg-status-danger-subtle text-status-danger-foreground"
+            : "border-status-success-border bg-status-success-subtle text-status-success-foreground",
         )}
         role={t.tone === "error" ? "alert" : "status"}
       >
-        <AlertDescription>{t.text}</AlertDescription>
-        <button
-          type="button"
-          onClick={() => closeFromButton(t.id)}
-          aria-label={translate("toast.dismiss")}
-          data-testid="toast-dismiss"
-          data-toast-dismiss-id={t.id}
-          className="absolute right-2 top-2 rounded-sm p-1 opacity-70 transition-opacity duration-fast ease-out-soft hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-        >
-          <X className="h-4 w-4" aria-hidden />
-        </button>
-      </Alert>
+        {t.tone === "error" ? (
+          <AlertIcon size={16} className="mt-0.5 shrink-0" />
+        ) : (
+          <CheckCircleIcon size={16} className="mt-0.5 shrink-0" />
+        )}
+        <div className="min-w-0">{t.text}</div>
+        <span className="absolute right-1 top-1">
+          <IconButton
+            icon={XIcon}
+            size="small"
+            variant="invisible"
+            onClick={() => closeFromButton(t.id)}
+            aria-label={translate("toast.dismiss")}
+            data-testid="toast-dismiss"
+            data-toast-dismiss-id={t.id}
+            unsafeDisableTooltip
+          />
+        </span>
+      </div>
     </div>
   );
 

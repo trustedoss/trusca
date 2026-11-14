@@ -5,6 +5,23 @@ import { cleanup } from "@testing-library/react";
 
 import i18n from "@/lib/i18n";
 
+// jsdom has no matchMedia. Primer's responsive components (ActionMenu, Dialog)
+// read it while rendering; "no query matches" is the desktop, full-width case.
+// Tests that care about a specific query still stub it themselves.
+if (typeof window !== "undefined" && typeof window.matchMedia !== "function") {
+  window.matchMedia = (query: string): MediaQueryList =>
+    ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+      addListener: () => undefined,
+      removeListener: () => undefined,
+      dispatchEvent: () => false,
+    }) as MediaQueryList;
+}
+
 // ---------------------------------------------------------------------------
 // Network guard (issue #267)
 // ---------------------------------------------------------------------------

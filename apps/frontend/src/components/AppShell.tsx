@@ -1,32 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
 import {
-  ClipboardCheck,
-  FolderOpen,
-  KeyRound,
-  LayoutDashboard,
-  LogOut,
-  Menu,
-  PanelLeft,
-  PanelLeftClose,
-  Scale,
-  ScanLine,
-  UserCircle2,
-  ChevronDown,
-  Activity,
-  Building2,
-  ClipboardList,
-  HardDrive,
-  Info,
-  ListChecks,
-  Users as UsersIcon,
-  Boxes,
-  BookOpen,
-  DatabaseBackup,
-  ExternalLink,
-  Keyboard,
-} from "lucide-react";
-import { Suspense, useState, type ComponentType, type SVGProps } from "react";
+  BookIcon,
+  QuestionIcon,
+  LinkExternalIcon,
+  PersonIcon,
+  SidebarCollapseIcon,
+  SidebarExpandIcon,
+  SignOutIcon,
+  ThreeBarsIcon,
+  TriangleDownIcon,
+  type Icon,
+} from "@primer/octicons-react";
+import { ActionList, ActionMenu, Button, Dialog, IconButton } from "@primer/react";
+import { Suspense, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 
@@ -42,18 +29,6 @@ import { HeaderBell } from "@/components/HeaderBell";
 import { LanguageToggle } from "@/components/LanguageToggle";
 import { RouteLoadingFallback } from "@/components/RouteLoadingFallback";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import {
   ShortcutHelpDialog,
   useShortcutHelpShortcut,
@@ -61,6 +36,7 @@ import {
 import { formatBadge } from "@/lib/badgeCount";
 import { docsUrl } from "@/lib/docsUrl";
 import { deriveInitials } from "@/lib/initials";
+import { NAV_ICON } from "@/lib/navIcons";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores/authStore";
 import { useActiveTeam } from "@/hooks/useActiveTeam";
@@ -71,7 +47,7 @@ import { useUIStore } from "@/stores/uiStore";
 interface NavItem {
   to: string;
   labelKey: string;
-  icon: ComponentType<SVGProps<SVGSVGElement>>;
+  icon: Icon;
   testId: string;
   /** Use exact matching so a prefix route ("/") isn't always-active. */
   end?: boolean;
@@ -115,26 +91,26 @@ const MAIN_NAV: NavGroup[] = [
         // from spilling onto every /projects/* descendant route.
         to: "/",
         labelKey: "nav.dashboard",
-        icon: LayoutDashboard,
+        icon: NAV_ICON["/"],
         testId: "nav-dashboard",
         end: true,
       },
       {
         to: "/components",
         labelKey: "nav.components",
-        icon: Boxes,
+        icon: NAV_ICON["/components"],
         testId: "nav-components",
       },
       {
         to: "/projects",
         labelKey: "nav.projects",
-        icon: FolderOpen,
+        icon: NAV_ICON["/projects"],
         testId: "nav-projects",
       },
       {
         to: "/groups",
         labelKey: "nav.groups",
-        icon: Building2,
+        icon: NAV_ICON["/groups"],
         testId: "nav-groups",
       },
     ],
@@ -145,34 +121,34 @@ const MAIN_NAV: NavGroup[] = [
       {
         to: "/scans",
         labelKey: "nav.scans",
-        icon: ScanLine,
+        icon: NAV_ICON["/scans"],
         testId: "nav-scans",
         badge: "scans",
       },
       {
         to: "/approvals",
         labelKey: "nav.approvals",
-        icon: ClipboardCheck,
+        icon: NAV_ICON["/approvals"],
         testId: "nav-approvals",
         badge: "approvals",
       },
       {
         to: "/intake",
         labelKey: "nav.intake",
-        icon: ClipboardCheck,
+        icon: NAV_ICON["/intake"],
         testId: "nav-intake",
         feature: "intake_requests",
       },
       {
         to: "/policies",
         labelKey: "nav.policies",
-        icon: Scale,
+        icon: NAV_ICON["/policies"],
         testId: "nav-policies",
       },
       {
         to: "/integrations",
         labelKey: "nav.integrations",
-        icon: KeyRound,
+        icon: NAV_ICON["/integrations"],
         testId: "nav-integrations",
       },
     ],
@@ -183,31 +159,31 @@ const ADMIN_NAV: NavItem[] = [
   {
     to: "/admin/users",
     labelKey: "nav.admin.users",
-    icon: UsersIcon,
+    icon: NAV_ICON["/admin/users"],
     testId: "nav-admin-users",
   },
   {
     to: "/admin/teams",
     labelKey: "nav.admin.teams",
-    icon: Building2,
+    icon: NAV_ICON["/admin/teams"],
     testId: "nav-admin-teams",
   },
   {
     to: "/admin/scans",
     labelKey: "nav.admin.scans",
-    icon: ListChecks,
+    icon: NAV_ICON["/admin/scans"],
     testId: "nav-admin-scans",
   },
   {
     to: "/admin/disk",
     labelKey: "nav.admin.disk",
-    icon: HardDrive,
+    icon: NAV_ICON["/admin/disk"],
     testId: "nav-admin-disk",
   },
   {
     to: "/admin/audit",
     labelKey: "nav.admin.audit",
-    icon: ClipboardList,
+    icon: NAV_ICON["/admin/audit"],
     testId: "nav-admin-audit",
   },
   {
@@ -217,13 +193,13 @@ const ADMIN_NAV: NavItem[] = [
     // unreachable without anything failing.
     to: "/admin/backup",
     labelKey: "nav.admin.backup",
-    icon: DatabaseBackup,
+    icon: NAV_ICON["/admin/backup"],
     testId: "nav-admin-backup",
   },
   {
     to: "/admin/health",
     labelKey: "nav.admin.health",
-    icon: Activity,
+    icon: NAV_ICON["/admin/health"],
     testId: "nav-admin-health",
   },
 ];
@@ -233,7 +209,7 @@ const ADMIN_NAV: NavItem[] = [
 const ABOUT_NAV_ITEM: NavItem = {
   to: "/about",
   labelKey: "nav.about",
-  icon: Info,
+  icon: NAV_ICON["/about"],
   testId: "nav-about",
 };
 
@@ -303,11 +279,11 @@ function NavItemLink({
         {({ isActive }) => (
           <>
             <Icon
+              size={16}
               className={cn(
-                "h-4 w-4 shrink-0 transition-colors duration-fast ease-out-soft",
+                "shrink-0 transition-colors duration-fast ease-out-soft",
                 isActive ? "text-brand" : undefined,
               )}
-              aria-hidden
             />
             {collapsed ? null : <span>{label}</span>}
             {showBadge ? (
@@ -439,31 +415,29 @@ function SidebarNav({
 
       {onCollapseToggle ? (
         <div className="border-t p-2">
-          <Button
-            variant="ghost"
-            size="icon"
-            className={cn(
-              "w-full",
-              collapsed ? "px-0" : "justify-start gap-2 px-3",
-            )}
-            onClick={onCollapseToggle}
-            data-testid="sidebar-collapse-toggle"
-            aria-label={
-              collapsed ? t("nav.expandSidebar") : t("nav.collapseSidebar")
-            }
-            title={collapsed ? t("nav.expandSidebar") : t("nav.collapseSidebar")}
-          >
-            {collapsed ? (
-              <PanelLeft className="h-4 w-4 shrink-0" aria-hidden />
-            ) : (
-              <>
-                <PanelLeftClose className="h-4 w-4 shrink-0" aria-hidden />
-                <span className="text-sm font-medium">
-                  {t("nav.collapseSidebar")}
-                </span>
-              </>
-            )}
-          </Button>
+          {collapsed ? (
+            <IconButton
+              icon={SidebarExpandIcon}
+              variant="invisible"
+              onClick={onCollapseToggle}
+              data-testid="sidebar-collapse-toggle"
+              aria-label={t("nav.expandSidebar")}
+              unsafeDisableTooltip
+              className="w-full"
+            />
+          ) : (
+            <Button
+              variant="invisible"
+              block
+              alignContent="start"
+              leadingVisual={SidebarCollapseIcon}
+              onClick={onCollapseToggle}
+              data-testid="sidebar-collapse-toggle"
+              aria-label={t("nav.collapseSidebar")}
+            >
+              {t("nav.collapseSidebar")}
+            </Button>
+          )}
         </div>
       ) : null}
     </>
@@ -504,34 +478,35 @@ function TeamSwitcher() {
     // silent-substitution failure `useActiveTeam` returning `null` exists
     // to stop.
     return (
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
+      <ActionMenu>
+        <ActionMenu.Anchor>
           <Button
-            variant="ghost"
-            size="sm"
-            className="hidden max-w-[16rem] gap-1 border border-dashed border-topbar-accent bg-topbar-accent text-xs text-topbar-muted-foreground hover:bg-topbar-accent hover:text-topbar-foreground sm:inline-flex"
+            size="small"
+            trailingVisual={TriangleDownIcon}
+            className="hidden max-w-[16rem] sm:inline-flex"
             data-testid="topbar-team-unresolved"
           >
             <span className="truncate">
               {t("auth.active_team_unresolved")}
             </span>
-            <ChevronDown className="h-3 w-3 shrink-0" aria-hidden />
           </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="min-w-[12rem]">
-          <DropdownMenuLabel>{t("nav.switchTeam")}</DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          {teams.map((team) => (
-            <DropdownMenuItem
-              key={team.id}
-              data-testid={`topbar-team-option-${team.id}`}
-              onSelect={() => setActiveTeamId(team.id)}
-            >
-              <span className="truncate">{team.name}</span>
-            </DropdownMenuItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
+        </ActionMenu.Anchor>
+        <ActionMenu.Overlay width="medium">
+          <ActionList>
+            <ActionList.Group title={t("nav.switchTeam")}>
+              {teams.map((team) => (
+                <ActionList.Item
+                  key={team.id}
+                  data-testid={`topbar-team-option-${team.id}`}
+                  onSelect={() => setActiveTeamId(team.id)}
+                >
+                  <span className="truncate">{team.name}</span>
+                </ActionList.Item>
+              ))}
+            </ActionList.Group>
+          </ActionList>
+        </ActionMenu.Overlay>
+      </ActionMenu>
     );
   }
 
@@ -548,43 +523,39 @@ function TeamSwitcher() {
   }
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
+    <ActionMenu>
+      <ActionMenu.Anchor>
         <Button
-          variant="ghost"
-          size="sm"
-          className="hidden max-w-[16rem] gap-1 bg-topbar-accent text-xs text-topbar-muted-foreground hover:bg-topbar-accent hover:text-topbar-foreground sm:inline-flex"
+          size="small"
+          trailingVisual={TriangleDownIcon}
+          className="hidden max-w-[16rem] sm:inline-flex"
           data-testid="topbar-team-switcher"
           aria-label={t("auth.active_team", { team: active.name })}
         >
           <span className="truncate">{active.name}</span>
-          <ChevronDown className="h-3 w-3 shrink-0" aria-hidden />
         </Button>
-      </DropdownMenuTrigger>
-      {/* Radio semantics, not plain menu items: the check glyph marking the
-          current team is aria-hidden, so without `aria-checked` a screen
-          reader announces every team identically and the user cannot tell
-          which one they are acting as. axe cannot flag that — a named
-          menuitem inside a menu is structurally valid. */}
-      <DropdownMenuContent align="start" className="min-w-[12rem]">
-        <DropdownMenuLabel>{t("nav.switchTeam")}</DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        <DropdownMenuRadioGroup
-          value={active.id}
-          onValueChange={setActiveTeamId}
-        >
-          {teams.map((team) => (
-            <DropdownMenuRadioItem
-              key={team.id}
-              value={team.id}
-              data-testid={`topbar-team-option-${team.id}`}
-            >
-              <span className="truncate">{team.name}</span>
-            </DropdownMenuRadioItem>
-          ))}
-        </DropdownMenuRadioGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
+      </ActionMenu.Anchor>
+      {/* Radio semantics, not plain menu items: `selectionVariant="single"`
+          gives each row role=menuitemradio with aria-checked, so a screen
+          reader says which team is current. A named menuitem inside a menu is
+          structurally valid, so axe cannot catch the omission. */}
+      <ActionMenu.Overlay width="medium">
+        <ActionList selectionVariant="single">
+          <ActionList.Group title={t("nav.switchTeam")}>
+            {teams.map((team) => (
+              <ActionList.Item
+                key={team.id}
+                selected={team.id === active.id}
+                data-testid={`topbar-team-option-${team.id}`}
+                onSelect={() => setActiveTeamId(team.id)}
+              >
+                <span className="truncate">{team.name}</span>
+              </ActionList.Item>
+            ))}
+          </ActionList.Group>
+        </ActionList>
+      </ActionMenu.Overlay>
+    </ActionMenu>
   );
 }
 
@@ -618,20 +589,20 @@ function GlobalBar({
 
   return (
     <header
-      className="flex shrink-0 items-center gap-3 border-b border-topbar-border bg-topbar px-4 text-topbar-foreground"
+      className="topbar-ink flex shrink-0 items-center gap-3 border-b border-topbar-border bg-topbar px-4 text-topbar-foreground"
       style={{ height: "var(--layout-topbar)" }}
       data-testid="app-topbar"
     >
-      <Button
-        variant="ghost"
-        size="icon"
-        className="text-topbar-foreground hover:bg-topbar-accent hover:text-topbar-foreground lg:hidden"
-        onClick={onOpenMobileNav}
-        data-testid="sidebar-mobile-trigger"
-        aria-label={t("nav.openMenu")}
-      >
-        <Menu className="h-4 w-4" aria-hidden />
-      </Button>
+      <span className="lg:hidden">
+        <IconButton
+          icon={ThreeBarsIcon}
+          variant="invisible"
+          onClick={onOpenMobileNav}
+          data-testid="sidebar-mobile-trigger"
+          aria-label={t("nav.openMenu")}
+          unsafeDisableTooltip
+        />
+      </span>
 
       <NavLink
         to="/"
@@ -680,15 +651,6 @@ function GlobalBar({
  * and it sat one careless click from the avatar; behind a menu it needs an
  * intent.
  */
-/**
- * Theme and language are cycles, not destinations: closing the menu on the
- * first press would make the second press a fresh journey through the
- * trigger. Every other row here goes somewhere, so those do close.
- */
-function keepMenuOpen(event: Event): void {
-  event.preventDefault();
-}
-
 function ProfileMenu({
   initials,
   onLogout,
@@ -702,12 +664,10 @@ function ProfileMenu({
   const user = useAuthStore((s) => s.user);
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
+    <ActionMenu>
+      <ActionMenu.Anchor>
         <Button
-          variant="ghost"
-          size="sm"
-          className="text-topbar-foreground hover:bg-topbar-accent hover:text-topbar-foreground"
+          variant="invisible"
           data-testid="header-profile-menu"
           // Not "Profile": the menu also holds sign-out, the docs link, the
           // shortcut sheet and two settings, and a name that promises one of
@@ -723,74 +683,79 @@ function ProfileMenu({
               {initials}
             </span>
           ) : (
-            <UserCircle2 className="h-4 w-4" aria-hidden />
+            <PersonIcon size={16} />
           )}
         </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-60">
-        {/* Who you are signed in as. The bar shows initials at best, and on a
-            deployment where several people share a workstation that is not
-            enough to answer the question. */}
-        <DropdownMenuLabel className="font-normal">
-          <span className="block truncate text-sm font-medium">
-            {user?.displayName || user?.email}
-          </span>
-          {user?.displayName ? (
-            <span className="block truncate text-xs text-muted-foreground">
-              {user.email}
-            </span>
-          ) : null}
-        </DropdownMenuLabel>
-        <DropdownMenuSeparator />
-
-        <DropdownMenuItem asChild data-testid="header-profile-link">
-          <NavLink to="/profile">
-            <UserCircle2 className="h-4 w-4" aria-hidden />
-            {t("auth.profile")}
-          </NavLink>
-        </DropdownMenuItem>
-
-        <DropdownMenuItem asChild data-testid="header-docs-link">
-          {/* `noreferrer` alongside `noopener`: the docs site is ours, but a
-              deploy can repoint this at a mirror we do not control. */}
-          <a href={docsUrl()} target="_blank" rel="noopener noreferrer">
-            <BookOpen className="h-4 w-4" aria-hidden />
-            {t("nav.documentation")}
-            <ExternalLink className="ml-auto h-3 w-3 opacity-60" aria-hidden />
-          </a>
-        </DropdownMenuItem>
-
-        <DropdownMenuItem
-          onSelect={onOpenShortcutHelp}
-          data-testid="header-shortcuts-link"
-        >
-          <Keyboard className="h-4 w-4" aria-hidden />
-          {t("shortcuts.title")}
-          <kbd className="ml-auto rounded border px-1 font-mono text-[10px]">
-            ?
-          </kbd>
-        </DropdownMenuItem>
-
-        <DropdownMenuSeparator />
-        {/* The two controls that had no home below `sm`. They keep their own
-            components so the cycling logic and the labels stay in one place,
-            and each is the menu item rather than a button parked inside one:
-            a Radix menu swallows Tab and moves focus only between registered
-            items, so anything else in here is reachable by mouse alone. */}
-        <DropdownMenuItem asChild onSelect={keepMenuOpen}>
+      </ActionMenu.Anchor>
+      <ActionMenu.Overlay width="medium" align="end">
+        <ActionList>
+          {/* Who you are signed in as. The bar shows initials at best, and on
+              a deployment where several people share a workstation that is
+              not enough to answer the question. */}
+          <ActionList.Group>
+            <ActionList.GroupHeading>
+              {user?.displayName || user?.email}
+              {user?.displayName ? (
+                <span className="block truncate text-xs font-normal text-muted-foreground">
+                  {user.email}
+                </span>
+              ) : null}
+            </ActionList.GroupHeading>
+            <ActionList.LinkItem
+              as={NavLink}
+              to="/profile"
+              data-testid="header-profile-link"
+            >
+              <ActionList.LeadingVisual>
+                <PersonIcon />
+              </ActionList.LeadingVisual>
+              {t("auth.profile")}
+            </ActionList.LinkItem>
+            {/* `noreferrer` alongside `noopener`: the docs site is ours, but a
+                deploy can repoint this at a mirror we do not control. */}
+            <ActionList.LinkItem
+              href={docsUrl()}
+              target="_blank"
+              rel="noopener noreferrer"
+              data-testid="header-docs-link"
+            >
+              <ActionList.LeadingVisual>
+                <BookIcon />
+              </ActionList.LeadingVisual>
+              {t("nav.documentation")}
+              <ActionList.TrailingVisual>
+                <LinkExternalIcon />
+              </ActionList.TrailingVisual>
+            </ActionList.LinkItem>
+            <ActionList.Item
+              onSelect={onOpenShortcutHelp}
+              data-testid="header-shortcuts-link"
+            >
+              <ActionList.LeadingVisual>
+                <QuestionIcon />
+              </ActionList.LeadingVisual>
+              {t("shortcuts.title")}
+              <ActionList.TrailingVisual>
+                <kbd className="rounded border px-1 font-mono text-[10px]">?</kbd>
+              </ActionList.TrailingVisual>
+            </ActionList.Item>
+          </ActionList.Group>
+          <ActionList.Divider />
+          {/* The two controls that had no home below `sm`. They keep their own
+              components so the cycling logic and the labels stay in one
+              place. */}
           <ThemeToggle inMenu />
-        </DropdownMenuItem>
-        <DropdownMenuItem asChild onSelect={keepMenuOpen}>
           <LanguageToggle inMenu />
-        </DropdownMenuItem>
-
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={onLogout} data-testid="logout-button">
-          <LogOut className="h-4 w-4" aria-hidden />
-          {t("auth.logout")}
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+          <ActionList.Divider />
+          <ActionList.Item onSelect={onLogout} data-testid="logout-button">
+            <ActionList.LeadingVisual>
+              <SignOutIcon />
+            </ActionList.LeadingVisual>
+            {t("auth.logout")}
+          </ActionList.Item>
+        </ActionList>
+      </ActionMenu.Overlay>
+    </ActionMenu>
   );
 }
 
@@ -919,20 +884,31 @@ export function AppShell() {
       {/* Mobile navigation drawer (<lg). Always shows the full-label sidebar
           (never the collapsed rail) and closes on navigate / overlay / ESC
           via Radix Dialog semantics inherited from Sheet. */}
-      <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
-        <SheetContent
-          side="left"
-          className="flex w-64 flex-col p-0"
-          data-testid="mobile-nav-drawer"
+      {mobileNavOpen ? (
+        <Dialog
+          title={t("app.name")}
+          position="left"
+          width="small"
+          onClose={() => setMobileNavOpen(false)}
+          className="nav-drawer"
+          renderHeader={({ dialogLabelId }) => (
+            <Dialog.Header className="sr-only">
+              <h2 id={dialogLabelId}>{t("app.name")}</h2>
+            </Dialog.Header>
+          )}
         >
-          <SheetTitle className="sr-only">{t("app.name")}</SheetTitle>
-          <SidebarNav
-            collapsed={false}
-            isSuperAdmin={isSuperAdmin}
-            onNavigate={() => setMobileNavOpen(false)}
-          />
-        </SheetContent>
-      </Sheet>
+          <div
+            className="flex h-full flex-col"
+            data-testid="mobile-nav-drawer"
+          >
+            <SidebarNav
+              collapsed={false}
+              isSuperAdmin={isSuperAdmin}
+              onNavigate={() => setMobileNavOpen(false)}
+            />
+          </div>
+        </Dialog>
+      ) : null}
 
       {/* W9-#54 — global command palette. Mounted once at the AppShell
           level so the ⌘K shortcut is reachable from every authenticated

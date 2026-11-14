@@ -56,6 +56,30 @@
   --button-primary-borderColor-active: transparent;
   --button-primary-borderColor-disabled: transparent;
 
+  /* Neutral surfaces, text and lines: the app's own scale, so a Primer
+   * control and a Tailwind one sitting side by side read as one palette in both
+   * modes. Without this a dialog in dark mode is Primer's near-black, not the
+   * app's slate. */
+  --bgColor-default: hsl(var(--background));
+  --bgColor-muted: hsl(var(--muted));
+  --overlay-bgColor: hsl(var(--popover));
+  --fgColor-default: hsl(var(--foreground));
+  --fgColor-muted: hsl(var(--muted-foreground));
+  --borderColor-default: hsl(var(--border));
+  --borderColor-muted: hsl(var(--border));
+  --control-transparent-bgColor-hover: hsl(var(--accent));
+  --control-transparent-bgColor-active: hsl(var(--accent));
+  --control-transparent-bgColor-selected: hsl(var(--accent));
+  --button-default-bgColor-rest: hsl(var(--background));
+  --button-default-bgColor-hover: hsl(var(--accent));
+  --button-default-bgColor-active: hsl(var(--accent));
+  --button-default-fgColor-rest: hsl(var(--foreground));
+  --button-default-borderColor-rest: hsl(var(--input));
+  --button-default-borderColor-hover: hsl(var(--input));
+  --button-default-borderColor-active: hsl(var(--input));
+  --button-invisible-bgColor-hover: hsl(var(--accent));
+  --button-invisible-bgColor-active: hsl(var(--accent));
+
   /* The current tab of an underline navigation. */
   --underlineNav-borderColor-active: var(--brand);
 }
@@ -82,4 +106,34 @@
 :root:root [class*="TreeView-TreeViewItem"][aria-current="true"] > [class*="TreeView-TreeViewItemContainer"]::after,
 :root:root [class*="UnderlineNav-OverflowMenuItem"] [aria-current]::after {
   display: none;
+}
+
+/* The global bar is ink in both modes, so Primer controls inside it take the
+ * bar's own foreground scale instead of the page's. Only the variables the
+ * invisible button and the default (outlined) button read are set, so every
+ * other Primer control keeps its normal colours. */
+.topbar-ink {
+  --fgColor-default: var(--topbar-foreground);
+  --fgColor-muted: var(--topbar-muted-foreground);
+  --button-invisible-iconColor-rest: var(--topbar-foreground);
+  --button-invisible-iconColor-hover: var(--topbar-foreground);
+  --button-invisible-bgColor-hover: var(--topbar-accent);
+  --button-invisible-bgColor-active: var(--topbar-accent);
+  --button-default-fgColor-rest: var(--topbar-foreground);
+  --button-invisible-fgColor-rest: var(--topbar-foreground);
+  --button-default-bgColor-rest: var(--topbar-accent);
+  --button-default-bgColor-hover: var(--topbar-accent);
+  --button-default-bgColor-active: var(--topbar-accent);
+  --button-default-borderColor-rest: var(--topbar-border);
+  --button-default-borderColor-hover: var(--topbar-border);
+  --button-default-borderColor-active: var(--topbar-border);
+  --focus-outline-color: var(--brand-on-ink);
+  --focus-outlineColor: var(--brand-on-ink);
+}
+
+/* Dialogs whose content brings its own padding: the ⌘K palette (the input row
+ * and the list run edge to edge) and the mobile navigation drawer. */
+.command-palette [class*="prc-Dialog-Body"],
+.nav-drawer [class*="prc-Dialog-Body"] {
+  padding: 0;
 }

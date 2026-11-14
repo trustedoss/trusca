@@ -18,14 +18,13 @@
  * Integrations) matches the commercial-SCA-style enterprise SCA aesthetic
  * pinned in CLAUDE.md "디자인 시스템".
  */
-import { Bell } from "lucide-react";
+import { BellIcon } from "@primer/octicons-react";
+import { IconButton } from "@primer/react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 
-import { Button } from "@/components/ui/button";
 import { useUnreadCount } from "@/features/notifications/useNotifications";
 import { formatBadge } from "@/lib/badgeCount";
-import { cn } from "@/lib/utils";
 
 export interface HeaderBellProps {
   /** Rendered on the dark global bar — use the topbar foreground scale. */
@@ -43,40 +42,31 @@ export function HeaderBell({ enabled = true, onInk = false }: HeaderBellProps) {
   const showBadge = badge !== "";
 
   return (
-    <Button
-      type="button"
-      variant={onInk ? "ghost" : "outline"}
-      size="sm"
-      onClick={() => navigate("/notifications")}
-      data-testid="header-bell"
-      data-unread-count={count}
-      aria-label={
-        showBadge
-          ? t("nav.bell.aria_with_count", { count })
-          : t("nav.bell.aria")
-      }
-      className={cn(
-        "relative",
-        // Sitting on the ink global bar, the default ghost hover (a light
-        // accent) would flash near-white. The topbar scale keeps it dark.
-        onInk &&
-          "text-topbar-foreground hover:bg-topbar-accent hover:text-topbar-foreground",
-      )}
-    >
-      <Bell className="h-4 w-4" aria-hidden />
+    <span className="relative inline-flex">
+      <IconButton
+        icon={BellIcon}
+        type="button"
+        variant={onInk ? "invisible" : "default"}
+        onClick={() => navigate("/notifications")}
+        data-testid="header-bell"
+        data-unread-count={count}
+        aria-label={
+          showBadge
+            ? t("nav.bell.aria_with_count", { count })
+            : t("nav.bell.aria")
+        }
+        // The tooltip would repeat the label that is already the name.
+        unsafeDisableTooltip
+      />
       {showBadge ? (
         <span
           data-testid="header-bell-badge"
-          className={cn(
-            "absolute -right-1 -top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold leading-none",
-            // Use the Critical risk token to draw the eye — pairs the
-            // color signal with the count text per the a11y rule.
-            "bg-risk-critical text-white",
-          )}
+          aria-hidden
+          className="pointer-events-none absolute -right-1 -top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-risk-critical px-1 text-[10px] font-semibold leading-none text-white"
         >
           {badge}
         </span>
       ) : null}
-    </Button>
+    </span>
   );
 }

@@ -154,5 +154,8 @@
   },
   "toast": {
     "dismiss": "알림 닫기"
+  },
+  "dialog": {
+    "close": "닫기"
   }
 }
