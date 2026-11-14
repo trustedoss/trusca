@@ -70,6 +70,9 @@ export default defineConfig({
     },
     setupFiles: ["./tests/setup.ts"],
     css: true,
+    // @primer/react ships CSS imports inside its JS; Node cannot load those
+    // as-is, so Vitest has to bundle the package through Vite.
+    server: { deps: { inline: [/@primer\/react/] } },
     include: ["tests/unit/**/*.{test,spec}.{ts,tsx}"],
     exclude: ["tests/e2e/**", "node_modules/**", "dist/**"],
     coverage: {
