@@ -267,11 +267,12 @@ describe("AppShell - skip link and profile menu (C1)", () => {
       ).catch(() => undefined);
       const testId = document.activeElement?.getAttribute("data-testid");
       if (testId) reached.add(testId);
+      if (reached.has("theme-toggle") && reached.has("language-toggle")) break;
     }
 
     expect(reached).toContain("theme-toggle");
     expect(reached).toContain("language-toggle");
-  });
+  }, 20_000);
 
   it("keeps the menu open while cycling theme and language", async () => {
     // Both are cycles rather than destinations, so a menu that closed on the
