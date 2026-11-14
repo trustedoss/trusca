@@ -15,8 +15,8 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
+} from "@/components/primer/card";
+import { Skeleton } from "@/components/primer/Skeleton";
 import { VIRTUOSO_TABLE_BODY } from "@/components/ui/virtuoso-table-body";
 import {
   ariaSortFor,

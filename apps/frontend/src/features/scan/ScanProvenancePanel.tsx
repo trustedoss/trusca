@@ -20,7 +20,7 @@
 import { FileSearch } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/components/primer/badge";
 import type { ScanProvenanceRead } from "@/lib/projectsApi";
 
 export interface ScanProvenancePanelProps {

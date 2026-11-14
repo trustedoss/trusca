@@ -3,7 +3,7 @@
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton } from "@/components/primer/Skeleton";
 import {
   useProjectGovernance,
   type GovernanceTrendPoint,

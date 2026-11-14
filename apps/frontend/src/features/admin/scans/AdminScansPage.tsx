@@ -21,10 +21,10 @@ import { useTranslation } from "react-i18next";
 
 import { PageHeader } from "@/components/PageHeader";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/components/primer/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton } from "@/components/primer/Skeleton";
 import { AdminScanDrawer, ScanStatusBadge } from "@/features/admin/scans/AdminScanDrawer";
 import {
   type AdminScanListItem,

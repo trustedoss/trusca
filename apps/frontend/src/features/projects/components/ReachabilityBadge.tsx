@@ -2,7 +2,7 @@
 // Copyright 2026 TRUSCA contributors
 import { useTranslation } from "react-i18next";
 
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/components/primer/badge";
 import { cn } from "@/lib/utils";
 
 /**
@@ -36,7 +36,7 @@ export type ReachabilityState = "reachable" | "unreachable" | "unknown";
 type Tone = "high" | "none";
 
 interface Visual {
-  /** Badge tone variant from `components/ui/badge.tsx`. */
+  /** Badge tone variant from `components/primer/badge.tsx`. */
   tone: Tone;
   /** Extra classes layered on the Badge (muted chip styling for non-loud states). */
   className: string;

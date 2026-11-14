@@ -4,7 +4,7 @@ import { ChevronRight, PackageCheck, PackageX } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/components/primer/badge";
 import type {
   UpgradeCluster,
   UpgradeClusterFinding,

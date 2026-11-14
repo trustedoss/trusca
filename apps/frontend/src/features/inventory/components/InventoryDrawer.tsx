@@ -3,7 +3,7 @@
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/components/primer/badge";
 import {
   Sheet,
   SheetContent,
@@ -11,7 +11,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton } from "@/components/primer/Skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useComponentUsage } from "@/features/inventory/api/useInventory";
 import { COMPONENTS_SEARCH_PARAM } from "@/features/projects/components/tabSearchParam";

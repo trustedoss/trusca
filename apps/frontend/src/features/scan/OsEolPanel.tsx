@@ -2,7 +2,7 @@
 // Copyright 2026 TRUSCA contributors
 import { useTranslation } from "react-i18next";
 
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/components/primer/badge";
 
 /**
  * OsEolPanel — image base-OS end-of-service-life signal (K-f1).

@@ -37,31 +37,31 @@
  * needs per-project `release_count`; the checklist only appears on a brand-new
  * portfolio, so one page is all of it.
  */
-import { useQuery } from "@tanstack/react-query";
 import {
-  Activity,
-  AlertTriangle,
-  ClipboardCheck,
-  FolderOpen,
-  ScanLine,
-  ShieldAlert,
-  type LucideIcon,
-} from "lucide-react";
+  AlertIcon,
+  ChecklistIcon,
+  FileDirectoryIcon,
+  PulseIcon,
+  ShieldIcon,
+  WorkflowIcon,
+  type Icon,
+} from "@primer/octicons-react";
+import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 
 import { EmptyState } from "@/components/EmptyState";
 import { PageHeader } from "@/components/PageHeader";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/primer/Button";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
+} from "@/components/primer/card";
+import { Skeleton } from "@/components/primer/Skeleton";
 import {
   MiniSeverityBar,
   type SeverityCounts,
@@ -105,7 +105,7 @@ const RECENT_SCANS_LIMIT = 10;
 
 interface KpiCardProps {
   testId: string;
-  icon: LucideIcon;
+  icon: Icon;
   label: string;
   /**
    * Primary metric — a pre-formatted number/short string, or a node (e.g.
@@ -144,7 +144,7 @@ function KpiCard({
       <CardHeader className="px-5 py-4 pb-2">
         <div className="flex items-center justify-between gap-3">
           <CardDescription className="flex items-center gap-2 text-xs uppercase tracking-wide">
-            <Icon aria-hidden className="h-4 w-4 text-muted-foreground" />
+            <Icon size={16} className="text-muted-foreground" />
             <span>{label}</span>
           </CardDescription>
           {link ? (
@@ -464,7 +464,7 @@ export function DashboardPage() {
         <div className="px-6 py-8" data-testid="dashboard-error-wrapper">
           <EmptyState
             data-testid="dashboard-error"
-            icon={<AlertTriangle />}
+            icon={<AlertIcon />}
             title={t("error.load_failed")}
             description={t("error.retry_hint")}
             action={
@@ -488,7 +488,7 @@ export function DashboardPage() {
         <div className="px-6 py-8" data-testid="dashboard-empty-wrapper">
           <EmptyState
             data-testid="dashboard-empty"
-            icon={<FolderOpen />}
+            icon={<FileDirectoryIcon />}
             title={t("empty.title")}
             description={t("empty.description")}
             action={
@@ -539,7 +539,7 @@ export function DashboardPage() {
           >
             <KpiCard
               testId="dashboard-kpi-projects"
-              icon={FolderOpen}
+              icon={FileDirectoryIcon}
               label={t("kpi.active_projects")}
               value={formatNumber(activeProjectCount, locale)}
               link={{ to: "/projects", label: t("kpi.view_all") }}
@@ -547,7 +547,7 @@ export function DashboardPage() {
             />
             <KpiCard
               testId="dashboard-kpi-vulns"
-              icon={ShieldAlert}
+              icon={ShieldIcon}
               label={t("kpi.open_vulnerabilities")}
               // B4: a portfolio-wide count, so this is the tile most likely to
               // pass 999. It renders in a `tabular-nums` slot built for
@@ -563,7 +563,7 @@ export function DashboardPage() {
             />
             <KpiCard
               testId="dashboard-kpi-approvals"
-              icon={ClipboardCheck}
+              icon={ChecklistIcon}
               label={t("kpi.pending_approvals")}
               value={formatNumber(pendingApprovalsCount, locale)}
               link={{ to: "/approvals", label: t("kpi.view_all") }}
@@ -571,7 +571,7 @@ export function DashboardPage() {
             />
             <KpiCard
               testId="dashboard-kpi-last-scan"
-              icon={ScanLine}
+              icon={WorkflowIcon}
               label={t("kpi.last_scan")}
               value={
                 lastScan?.finished_at ? (
@@ -685,7 +685,7 @@ export function DashboardPage() {
                 ) : recentScans.length === 0 ? (
                   <EmptyState
                     data-testid="dashboard-recent-scans-empty"
-                    icon={<ScanLine />}
+                    icon={<WorkflowIcon />}
                     title={t("recent_scans.empty")}
                   />
                 ) : (
@@ -796,7 +796,7 @@ export function DashboardPage() {
               <CardContent>
                 <EmptyState
                   data-testid="dashboard-recent-activity-empty"
-                  icon={<Activity />}
+                  icon={<PulseIcon />}
                   title={t("recent_activity.empty")}
                 />
               </CardContent>

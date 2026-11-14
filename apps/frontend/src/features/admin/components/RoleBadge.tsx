@@ -10,7 +10,7 @@
 import { Eye, ShieldCheck, Users as UsersIcon, User } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/components/primer/badge";
 import type { UserRole } from "@/features/admin/api/adminUsersApi";
 import { cn } from "@/lib/utils";
 

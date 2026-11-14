@@ -4,7 +4,7 @@ import { ChevronDown, GitCompare, History, ShieldX } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/components/primer/badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,

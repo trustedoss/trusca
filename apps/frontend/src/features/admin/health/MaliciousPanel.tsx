@@ -32,8 +32,8 @@ import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/primer/badge";
+import { Skeleton } from "@/components/primer/Skeleton";
 import { type MaliciousStatus } from "@/features/admin/health/api/adminMaliciousHealthApi";
 import { useAdminMaliciousHealth } from "@/features/admin/health/api/useAdminMaliciousHealth";
 import { adminErrorMessageKey } from "@/features/admin/lib/adminErrorMessage";

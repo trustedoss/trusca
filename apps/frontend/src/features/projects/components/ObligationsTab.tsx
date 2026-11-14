@@ -8,9 +8,9 @@ import { Virtuoso } from "react-virtuoso";
 
 import { EmptyState } from "@/components/EmptyState";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/components/primer/badge";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton } from "@/components/primer/Skeleton";
 import { VIRTUOSO_TABLE_BODY } from "@/components/ui/virtuoso-table-body";
 import type { LicenseCategoryName } from "@/features/projects/api/projectDetailApi";
 import {

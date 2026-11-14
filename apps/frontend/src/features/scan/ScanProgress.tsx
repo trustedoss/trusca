@@ -14,7 +14,7 @@ import { useTranslation } from "react-i18next";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton } from "@/components/primer/Skeleton";
 import { ScanCancelButton } from "@/features/scans/ScanCancelButton";
 import { StreamStopped } from "@/features/scan/StreamStopped";
 import { ToolLogLine } from "@/features/scan/ToolLogLine";

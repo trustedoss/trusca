@@ -16,10 +16,10 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { EmptyState } from "@/components/EmptyState";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/components/primer/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Card, CardContent } from "@/components/primer/card";
+import { Skeleton } from "@/components/primer/Skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useGroupDetail } from "@/features/groups/api/useGroupDetail";
 import { useGroups } from "@/features/groups/api/useGroups";

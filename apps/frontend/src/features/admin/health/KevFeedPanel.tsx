@@ -40,8 +40,8 @@ import { useTranslation } from "react-i18next";
 
 import { EmptyState } from "@/components/EmptyState";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/primer/badge";
+import { Skeleton } from "@/components/primer/Skeleton";
 import { type KevFeedStatus } from "@/features/admin/health/api/adminKevHealthApi";
 import { useAdminKevHealth } from "@/features/admin/health/api/useAdminKevHealth";
 import { adminErrorMessageKey } from "@/features/admin/lib/adminErrorMessage";

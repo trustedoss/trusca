@@ -19,7 +19,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { Badge, badgeVariants } from "@/components/ui/badge";
+import { Badge, badgeVariants } from "@/components/primer/badge";
 import { VulnerabilityStatusBadge } from "@/features/projects/components/VulnerabilityStatusBadge";
 
 // --- WCAG contrast helpers (sRGB relative luminance) ---------------------

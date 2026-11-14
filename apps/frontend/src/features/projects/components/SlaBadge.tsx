@@ -2,7 +2,7 @@
 // Copyright 2026 TRUSCA contributors
 import { useTranslation } from "react-i18next";
 
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/components/primer/badge";
 import type { SlaStatus } from "@/features/projects/api/vulnerabilitiesApi";
 import { cn } from "@/lib/utils";
 

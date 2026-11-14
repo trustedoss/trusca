@@ -17,8 +17,8 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
+} from "@/components/primer/card";
+import { Skeleton } from "@/components/primer/Skeleton";
 import { AxisPill } from "@/features/projects/components/AxisPill";
 import { LicenseDistributionChart } from "@/features/projects/components/LicenseDistributionChart";
 import { SeverityDistributionChart } from "@/features/projects/components/SeverityDistributionChart";

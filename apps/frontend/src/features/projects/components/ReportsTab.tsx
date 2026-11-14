@@ -40,7 +40,7 @@ import { useSearchParams } from "react-router-dom";
 
 import { EmptyState as SharedEmptyState } from "@/components/EmptyState";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/components/primer/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -48,9 +48,9 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
+} from "@/components/primer/card";
 import { MultiSelect } from "@/components/ui/multi-select";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton } from "@/components/primer/Skeleton";
 import {
   REPORT_TYPES,
   type ReportDownloadEntry,

@@ -1,18 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
 import {
-  ClipboardCheck,
-  ShieldAlert,
-  ShieldX,
-  Clock,
-  type LucideIcon,
-} from "lucide-react";
+  ChecklistIcon,
+  ClockIcon,
+  ShieldIcon,
+  ShieldXIcon,
+  type Icon,
+} from "@primer/octicons-react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 
 import RelativeTime from "@/components/RelativeTime";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/primer/card";
+import { Skeleton } from "@/components/primer/Skeleton";
 import { useActionQueue } from "@/features/dashboard/api/actionQueue";
 import { formatNumber, resolveLocale } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -33,7 +33,7 @@ import { cn } from "@/lib/utils";
  */
 
 interface QueueTileProps {
-  icon: LucideIcon;
+  icon: Icon;
   label: string;
   value: number;
   hint?: string;
@@ -71,7 +71,7 @@ function QueueTile({
       )}
     >
       <span className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        <Icon aria-hidden className="h-4 w-4" />
+        <Icon size={16} />
         {label}
       </span>
       <span
@@ -145,7 +145,7 @@ export function ActionQueuePanel() {
       <CardContent className="space-y-4">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <QueueTile
-            icon={ClipboardCheck}
+            icon={ChecklistIcon}
             label={t("action_queue.approvals")}
             value={queue.pending_approvals}
             to="/approvals"
@@ -153,7 +153,7 @@ export function ActionQueuePanel() {
             testId="action-queue-approvals"
           />
           <QueueTile
-            icon={ShieldAlert}
+            icon={ShieldIcon}
             label={t("action_queue.kev")}
             value={kevTotal}
             hint={
@@ -169,7 +169,7 @@ export function ActionQueuePanel() {
             testId="action-queue-kev"
           />
           <QueueTile
-            icon={ShieldX}
+            icon={ShieldXIcon}
             label={t("action_queue.gate_blocked")}
             value={queue.gate_blocked.length}
             to="/projects"
@@ -177,7 +177,7 @@ export function ActionQueuePanel() {
             testId="action-queue-gate"
           />
           <QueueTile
-            icon={Clock}
+            icon={ClockIcon}
             label={t("action_queue.stale")}
             value={queue.stale_projects.length}
             hint={t("action_queue.stale_hint")}

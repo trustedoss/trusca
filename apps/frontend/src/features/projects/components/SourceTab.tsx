@@ -4,7 +4,7 @@ import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/primer/card";
 import { useSourceFile } from "@/features/projects/api/useSourceFile";
 import { SourceFileViewer } from "@/features/projects/components/SourceFileViewer";
 import { SourceTree } from "@/features/projects/components/SourceTree";

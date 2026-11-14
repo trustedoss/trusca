@@ -3,7 +3,7 @@
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/components/primer/badge";
 import { LicenseCategoryBadge } from "@/features/projects/components/LicenseCategoryBadge";
 import { SeverityBadge } from "@/features/projects/components/SeverityBadge";
 import {

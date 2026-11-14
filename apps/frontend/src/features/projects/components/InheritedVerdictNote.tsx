@@ -15,7 +15,7 @@
  */
 import { useTranslation } from "react-i18next";
 
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/components/primer/badge";
 import { useEffectiveVerdict } from "@/features/approvals/useOrganizationVerdicts";
 
 interface InheritedVerdictNoteProps {

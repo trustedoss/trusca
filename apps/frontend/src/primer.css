@@ -137,3 +137,9 @@
 .nav-drawer [class*="prc-Dialog-Body"] {
   padding: 0;
 }
+
+/* A square button for one icon (Button size="icon"). */
+.primer-btn-icon {
+  width: var(--control-medium-size);
+  padding-inline: 0;
+}

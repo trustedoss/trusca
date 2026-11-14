@@ -3,7 +3,7 @@
 import { Ban, Check, CircleHelp, TriangleAlert } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/components/primer/badge";
 import type { ConflictVerdictName } from "@/features/projects/api/licensesApi";
 import { cn } from "@/lib/utils";
 

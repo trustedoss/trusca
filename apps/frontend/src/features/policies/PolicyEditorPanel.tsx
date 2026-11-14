@@ -21,7 +21,7 @@ import { useTranslation } from "react-i18next";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton } from "@/components/primer/Skeleton";
 import { PolicyEditorForm } from "@/features/policies/PolicyEditorForm";
 import {
   useOrgPolicy,

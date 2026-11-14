@@ -49,7 +49,7 @@ import { useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/components/primer/badge";
 import { AiVerdictBadge } from "@/features/scan/AiVerdictBadge";
 import type {
   AiRiskAssessment,

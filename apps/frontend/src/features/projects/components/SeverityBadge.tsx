@@ -2,7 +2,7 @@
 // Copyright 2026 TRUSCA contributors
 import { useTranslation } from "react-i18next";
 
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/components/primer/badge";
 import type { ComponentSeverity } from "@/features/projects/api/projectDetailApi";
 import { cn } from "@/lib/utils";
 
@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
  * Pairs a risk-tinted dot with the localized severity label so color is never
  * the only signal (CLAUDE.md "디자인 시스템" + accessibility rule). Maps the
  * backend's seven-bucket severity (critical/high/medium/low/info/none/unknown)
- * onto the Badge `tone` variants in `components/ui/badge.tsx`.
+ * onto the Badge `tone` variants in `components/primer/badge.tsx`.
  *
  * The `unknown` bucket is exclusive to the Vulnerabilities surface — DT can
  * report a CVE without classifying it. Components collapse this to `info`,

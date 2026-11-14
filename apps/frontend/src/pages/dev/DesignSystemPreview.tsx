@@ -38,7 +38,7 @@ import {
 import { EmptyState } from "@/components/EmptyState";
 import { BrandCandidates } from "@/pages/dev/BrandCandidates";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/components/primer/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -46,9 +46,9 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
+} from "@/components/primer/card";
 import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton } from "@/components/primer/Skeleton";
 import { TableRowsSkeleton } from "@/components/ui/skeletons";
 import { useToast } from "@/components/ui/toast";
 import {
