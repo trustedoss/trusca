@@ -69,7 +69,7 @@ const DOT_COLOR_BY_TONE: Record<Tone, string> = {
   progress: "bg-status-info",
   high: "bg-risk-high",
   critical: "bg-risk-critical",
-  success: "bg-emerald-500",
+  success: "bg-status-success",
 };
 
 export function ProjectStatusBadge({

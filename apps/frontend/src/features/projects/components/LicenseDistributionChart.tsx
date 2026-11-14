@@ -36,7 +36,7 @@ const ORDER: LicenseCategoryName[] = [
 const COLOR: Record<LicenseCategoryName, string> = {
   forbidden: "bg-risk-critical",
   conditional: "bg-risk-medium",
-  allowed: "bg-emerald-500",
+  allowed: "bg-status-success",
   unknown: "bg-risk-info",
 };
 

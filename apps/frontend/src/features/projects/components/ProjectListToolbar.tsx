@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
+import { Select } from "@primer/react";
 import { useTranslation } from "react-i18next";
 
-import { Input } from "@/components/ui/input";
+import { Input } from "@/components/primer/Input";
 import {
   DISTRIBUTION_MODELS,
   UNSET_DISTRIBUTION_MODEL,
@@ -112,13 +113,12 @@ export function ProjectListToolbar({
         >
           {t("toolbar.filter_status_label")}
         </label>
-        <select
+        <Select
           id="project-status-filter"
           value={status}
           onChange={(event) =>
             onStatusChange(event.target.value as ProjectStatusFilter)
           }
-          className="h-9 rounded-md border border-input bg-background px-2 text-sm shadow-sm transition-colors duration-fast ease-out-soft hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           data-testid="project-status-filter"
         >
           {STATUS_OPTIONS.map((opt) => (
@@ -128,7 +128,7 @@ export function ProjectListToolbar({
                 : t(`status.${opt}`)}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
 
       <div className="flex items-center gap-2">
@@ -138,7 +138,7 @@ export function ProjectListToolbar({
         >
           {t("toolbar.filter_distribution_label")}
         </label>
-        <select
+        <Select
           id="project-distribution-filter"
           value={distribution ?? ""}
           onChange={(event) =>
@@ -148,7 +148,6 @@ export function ProjectListToolbar({
             // entries for one view.
             onDistributionChange(event.target.value || null)
           }
-          className="h-9 rounded-md border border-input bg-background px-2 text-sm shadow-sm transition-colors duration-fast ease-out-soft hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           data-testid="project-distribution-filter"
         >
           <option value="">{t("toolbar.filter_distribution_all")}</option>
@@ -160,7 +159,7 @@ export function ProjectListToolbar({
           <option value={UNSET_DISTRIBUTION_MODEL}>
             {t("toolbar.filter_distribution_unset")}
           </option>
-        </select>
+        </Select>
       </div>
 
       {teamOptions.length > 1 ? (
@@ -171,11 +170,10 @@ export function ProjectListToolbar({
           >
             {t("toolbar.filter_team_label")}
           </label>
-          <select
+          <Select
             id="project-team-filter"
             value={team ?? ""}
             onChange={(event) => onTeamChange(event.target.value || null)}
-            className="h-9 rounded-md border border-input bg-background px-2 text-sm shadow-sm transition-colors duration-fast ease-out-soft hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             data-testid="project-team-filter"
           >
             <option value="">{t("toolbar.filter_team_all")}</option>
@@ -184,7 +182,7 @@ export function ProjectListToolbar({
                 {opt.name}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
       ) : null}
 
@@ -195,13 +193,12 @@ export function ProjectListToolbar({
         >
           {t("toolbar.sort_label")}
         </label>
-        <select
+        <Select
           id="project-sort"
           value={sort}
           onChange={(event) =>
             onSortChange(event.target.value as ProjectSortKey)
           }
-          className="h-9 rounded-md border border-input bg-background px-2 text-sm shadow-sm transition-colors duration-fast ease-out-soft hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           data-testid="project-sort"
         >
           {SORT_OPTIONS.map((key) => (
@@ -209,7 +206,7 @@ export function ProjectListToolbar({
               {t(`toolbar.sort_by_${key}`)}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
     </div>
   );

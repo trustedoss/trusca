@@ -21,7 +21,7 @@ import {
   SectionTitle,
   Subtitle,
   textVariants,
-} from "@/components/ui/typography";
+} from "@/components/primer/typography";
 
 describe("Typography", () => {
   it("renders PageTitle as an h1 with the 18 px semibold scale", () => {

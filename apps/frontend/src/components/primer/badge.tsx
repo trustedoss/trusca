@@ -74,7 +74,7 @@ const badgeVariants = cva(
         accent: "border-transparent bg-brand-subtle text-brand",
         progress:
           "border-transparent bg-status-info-subtle text-status-info-foreground",
-        success: "border-transparent bg-emerald-100 text-emerald-700",
+        success: "border-transparent bg-status-success-subtle text-status-success-foreground",
       },
     },
     defaultVariants: {

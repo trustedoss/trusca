@@ -58,7 +58,7 @@ import {
   PageTitle,
   SectionTitle,
   Subtitle,
-} from "@/components/ui/typography";
+} from "@/components/primer/typography";
 
 function Section({
   title,
