@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
 import { zodResolver } from "@hookform/resolvers/zod";
-import { CheckCircle2 } from "lucide-react";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
@@ -9,8 +8,8 @@ import { Link } from "react-router-dom";
 import { z } from "zod";
 
 import { AuthLayout } from "@/pages/auth/AuthLayout";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
+import { Notice } from "@/components/primer/Notice";
+import { Button, TextInput } from "@primer/react";
 import {
   Form,
   FormControl,
@@ -18,8 +17,7 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-} from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
+} from "@/components/primer/form";
 import { postForgotPassword } from "@/lib/api";
 
 function buildSchema(t: (key: string) => string) {
@@ -72,10 +70,7 @@ export function ForgotPasswordPage() {
       }
     >
       {submitted ? (
-        <Alert data-testid="forgot-success">
-          <CheckCircle2 className="h-4 w-4" aria-hidden />
-          <AlertDescription>{t("forgot.success")}</AlertDescription>
-        </Alert>
+        <Notice tone="success" data-testid="forgot-success">{t("forgot.success")}</Notice>
       ) : null}
 
       <Form {...form}>
@@ -92,7 +87,7 @@ export function ForgotPasswordPage() {
               <FormItem>
                 <FormLabel>{t("forgot.email_label")}</FormLabel>
                 <FormControl>
-                  <Input
+                  <TextInput block
                     type="email"
                     autoComplete="email"
                     data-testid="forgot-email"
@@ -106,7 +101,8 @@ export function ForgotPasswordPage() {
           />
           <Button
             type="submit"
-            className="w-full"
+            variant="primary"
+            block
             disabled={submitted || submitting}
             data-testid="forgot-submit"
           >

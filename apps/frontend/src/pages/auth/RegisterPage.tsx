@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
 import { zodResolver } from "@hookform/resolvers/zod";
-import { AlertCircle, Info } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
@@ -13,8 +12,8 @@ import {
   DEMO_LOGIN_EMAIL,
   DEMO_LOGIN_PASSWORD,
 } from "@/pages/auth/DemoCredentialsHint";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
+import { Notice } from "@/components/primer/Notice";
+import { Button, TextInput } from "@primer/react";
 import {
   Form,
   FormControl,
@@ -23,9 +22,8 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-} from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
+} from "@/components/primer/form";
+import { Skeleton } from "@/components/primer/Skeleton";
 import { useDemoMode } from "@/hooks/useDemoMode";
 import { fetchMe, isMfaRequired, postLogin, postRegister } from "@/lib/api";
 import { isDemoReadOnlyError } from "@/lib/demoReadOnly";
@@ -64,15 +62,8 @@ function DemoSignupNotice() {
 
   return (
     <div className="space-y-4" data-testid="register-demo-notice">
-      <Alert
-        variant="default"
-        className="border-status-info-border bg-status-info-subtle text-status-info-foreground"
-      >
-        <Info
-          className="h-4 w-4 text-status-info-foreground"
-          aria-hidden
-        />
-        <AlertDescription className="space-y-2">
+      <Notice tone="info">
+        <div className="space-y-2">
           <p>{t("register.demo.detail")}</p>
           <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 font-mono text-xs">
             <dt className="opacity-80">{t("register.demo.email_label")}</dt>
@@ -85,10 +76,16 @@ function DemoSignupNotice() {
           <p className="text-xs opacity-80">
             {t("register.demo.password_note")}
           </p>
-        </AlertDescription>
-      </Alert>
-      <Button asChild className="w-full" data-testid="register-demo-signin">
-        <Link to="/login">{t("register.demo.signin_button")}</Link>
+        </div>
+      </Notice>
+      <Button
+        as={Link}
+        to="/login"
+        variant="primary"
+        block
+        data-testid="register-demo-signin"
+      >
+        {t("register.demo.signin_button")}
       </Button>
     </div>
   );
@@ -219,10 +216,7 @@ export function RegisterPage() {
       }
     >
       {apiError ? (
-        <Alert variant="destructive" data-testid="register-error">
-          <AlertCircle className="h-4 w-4" aria-hidden />
-          <AlertDescription>{apiError}</AlertDescription>
-        </Alert>
+        <Notice tone="error" data-testid="register-error">{apiError}</Notice>
       ) : null}
 
       <Form {...form}>
@@ -239,7 +233,7 @@ export function RegisterPage() {
               <FormItem>
                 <FormLabel>{t("register.display_name_label")}</FormLabel>
                 <FormControl>
-                  <Input
+                  <TextInput block
                     autoComplete="name"
                     data-testid="register-display-name"
                     {...field}
@@ -256,7 +250,7 @@ export function RegisterPage() {
               <FormItem>
                 <FormLabel>{t("register.email_label")}</FormLabel>
                 <FormControl>
-                  <Input
+                  <TextInput block
                     type="email"
                     autoComplete="email"
                     data-testid="register-email"
@@ -274,7 +268,7 @@ export function RegisterPage() {
               <FormItem>
                 <FormLabel>{t("register.password_label")}</FormLabel>
                 <FormControl>
-                  <Input
+                  <TextInput block
                     type="password"
                     autoComplete="new-password"
                     data-testid="register-password"
@@ -288,7 +282,8 @@ export function RegisterPage() {
           />
           <Button
             type="submit"
-            className="w-full"
+            variant="primary"
+            block
             disabled={submitting}
             data-testid="register-submit"
           >

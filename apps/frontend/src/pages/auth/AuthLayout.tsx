@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
-import { Check } from "lucide-react";
+import { CheckIcon } from "@primer/octicons-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -14,7 +14,7 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
+} from "@/components/primer/card";
 
 interface AuthLayoutProps {
   title: string;
@@ -75,10 +75,7 @@ export function AuthLayout({
             <ul className="space-y-3">
               {TRUST_KEYS.map((key) => (
                 <li key={key} className="flex items-start gap-3 text-sm">
-                  <Check
-                    aria-hidden
-                    className="mt-0.5 h-4 w-4 shrink-0 text-brand-on-ink"
-                  />
+                  <CheckIcon size={16} className="mt-0.5 shrink-0 text-brand-on-ink" />
                   <span className="text-topbar-muted-foreground">{t(key)}</span>
                 </li>
               ))}
