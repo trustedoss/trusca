@@ -1,0 +1,85 @@
+/*
+ * SPDX-License-Identifier: Apache-2.0
+ * Copyright 2026 TRUSCA contributors
+ */
+
+/* ---------------------------------------------------------------------------
+ * Primer settings for TRUSCA. Loaded after the @primer/primitives theme files
+ * (src/main.tsx), so these rules come later in the cascade as well.
+ *
+ * The primitives theme blocks match `[data-color-mode][data-light-theme]` (two
+ * attributes), so an override needs all three attributes to win on specificity.
+ * lib/theme.ts and the inline script in index.html write them on <html> next to
+ * the `dark` class. With only two attributes the primary button stays green.
+ *
+ * No colour is written here. Every value points at an index.css token, so the
+ * navy is defined once. The token spelling decides the wrapper: the HSL-channel
+ * tokens (--primary, --ring) go through hsl(var(--x)), the complete-colour
+ * tokens (--brand, --brand-subtle) are used as var(--x).
+ * tests/unit/design/primerOverrides.test.ts checks both rules.
+ * ------------------------------------------------------------------------- */
+
+[data-color-mode][data-light-theme][data-dark-theme] {
+  /* Our typefaces, not Primer's. */
+  --fontStack-sansSerif: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --fontStack-sansSerifDisplay: var(--fontStack-sansSerif);
+  --fontStack-system: var(--fontStack-sansSerif);
+  --fontStack-monospace: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  /* Accent: links, focus, selected controls. --brand is the navy on light and
+   * the lighter blue on dark, so accent text keeps its contrast on both. */
+  --fgColor-accent: var(--brand);
+  --bgColor-accent-emphasis: hsl(var(--primary));
+  --bgColor-accent-muted: var(--brand-subtle);
+  --borderColor-accent-emphasis: hsl(var(--ring));
+  --borderColor-accent-muted: color-mix(in srgb, var(--brand) 40%, transparent);
+  --focus-outline-color: hsl(var(--ring));
+  --focus-outlineColor: hsl(var(--ring));
+  --selection-bgColor: color-mix(in srgb, var(--brand) 25%, transparent);
+
+  /* Checked controls (checkbox, radio, toggle switch): the navy fill. */
+  --control-checked-bgColor-rest: hsl(var(--primary));
+  --control-checked-bgColor-hover: hsl(var(--primary) / 0.9);
+  --control-checked-bgColor-active: hsl(var(--primary) / 0.8);
+  --control-checked-borderColor-rest: hsl(var(--primary));
+  --control-checked-fgColor-rest: hsl(var(--primary-foreground));
+
+  /* Primary button: navy fill, white label, in both modes. The disabled state
+   * is set as well, or Primer's green shows through. */
+  --button-primary-bgColor-rest: hsl(var(--primary));
+  --button-primary-bgColor-hover: hsl(var(--primary) / 0.9);
+  --button-primary-bgColor-active: hsl(var(--primary) / 0.8);
+  --button-primary-bgColor-disabled: hsl(var(--primary) / 0.5);
+  --button-primary-fgColor-rest: hsl(var(--primary-foreground));
+  --button-primary-borderColor-rest: transparent;
+  --button-primary-borderColor-hover: transparent;
+  --button-primary-borderColor-active: transparent;
+  --button-primary-borderColor-disabled: transparent;
+
+  /* The current tab of an underline navigation. */
+  --underlineNav-borderColor-active: var(--brand);
+}
+
+/* No left accent bar on the current item. Primer draws one with ::after in
+ * several places, and the selectors differ per component:
+ *   - an active ActionList or NavList item (data-active), the item the keyboard
+ *     cursor is on (data-is-active-descendant), and a collapsed group that
+ *     holds the active item
+ *   - the first item of a FilteredActionList while its input has focus, and the
+ *     focused item of it
+ *   - the current TreeView item (aria-current)
+ *   - the current item of the UnderlineNav overflow menu
+ * A thick left accent bar is not part of this design; the item keeps its
+ * background and weight. `:root:root` lifts every rule above Primer's own,
+ * whatever order the stylesheets load in.
+ * tests/unit/design/primerLeftBar.test.ts reads the installed Primer CSS and
+ * checks this list against it. */
+:root:root [class*="ActionList-ActionListItem"][data-active]::after,
+:root:root [class*="ActionList-ActionListItem"][data-is-active-descendant]::after,
+:root:root [class*="ActionList-ActionListItem"][data-active] [class*="ActionList-ActionListContent"][aria-expanded="false"]::after,
+:root:root [class*="FilteredActionList-ActionListItem"]:focus::after,
+:root:root [class*="FilteredActionList-ActionListItem"][data-input-focused][data-first-child]::after,
+:root:root [class*="TreeView-TreeViewItem"][aria-current="true"] > [class*="TreeView-TreeViewItemContainer"]::after,
+:root:root [class*="UnderlineNav-OverflowMenuItem"] [aria-current]::after {
+  display: none;
+}
