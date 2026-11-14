@@ -10,7 +10,7 @@
  */
 import { useTranslation } from "react-i18next";
 
-import { Badge, type BadgeProps } from "@/components/ui/badge";
+import { Badge, type BadgeProps } from "@/components/primer/badge";
 import type { RemediationPRStatus } from "@/lib/remediationApi";
 
 interface Props {

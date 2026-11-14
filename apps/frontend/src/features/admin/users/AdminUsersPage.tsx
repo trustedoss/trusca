@@ -17,7 +17,7 @@ import { useSearchParams } from "react-router-dom";
 
 import { PageHeader } from "@/components/PageHeader";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/components/primer/badge";
 import { Button } from "@/components/ui/button";
 import { TableRowsSkeleton } from "@/components/ui/skeletons";
 import { useAdminUsers } from "@/features/admin/api/useAdminUsers";

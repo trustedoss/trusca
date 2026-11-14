@@ -13,7 +13,7 @@ import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import RelativeTime from "@/components/RelativeTime";
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/components/primer/badge";
 import {
   Sheet,
   SheetContent,

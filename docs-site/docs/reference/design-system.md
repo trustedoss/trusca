@@ -460,14 +460,14 @@ Do not hand-roll a `<header><h1>` block — extend `PageHeader` if a new layout 
 
 ### Skeleton
 
-`apps/frontend/src/components/ui/skeleton.tsx` · `skeletons.tsx`
+`apps/frontend/src/components/primer/Skeleton.tsx` · `skeletons.tsx`
 
 - `Skeleton` is the base bar (`animate-pulse`, `rounded-sm`). Prefer composite skeletons that mirror the final layout over a single full-width bar so content settles in without reflow.
 - `TableRowsSkeleton` renders per-column cells (one width per column) for loading tables. The table keeps `aria-busy`; skeleton rows are `aria-hidden`.
 
 ### Badge
 
-`apps/frontend/src/components/ui/badge.tsx`
+`apps/frontend/src/components/primer/badge.tsx`
 
 Risk-tinted variants pair a status word with the design-system colour. Background uses `bg-risk-X/10` so the chip reads as a coloured tint. Text uses the severity's `-foreground` token so the rendered contrast clears WCAG AA 4.5:1 — see [Severity colour accessibility](#severity-colour-accessibility).
 
@@ -549,7 +549,7 @@ Severity hex values (`#dc2626` / `#ea580c` / `#ca8a04` / `#0891b2` / `#71717a`) 
 
 Until G0-7 these were spelled as raw Tailwind palette classes (`text-red-700`) with the measurements written in a code comment. They are tokens now, so the same pairing is reused everywhere and the numbers come from a test rather than a comment.
 
-The **dot indicators** (in `SeverityBadge`, chart legends, status pills) continue to use the raw `bg-risk-X` token — colour identity stays recognisable; only text shade is darkened. The reference implementation is `apps/frontend/src/components/ui/badge.tsx`.
+The **dot indicators** (in `SeverityBadge`, chart legends, status pills) continue to use the raw `bg-risk-X` token - colour identity stays recognisable; only text shade is darkened. The reference implementation is `apps/frontend/src/components/primer/badge.tsx`.
 
 One consequence worth stating plainly: `--muted-foreground` clears AA on the page ground by 0.03, so it does **not** clear AA on a risk tint. Secondary text inside a tinted callout takes `text-foreground` and relies on size and weight for hierarchy.
 

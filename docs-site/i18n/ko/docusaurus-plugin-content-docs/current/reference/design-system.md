@@ -462,14 +462,14 @@ stacked 변형에는 선택적 `meta` 슬롯도 있습니다 — 부제 아래�
 
 ### Skeleton
 
-`apps/frontend/src/components/ui/skeleton.tsx` · `skeletons.tsx`
+`apps/frontend/src/components/primer/Skeleton.tsx` · `skeletons.tsx`
 
 - `Skeleton`은 기본 바(`animate-pulse` · `rounded-sm`). 전폭 바 하나보다, 최종 레이아웃을 닮은 composite 스켈레톤을 써서 콘텐츠가 reflow 없이 자리잡게 합니다.
 - `TableRowsSkeleton`은 로딩 테이블에 컬럼별 셀(컬럼당 너비 하나)을 렌더링. 테이블은 `aria-busy` 유지, 스켈레톤 행은 `aria-hidden`.
 
 ### Badge
 
-`apps/frontend/src/components/ui/badge.tsx`
+`apps/frontend/src/components/primer/badge.tsx`
 
 Risk-tinted variant는 상태 단어와 디자인 시스템 색을 짝지움. 배경은 `bg-risk-X/10` — 칩이 색 tint로 읽히도록. 텍스트는 그 severity의 `-foreground` 토큰 — 렌더링 대비가 WCAG AA 4.5:1을 통과 — [Severity 색 접근성](#severity-색-접근성) 참고.
 
@@ -551,7 +551,7 @@ Severity hex (`#dc2626` / `#ea580c` / `#ca8a04` / `#0891b2` / `#71717a`)는 채�
 
 G0-7 이전에는 이 색들을 Tailwind 팔레트 클래스(`text-red-700`)로 적고 측정값은 코드 주석에 남겼습니다. 지금은 토큰이므로 같은 조합을 어디서나 재사용하고, 위 수치는 주석이 아니라 테스트에서 나옵니다.
 
-**Dot 인디케이터** (SeverityBadge · 차트 범례 · status pill)는 계속 raw `bg-risk-X` 토큰 사용 — 색 정체성은 그대로, 텍스트 shade 만 어둡게. 참조 구현은 `apps/frontend/src/components/ui/badge.tsx`.
+**Dot 인디케이터** (SeverityBadge · 차트 범례 · status pill)는 계속 raw `bg-risk-X` 토큰 사용 — 색 정체성은 그대로, 텍스트 shade 만 어둡게. 참조 구현은 `apps/frontend/src/components/primer/badge.tsx`.
 
 한 가지는 분명히 적어 둡니다. `--muted-foreground`는 페이지 바탕 위에서 AA를 0.03 차이로 통과하므로, risk tint 위에서는 통과하지 못합니다. tint를 입힌 콜아웃 안의 보조 텍스트는 `text-foreground`를 쓰고 위계는 크기와 굵기로 표현합니다.
 

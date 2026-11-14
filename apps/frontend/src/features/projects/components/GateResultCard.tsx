@@ -4,15 +4,15 @@ import { AlertTriangle, ShieldCheck, ShieldX } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/components/primer/badge";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
+} from "@/components/primer/card";
+import { Skeleton } from "@/components/primer/Skeleton";
 import { useGateResult } from "@/features/projects/api/useGateResult";
 import { projectErrorMessageKey } from "@/features/projects/lib/projectErrorMessage";
 import type { GateResultResponse } from "@/features/projects/api/projectDetailApi";

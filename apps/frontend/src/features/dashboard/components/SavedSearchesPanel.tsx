@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
-import { Bookmark, X } from "lucide-react";
+import {
+  BookmarkIcon,
+  XIcon,
+} from "@primer/octicons-react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/primer/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/primer/card";
 import type { SavedSearch } from "@/features/search/api/searchResultsApi";
 import {
   useDeleteSavedSearch,
@@ -57,7 +60,7 @@ export function SavedSearchesPanel() {
       <Card data-testid="saved-searches-panel">
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base">
-            <Bookmark className="h-4 w-4" aria-hidden />
+            <BookmarkIcon size={16} />
             <span>{t("saved.title")}</span>
           </CardTitle>
         </CardHeader>
@@ -86,7 +89,7 @@ export function SavedSearchesPanel() {
                   data-testid="saved-search-remove"
                   className="rounded-full p-0.5 text-muted-foreground transition-colors duration-fast hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
-                  <X className="h-3 w-3" aria-hidden />
+                  <XIcon size={12} />
                 </button>
               </li>
             ))}

@@ -3,7 +3,7 @@
 import { Check, CircleHelp, OctagonAlert, TriangleAlert } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@/components/primer/badge";
 import type { AiVerdict } from "@/lib/projectsApi";
 import { cn } from "@/lib/utils";
 

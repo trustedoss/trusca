@@ -3,8 +3,8 @@
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/primer/card";
+import { Skeleton } from "@/components/primer/Skeleton";
 import {
   useDashboardPortfolio,
   type PortfolioProject,

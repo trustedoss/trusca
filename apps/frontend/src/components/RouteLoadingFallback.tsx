@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton } from "@/components/primer/Skeleton";
 
 /**
  * Route-level Suspense fallback (#421).
@@ -11,7 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
  * skeleton). It is deliberately generic: a page-shaped block (a title bar
  * plus a few content rows), not a spinner, matching this design system's
  * "skeleton placeholders, not spinners, for the top-level loading state"
- * rule (`components/ui/skeleton.tsx`).
+ * rule (`components/primer/Skeleton.tsx`).
  *
  * In practice this renders for one chunk fetch, typically well under the
  * time a skeleton needs to read as intentional rather than a flash; it

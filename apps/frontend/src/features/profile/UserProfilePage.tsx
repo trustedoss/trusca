@@ -36,7 +36,7 @@ import { MfaEnrolment } from "./MfaEnrolment";
 import { ProviderIcon } from "@/components/ProviderIcon";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Skeleton } from "@/components/primer/Skeleton";
 import { useToast } from "@/components/ui/toast";
 import {
   OAUTH_UNLINK_BLOCKS_LOGIN_TYPE,

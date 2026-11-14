@@ -3,9 +3,9 @@
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/primer/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/primer/card";
+import { Skeleton } from "@/components/primer/Skeleton";
 import { useVulnerabilityImpact } from "@/features/inventory/api/useInventory";
 import { SeverityBadge } from "@/features/projects/components/SeverityBadge";
 
