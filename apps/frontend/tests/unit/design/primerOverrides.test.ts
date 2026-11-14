@@ -36,10 +36,23 @@ const PRIMITIVES = path.join("node_modules", "@primer", "primitives", "dist", "c
 const THREE = "[data-color-mode][data-light-theme][data-dark-theme]";
 
 /** Variable rules only: the left-bar rules in the same file declare `display`. */
-const overrideRules = parseRules(primerCss).filter((r) =>
+const variableRules = parseRules(primerCss).filter((r) =>
   parseDeclarations(r.body).some(([n]) => n.startsWith("--")),
 );
-const overrides = overrideRules.flatMap((r) => parseDeclarations(r.body));
+/**
+ * Rules that set a variable on <html>, next to Primer's theme blocks. Only
+ * these compete with the theme selectors, so only these need the three
+ * attributes and the specificity.
+ */
+const overrideRules = variableRules.filter((r) => r.selector.includes("[data-color-mode"));
+/**
+ * Rules that set a variable on a descendant (the ink-coloured global bar). A
+ * declaration on the element itself beats the value it would inherit from
+ * <html>, whatever the selector weights, so no specificity is needed. They
+ * still must name real Primer variables and take their colours from tokens.
+ */
+const scopedRules = variableRules.filter((r) => !overrideRules.includes(r));
+const overrides = variableRules.flatMap((r) => parseDeclarations(r.body));
 
 /** Token name -> how its value is spelled (HSL channels or a complete colour). */
 function indexTokens(): Map<string, "channels" | "colour"> {
@@ -63,6 +76,7 @@ function primerVariables(): Set<string> {
 describe("primer.css selector", () => {
   it("finds override rules to police", () => {
     expect(overrideRules.length).toBeGreaterThan(0);
+    expect(scopedRules.length).toBeGreaterThan(0);
     expect(overrides.length).toBeGreaterThan(20);
   });
 

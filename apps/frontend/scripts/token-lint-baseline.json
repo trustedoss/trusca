@@ -1,7 +1,5 @@
 {
-  "src/components/DemoBanner.tsx": 4,
   "src/components/ui/badge.tsx": 4,
-  "src/components/ui/toast.tsx": 3,
   "src/features/admin/backup/AdminBackupPage.tsx": 4,
   "src/features/admin/disk/AdminDiskPage.tsx": 3,
   "src/features/admin/health/AdminHealthPage.tsx": 3,

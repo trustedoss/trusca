@@ -11,7 +11,7 @@
  * Rendering is gated on the backend flag (see useDemoMode) so a normal deploy
  * shows nothing and ships no extra chrome.
  */
-import { Eye } from "lucide-react";
+import { EyeIcon } from "@primer/octicons-react";
 import { useTranslation } from "react-i18next";
 
 import { useDemoMode } from "@/hooks/useDemoMode";
@@ -28,12 +28,12 @@ export function DemoBanner() {
     <div
       role="status"
       data-testid="demo-banner"
-      className="flex items-center justify-center gap-2 border-b border-amber-300 bg-amber-50 px-4 py-1.5 text-xs font-medium text-amber-900"
+      className="flex items-center justify-center gap-2 border-b border-status-warning-border bg-status-warning-subtle px-4 py-1.5 text-xs font-medium text-status-warning-foreground"
     >
-      <Eye className="h-3.5 w-3.5 shrink-0" aria-hidden />
+      <EyeIcon size={14} className="shrink-0" />
       <span>
         <span className="font-semibold">{t("demo.banner_title")}</span>
-        <span className="mx-1.5 text-amber-400" aria-hidden>
+        <span className="mx-1.5 text-status-warning-border" aria-hidden>
           ·
         </span>
         {t("demo.banner_detail")}

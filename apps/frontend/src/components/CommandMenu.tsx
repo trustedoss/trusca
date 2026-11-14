@@ -27,32 +27,20 @@
  *   - Esc → close (provided by cmdk + Radix Dialog).
  *   - ↑/↓ → navigate; Enter → select (provided by cmdk).
  *
- * The component renders an open/close-controlled <CommandDialog>. Mounting
+ * The component renders an open/close-controlled <CommandPalette>. Mounting
  * lives in <AppShell>, so the palette is reachable from every authenticated
  * route. The trigger button on the header is a discoverability affordance —
  * the shortcut works whether or not it's clicked.
  */
 import { useQuery } from "@tanstack/react-query";
 import {
-  Activity,
-  Bell,
-  Building2,
-  ClipboardCheck,
-  ClipboardList,
-  FolderOpen,
-  FolderTree,
-  HardDrive,
-  KeyRound,
-  ListChecks,
-  Package,
-  PackageSearch,
-  Scale,
-  ScanLine,
-  Search as SearchIcon,
-  ShieldAlert,
-  Users as UsersIcon,
-  type LucideIcon,
-} from "lucide-react";
+  FileDirectoryIcon,
+  PackageDependenciesIcon,
+  PackageIcon,
+  SearchIcon,
+  ShieldIcon,
+  type Icon,
+} from "@primer/octicons-react";
 import {
   forwardRef,
   useEffect,
@@ -65,14 +53,14 @@ import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 
 import {
-  CommandDialog,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-  CommandShortcut,
-} from "@/components/ui/command";
+  CommandPalette,
+  PaletteEmpty,
+  PaletteGroup,
+  PaletteInput,
+  PaletteItem,
+  PaletteList,
+  PaletteShortcut,
+} from "@/components/primer/CommandPalette";
 import { useDeploymentFeatures } from "@/features/about/api/useDeploymentFeatures";
 import {
   COMPONENTS_SEARCH_PARAM,
@@ -84,6 +72,7 @@ import {
   type SearchComponentHit,
   type SearchVulnerabilityHit,
 } from "@/lib/searchApi";
+import { NAV_ICON } from "@/lib/navIcons";
 import { cn } from "@/lib/utils";
 import { usePermissions } from "@/hooks/usePermissions";
 
@@ -144,56 +133,56 @@ function severityLabel(severity: string, t: TFunction): string {
 interface RouteEntry {
   to: string;
   labelKey: string; // i18n key including namespace prefix, e.g. "common:nav.projects"
-  icon: LucideIcon;
+  icon: Icon;
   /** When true, only show for super-admin users. */
   adminOnly?: boolean;
 }
 
 const MAIN_ROUTES: RouteEntry[] = [
-  { to: "/projects", labelKey: "common:nav.projects", icon: FolderOpen },
-  { to: "/groups", labelKey: "common:nav.groups", icon: FolderTree },
-  { to: "/scans", labelKey: "common:nav.scans", icon: ScanLine },
-  { to: "/approvals", labelKey: "common:nav.approvals", icon: ClipboardCheck },
-  { to: "/policies", labelKey: "common:nav.policies", icon: Scale },
-  { to: "/integrations", labelKey: "common:nav.integrations", icon: KeyRound },
-  { to: "/notifications", labelKey: "common:nav.bell.aria", icon: Bell },
+  { to: "/projects", labelKey: "common:nav.projects", icon: NAV_ICON["/projects"] },
+  { to: "/groups", labelKey: "common:nav.groups", icon: NAV_ICON["/groups"] },
+  { to: "/scans", labelKey: "common:nav.scans", icon: NAV_ICON["/scans"] },
+  { to: "/approvals", labelKey: "common:nav.approvals", icon: NAV_ICON["/approvals"] },
+  { to: "/policies", labelKey: "common:nav.policies", icon: NAV_ICON["/policies"] },
+  { to: "/integrations", labelKey: "common:nav.integrations", icon: NAV_ICON["/integrations"] },
+  { to: "/notifications", labelKey: "common:nav.bell.aria", icon: NAV_ICON["/notifications"] },
 ];
 
 const ADMIN_ROUTES: RouteEntry[] = [
   {
     to: "/admin/users",
     labelKey: "admin:nav.admin.users",
-    icon: UsersIcon,
+    icon: NAV_ICON["/admin/users"],
     adminOnly: true,
   },
   {
     to: "/admin/teams",
     labelKey: "admin:nav.admin.teams",
-    icon: Building2,
+    icon: NAV_ICON["/admin/teams"],
     adminOnly: true,
   },
   {
     to: "/admin/scans",
     labelKey: "admin:nav.admin.scans",
-    icon: ListChecks,
+    icon: NAV_ICON["/admin/scans"],
     adminOnly: true,
   },
   {
     to: "/admin/disk",
     labelKey: "admin:nav.admin.disk",
-    icon: HardDrive,
+    icon: NAV_ICON["/admin/disk"],
     adminOnly: true,
   },
   {
     to: "/admin/audit",
     labelKey: "admin:nav.admin.audit",
-    icon: ClipboardList,
+    icon: NAV_ICON["/admin/audit"],
     adminOnly: true,
   },
   {
     to: "/admin/health",
     labelKey: "admin:nav.admin.health",
-    icon: Activity,
+    icon: NAV_ICON["/admin/health"],
     adminOnly: true,
   },
 ];
@@ -438,24 +427,24 @@ export function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
   }
 
   return (
-    <CommandDialog
+    <CommandPalette
       open={open}
       onOpenChange={onOpenChange}
       label={t("command_menu.placeholder")}
     >
-      <CommandInput
+      <PaletteInput
         placeholder={t("command_menu.placeholder")}
         value={query}
         onValueChange={setQuery}
         data-testid="command-menu-input"
       />
-      <CommandList data-testid="command-menu-list">
-        <CommandEmpty>{t("command_menu.no_results")}</CommandEmpty>
+      <PaletteList data-testid="command-menu-list">
+        <PaletteEmpty>{t("command_menu.no_results")}</PaletteEmpty>
 
         {projects.length > 0 ? (
-          <CommandGroup heading={t("command_menu.group.projects")}>
+          <PaletteGroup heading={t("command_menu.group.projects")}>
             {projects.map((project) => (
-              <CommandItem
+              <PaletteItem
                 key={project.id}
                 // cmdk filters items by matching the `value` against the
                 // input. We include name + slug so the user can search by
@@ -464,14 +453,14 @@ export function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
                 onSelect={() => handleSelectProject(project)}
                 data-testid={`command-menu-project-${project.id}`}
               >
-                <FolderOpen className="h-4 w-4 text-muted-foreground" aria-hidden />
+                <FileDirectoryIcon size={16} className="shrink-0 text-muted-foreground" />
                 <span className="truncate">{project.name}</span>
                 <span className="ml-2 truncate font-mono text-xs text-muted-foreground">
                   {project.slug}
                 </span>
-              </CommandItem>
+              </PaletteItem>
             ))}
-          </CommandGroup>
+          </PaletteGroup>
         ) : null}
 
         {searchLoading ? (
@@ -486,12 +475,12 @@ export function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
         ) : null}
 
         {componentHits.length > 0 ? (
-          <CommandGroup
+          <PaletteGroup
             heading={t("command_menu.group.components")}
             data-testid="command-menu-group-components"
           >
             {componentHits.map((hit, index) => (
-              <CommandItem
+              <PaletteItem
                 key={`${hit.project_id}-${hit.purl}-${index}`}
                 // Include the component name, purl, and the active query so
                 // cmdk's client-side filter keeps the backend-matched hit
@@ -500,10 +489,7 @@ export function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
                 onSelect={() => handleSelectComponent(hit)}
                 data-testid={`command-menu-component-${hit.project_id}-${index}`}
               >
-                <Package
-                  className="h-4 w-4 text-muted-foreground"
-                  aria-hidden
-                />
+                <PackageIcon size={16} className="shrink-0 text-muted-foreground" />
                 <span className="truncate">{hit.component_name}</span>
                 {hit.version ? (
                   <span className="truncate font-mono text-xs text-muted-foreground">
@@ -513,26 +499,26 @@ export function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
                 <span className="ml-auto truncate pl-2 text-xs text-muted-foreground">
                   {hit.project_name}
                 </span>
-              </CommandItem>
+              </PaletteItem>
             ))}
-            <CommandItem
+            <PaletteItem
               value={`see-all-components ${debounced}`}
               onSelect={() => handleSeeAll("components")}
               data-testid="command-menu-see-all-components"
             >
-              <Package className="h-4 w-4 text-muted-foreground" aria-hidden />
+              <PackageIcon size={16} className="shrink-0 text-muted-foreground" />
               <span>{t("command_menu.see_all")}</span>
-            </CommandItem>
-          </CommandGroup>
+            </PaletteItem>
+          </PaletteGroup>
         ) : null}
 
         {vulnHits.length > 0 ? (
-          <CommandGroup
+          <PaletteGroup
             heading={t("command_menu.group.cves")}
             data-testid="command-menu-group-cves"
           >
             {vulnHits.map((hit) => (
-              <CommandItem
+              <PaletteItem
                 key={`${hit.project_id}-${hit.cve_id}`}
                 // Both spellings are searchable: cmdk filters on this string,
                 // and a Korean session types 치명, not "critical".
@@ -543,10 +529,7 @@ export function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
                 onSelect={() => handleSelectVulnerability(hit)}
                 data-testid={`command-menu-cve-${hit.project_id}-${hit.cve_id}`}
               >
-                <ShieldAlert
-                  className="h-4 w-4 text-muted-foreground"
-                  aria-hidden
-                />
+                <ShieldIcon size={16} className="shrink-0 text-muted-foreground" />
                 <span className="truncate font-mono">{hit.cve_id}</span>
                 {/* Severity = color dot + text label (a11y: color is not the
                     sole signal). */}
@@ -565,72 +548,72 @@ export function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
                 <span className="ml-auto truncate pl-2 text-xs text-muted-foreground">
                   {hit.project_name}
                 </span>
-              </CommandItem>
+              </PaletteItem>
             ))}
-            <CommandItem
+            <PaletteItem
               value={`see-all-cves ${debounced}`}
               onSelect={() => handleSeeAll("vulnerabilities")}
               data-testid="command-menu-see-all-vulnerabilities"
             >
-              <ShieldAlert className="h-4 w-4 text-muted-foreground" aria-hidden />
+              <ShieldIcon size={16} className="shrink-0 text-muted-foreground" />
               <span>{t("command_menu.see_all")}</span>
-            </CommandItem>
-          </CommandGroup>
+            </PaletteItem>
+          </PaletteGroup>
         ) : null}
 
-        <CommandGroup heading={t("command_menu.group.pages")}>
+        <PaletteGroup heading={t("command_menu.group.pages")}>
           {/* First row of the group, and the only one that carries the typed
               term with it. `value` includes the debounced term so cmdk's
               client-side filter keeps the row visible no matter what was
               typed — without it, typing "lodash" would filter away the very
               door that searches for "lodash". */}
-          <CommandItem
+          <PaletteItem
             value={`search ${t("command_menu.open_search")} ${debounced}`}
             onSelect={handleOpenSearchPage}
             data-testid="command-menu-open-search"
           >
-            <SearchIcon className="h-4 w-4 text-muted-foreground" aria-hidden />
+            <SearchIcon size={16} className="shrink-0 text-muted-foreground" />
             <span>{t("command_menu.open_search")}</span>
             <span className="ml-2 truncate text-xs text-muted-foreground">
               {t("command_menu.open_search_hint")}
             </span>
-            <CommandShortcut className="font-mono">/search</CommandShortcut>
-          </CommandItem>
+            <PaletteShortcut className="font-mono">/search</PaletteShortcut>
+          </PaletteItem>
           {packageLookupEnabled ? (
-            <CommandItem
+            <PaletteItem
               value={`package-lookup ${t("command_menu.open_package_lookup")} ${debounced}`}
               onSelect={handleOpenPackageLookup}
               data-testid="command-menu-open-package-lookup"
             >
-              <PackageSearch className="h-4 w-4 text-muted-foreground" aria-hidden />
+              <PackageDependenciesIcon size={16} className="shrink-0 text-muted-foreground" />
               <span>{t("command_menu.open_package_lookup")}</span>
               <span className="ml-2 truncate text-xs text-muted-foreground">
                 {t("command_menu.open_package_lookup_hint")}
               </span>
-              <CommandShortcut className="font-mono">/packages/lookup</CommandShortcut>
-            </CommandItem>
+              <PaletteShortcut className="font-mono">/packages/lookup</PaletteShortcut>
+            </PaletteItem>
           ) : null}
           {visibleRoutes.map((route) => {
             const Icon = route.icon;
             const namespace = route.labelKey.split(":")[0];
             const key = route.labelKey.split(":")[1];
             return (
-              <CommandItem
+              <PaletteItem
                 key={route.to}
                 value={`${route.to} ${t(key, { ns: namespace })}`}
                 onSelect={() => handleSelectRoute(route)}
                 data-testid={`command-menu-route-${route.to}`}
               >
-                <Icon className="h-4 w-4 text-muted-foreground" aria-hidden />
+                <Icon size={16} className="shrink-0 text-muted-foreground" />
                 <span>{t(key, { ns: namespace })}</span>
-                <CommandShortcut className="font-mono">
+                <PaletteShortcut className="font-mono">
                   {route.to}
-                </CommandShortcut>
-              </CommandItem>
+                </PaletteShortcut>
+              </PaletteItem>
             );
           })}
-        </CommandGroup>
-      </CommandList>
-    </CommandDialog>
+        </PaletteGroup>
+      </PaletteList>
+    </CommandPalette>
   );
 }

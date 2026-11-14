@@ -69,7 +69,11 @@ export default defineConfig({
       },
     },
     setupFiles: ["./tests/setup.ts"],
-    css: true,
+    // Our own stylesheets are processed; Primer's are not. Its rules use
+    // `:has()`, and jsdom's selector engine builds an invalid selector for any
+    // element whose id contains a colon (every React `useId`), which fails
+    // `getComputedStyle` inside Testing Library's role queries.
+    css: { include: [/^(?!.*node_modules).*\.css$/] },
     // @primer/react ships CSS imports inside its JS; Node cannot load those
     // as-is, so Vitest has to bundle the package through Vite.
     server: { deps: { inline: [/@primer\/react/] } },

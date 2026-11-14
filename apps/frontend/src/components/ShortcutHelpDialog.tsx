@@ -14,13 +14,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { PrimerDialog } from "@/components/primer/PrimerDialog";
 
 /**
  * True when a keystroke belongs to whatever the user is typing into.
@@ -91,34 +85,35 @@ export function ShortcutHelpDialog({
   const { t } = useTranslation();
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md" data-testid="shortcut-help-dialog">
-        <DialogHeader>
-          <DialogTitle>{t("shortcuts.title")}</DialogTitle>
-          <DialogDescription>{t("shortcuts.description")}</DialogDescription>
-        </DialogHeader>
-        <ul className="divide-y" data-testid="shortcut-help-list">
-          {SHORTCUTS.map((shortcut) => (
-            <li
-              key={shortcut.labelKey}
-              className="flex items-center justify-between gap-4 py-2.5 text-sm"
-              data-testid="shortcut-help-row"
-            >
-              <span>{t(shortcut.labelKey)}</span>
-              <span className="flex shrink-0 items-center gap-1">
-                {shortcut.keys.map((key) => (
-                  <kbd
-                    key={key}
-                    className="rounded border bg-muted px-1.5 py-0.5 font-mono text-xs"
-                  >
-                    {key}
-                  </kbd>
-                ))}
-              </span>
-            </li>
-          ))}
-        </ul>
-      </DialogContent>
-    </Dialog>
+    <PrimerDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={t("shortcuts.title")}
+      description={t("shortcuts.description")}
+      width="medium"
+      testId="shortcut-help-dialog"
+    >
+      <ul className="divide-y" data-testid="shortcut-help-list">
+        {SHORTCUTS.map((shortcut) => (
+          <li
+            key={shortcut.labelKey}
+            className="flex items-center justify-between gap-4 py-2.5 text-sm"
+            data-testid="shortcut-help-row"
+          >
+            <span>{t(shortcut.labelKey)}</span>
+            <span className="flex shrink-0 items-center gap-1">
+              {shortcut.keys.map((key) => (
+                <kbd
+                  key={key}
+                  className="rounded border bg-muted px-1.5 py-0.5 font-mono text-xs"
+                >
+                  {key}
+                </kbd>
+              ))}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </PrimerDialog>
   );
 }
