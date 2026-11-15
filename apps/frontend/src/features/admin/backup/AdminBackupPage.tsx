@@ -304,7 +304,7 @@ export function AdminBackupPage() {
                   data-testid="admin-backup-restore-confirm"
                   value={restoreConfirmInput}
                   onChange={(e) => setRestoreConfirmInput(e.target.value)}
-                  className="h-9 w-40 font-mono text-xs"
+                  className="h-8 w-40 font-mono text-xs"
                   autoComplete="off"
                   spellCheck={false}
                 />

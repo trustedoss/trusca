@@ -102,7 +102,7 @@ export function ProjectListToolbar({
           onChange={(event) => onQueryChange(event.target.value)}
           placeholder={t("toolbar.search_placeholder")}
           data-testid="project-search"
-          className="h-9 shadow-sm"
+          className="h-8 shadow-sm"
         />
       </div>
 

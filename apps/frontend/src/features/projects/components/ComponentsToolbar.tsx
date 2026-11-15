@@ -232,7 +232,7 @@ export function ComponentsToolbar({
         // exactly why it needs the wrap point: the row has grown four controls
         // since it was written and the next one, or a longer translation, puts
         // it in the same squeeze with nothing to catch it.
-        "flex flex-col gap-3 border-b bg-background px-4 py-3 lg:flex-row lg:flex-wrap lg:items-end lg:gap-4",
+        "flex flex-col gap-3 border-b bg-background px-6 py-3 lg:flex-row lg:flex-wrap lg:items-end lg:gap-4",
         className,
       )}
       data-testid="components-toolbar"
@@ -251,7 +251,7 @@ export function ComponentsToolbar({
           onChange={(event) => onSearchChange(event.target.value)}
           placeholder={t("components.toolbar.search_placeholder")}
           data-testid="components-search"
-          className="mt-1 h-9"
+          className="mt-1 h-8"
         />
       </div>
 
@@ -265,7 +265,7 @@ export function ComponentsToolbar({
         <div
           role="group"
           aria-label={t("components.toolbar.dependency_type_label")}
-          className="mt-1 inline-flex h-9 items-stretch overflow-hidden rounded-md border border-input bg-background"
+          className="mt-1 inline-flex h-8 items-stretch overflow-hidden rounded-md border border-input bg-background"
         >
           {DEPENDENCY_TYPE_OPTIONS.map((opt, idx) => {
             const isActive = direct === opt.value;
@@ -335,7 +335,7 @@ export function ComponentsToolbar({
           data-active={maliciousOnly ? "true" : "false"}
           onClick={() => onMaliciousOnlyChange(!maliciousOnly)}
           className={cn(
-            "mt-1 inline-flex h-9 items-center rounded-md border border-input px-3 text-xs font-medium",
+            "mt-1 inline-flex h-8 items-center rounded-md border border-input px-3 text-xs font-medium",
             "transition-colors duration-fast ease-out-soft",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
             maliciousOnly
@@ -361,7 +361,7 @@ export function ComponentsToolbar({
           data-active={eolOnly ? "true" : "false"}
           onClick={() => onEolOnlyChange(!eolOnly)}
           className={cn(
-            "mt-1 inline-flex h-9 items-center rounded-md border border-input px-3 text-xs font-medium",
+            "mt-1 inline-flex h-8 items-center rounded-md border border-input px-3 text-xs font-medium",
             "transition-colors duration-fast ease-out-soft",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
             eolOnly
@@ -388,7 +388,7 @@ export function ComponentsToolbar({
           data-active={outdatedOnly ? "true" : "false"}
           onClick={() => onOutdatedOnlyChange(!outdatedOnly)}
           className={cn(
-            "mt-1 inline-flex h-9 items-center rounded-md border border-input px-3 text-xs font-medium",
+            "mt-1 inline-flex h-8 items-center rounded-md border border-input px-3 text-xs font-medium",
             "transition-colors duration-fast ease-out-soft",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
             outdatedOnly

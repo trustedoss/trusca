@@ -231,7 +231,7 @@ export function SearchPage() {
           onChange={(event) => setQuery(event.target.value)}
           placeholder={t("toolbar.search_placeholder")}
           data-testid="search-input"
-          className="mt-1 h-9 max-w-xl"
+          className="mt-1 h-8 max-w-xl"
         />
       </div>
 

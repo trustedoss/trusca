@@ -171,7 +171,7 @@ export function SbomSignatureSection({ projectId }: SbomSignatureSectionProps) {
                 type="button"
                 variant="outline"
                 size="sm"
-                className="h-9"
+                className="h-8"
                 disabled={signature.busyArtifact !== null}
                 onClick={() => {
                   onDownloadArtifact(artifact);

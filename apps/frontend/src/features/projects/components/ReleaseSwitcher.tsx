@@ -154,7 +154,7 @@ export function ReleaseSwitcher({
           data-testid="release-switcher"
           data-historical={isHistorical ? "true" : "false"}
           data-pinned-scan-id={pinnedScanId ?? ""}
-          className="h-7 gap-1.5 px-2 text-xs font-medium"
+          className="h-8 gap-1.5 px-2 text-xs font-medium"
         >
           {isHistorical ? (
             <HistoryIcon size={14} className="text-risk-medium" />

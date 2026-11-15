@@ -12,7 +12,6 @@ import { useTranslation } from "react-i18next";
 import { Input } from "@/components/primer/Input";
 import { Label } from "@/components/primer/Label";
 import type { UserRole } from "@/features/admin/api/adminUsersApi";
-import { cn } from "@/lib/utils";
 
 export type UsersActiveFilter = "all" | "active" | "inactive";
 
@@ -53,7 +52,7 @@ export function AdminUsersToolbar({
           value={search}
           onChange={(e) => onSearchChange(e.target.value)}
           placeholder={t("admin.users.filter.search_placeholder")}
-          className="h-9"
+          className="h-8"
         />
       </div>
 
@@ -67,10 +66,6 @@ export function AdminUsersToolbar({
         <Select block
           id="admin-users-role-filter"
           data-testid="admin-users-role-filter"
-          className={cn(
-            "flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-          )}
           value={role}
           onChange={(e) => onRoleChange(e.target.value as UserRole | "all")}
         >
@@ -92,10 +87,6 @@ export function AdminUsersToolbar({
         <Select block
           id="admin-users-active-filter"
           data-testid="admin-users-active-filter"
-          className={cn(
-            "flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-          )}
           value={active}
           onChange={(e) =>
             onActiveChange(e.target.value as UsersActiveFilter)

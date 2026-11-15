@@ -425,7 +425,7 @@ export function AdminUserDrawer({
                         value={teamIdInput}
                         placeholder={t("admin.users.form.team_id_placeholder")}
                         onChange={(e) => setTeamIdInput(e.target.value)}
-                        className="h-9 font-mono text-xs"
+                        className="h-8 font-mono text-xs"
                       />
                     </div>
                   ) : null}

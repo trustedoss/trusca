@@ -368,7 +368,7 @@ export function VulnerabilitiesToolbar({
         // "업그". Wrapping keeps the filters inline, which is the design
         // system's rule for this surface (no modal filter dialogs); it just
         // spends a second line when the first one runs out.
-        "flex flex-col gap-3 border-b bg-background px-4 py-3 lg:flex-row lg:flex-wrap lg:items-end lg:gap-4",
+        "flex flex-col gap-3 border-b bg-background px-6 py-3 lg:flex-row lg:flex-wrap lg:items-end lg:gap-4",
         className,
       )}
       data-testid="vulnerabilities-toolbar"
@@ -384,7 +384,7 @@ export function VulnerabilitiesToolbar({
           role="group"
           aria-label={t("vulnerabilities.group_by.label")}
           data-testid="vulnerabilities-group-by"
-          className="mt-1 inline-flex h-9 items-stretch overflow-hidden rounded-md border border-input bg-background"
+          className="mt-1 inline-flex h-8 items-stretch overflow-hidden rounded-md border border-input bg-background"
         >
           {GROUP_BY_OPTIONS.map((opt, idx) => {
             const isActive = groupBy === opt.value;
@@ -428,7 +428,7 @@ export function VulnerabilitiesToolbar({
           onChange={(event) => onSearchChange(event.target.value)}
           placeholder={t("vulnerabilities.toolbar.search_placeholder")}
           data-testid="vulnerabilities-search"
-          className="mt-1 h-9"
+          className="mt-1 h-8"
         />
       </div>
 
@@ -608,7 +608,7 @@ export function VulnerabilitiesToolbar({
               defaultValue: "0.00–1.00",
             })}
             data-testid="vulnerabilities-min-epss"
-            className="h-9 w-24 font-mono tabular-nums"
+            className="h-8 w-24 font-mono tabular-nums"
             aria-describedby="vulnerabilities-min-epss-hint"
           />
           {minEpss != null ? (
@@ -616,7 +616,7 @@ export function VulnerabilitiesToolbar({
               type="button"
               variant="ghost"
               size="sm"
-              className="h-9 px-2 text-xs"
+              className="h-8 px-2 text-xs"
               onClick={() => onMinEpssChange(null)}
               data-testid="vulnerabilities-min-epss-clear"
             >
@@ -638,7 +638,7 @@ export function VulnerabilitiesToolbar({
         <span className="text-xs font-medium text-muted-foreground">
           {t("vulnerabilities.vex.filter_label")}
         </span>
-        <label className="mt-1 flex h-9 items-center gap-2 rounded-md border border-input bg-background px-2 text-sm">
+        <label className="mt-1 flex h-8 items-center gap-2 rounded-md border border-input bg-background px-2 text-sm">
           <input
             type="checkbox"
             checked={vexSuppressedOnly}

@@ -86,7 +86,7 @@ export function ObligationsToolbar({
   return (
     <div
       className={cn(
-        "flex flex-col gap-3 border-b bg-background px-4 py-3 lg:flex-row lg:items-end lg:gap-4",
+        "flex flex-col gap-3 border-b bg-background px-6 py-3 lg:flex-row lg:items-end lg:gap-4",
         className,
       )}
       data-testid="obligations-toolbar"
@@ -105,7 +105,7 @@ export function ObligationsToolbar({
           onChange={(event) => onSearchChange(event.target.value)}
           placeholder={t("obligations.toolbar.search_placeholder")}
           data-testid="obligations-search"
-          className="mt-1 h-9"
+          className="mt-1 h-8"
         />
       </div>
 
@@ -218,7 +218,7 @@ export function ObligationsToolbar({
             type="button"
             variant="default"
             size="sm"
-            className="h-9"
+            className="h-8"
             onClick={() => onDownloadNotice(noticeFormat)}
             disabled={isNoticeDownloading}
             data-testid="obligations-download-notice"

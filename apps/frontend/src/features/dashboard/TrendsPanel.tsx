@@ -97,7 +97,7 @@ function LevelSparkline({
     <svg
       viewBox={`0 0 ${SPARK_WIDTH} ${SPARK_HEIGHT}`}
       preserveAspectRatio="none"
-      className="h-9 w-full"
+      className="h-8 w-full"
       role="img"
       aria-label={label}
       data-testid={`trend-spark-${seriesKey}`}
@@ -267,7 +267,7 @@ function FlowTile({
       <svg
         viewBox={`0 0 ${SPARK_WIDTH} ${SPARK_HEIGHT}`}
         preserveAspectRatio="none"
-        className="h-9 w-full"
+        className="h-8 w-full"
         role="img"
         aria-label={ariaLabel}
         data-testid="trend-flow-bars"
