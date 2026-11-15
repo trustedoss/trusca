@@ -7,8 +7,6 @@
   "src/features/admin/health/KevFeedPanel.tsx": 1,
   "src/features/admin/teams/AdminTeamDrawer.tsx": 2,
   "src/features/dashboard/ScanStatusPill.tsx": 3,
-  "src/features/integrations/IntegrationsPage.tsx": 3,
-  "src/features/notifications/NotificationsPage.tsx": 1,
   "src/features/scan/ToolLogLine.tsx": 2,
   "src/pages/dev/BrandCandidates.tsx": 5
 }

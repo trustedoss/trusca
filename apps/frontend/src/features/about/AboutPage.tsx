@@ -16,7 +16,10 @@
  * OpenAPI contract), and a Korean reader should not get an English tab label. The
  * API values remain the fallback for a document this UI does not know yet.
  */
-import { ExternalLink, FileText } from "lucide-react";
+import {
+  FileIcon,
+  LinkExternalIcon,
+} from "@primer/octicons-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -85,7 +88,7 @@ function MissingDocument({ filename }: { filename: string }) {
   const { t } = useTranslation("about");
   return (
     <EmptyState
-      icon={<FileText />}
+      icon={<FileIcon />}
       title={t("notice.missing_title")}
       description={t("notice.missing_description", { filename })}
       data-testid="about-notice-missing"
@@ -178,7 +181,7 @@ export default function AboutPage() {
                 className="inline-flex items-center gap-1 text-sm text-brand hover:underline"
               >
                 {data.license_name}
-                <ExternalLink className="size-3" aria-hidden="true" />
+                <LinkExternalIcon className="size-3" />
               </a>
             </dd>
           </div>
@@ -203,7 +206,7 @@ export default function AboutPage() {
                 data-testid="about-source-link"
               >
                 {data.source_url}
-                <ExternalLink className="size-3" aria-hidden="true" />
+                <LinkExternalIcon className="size-3" />
               </a>
             </dd>
           </div>
@@ -218,7 +221,7 @@ export default function AboutPage() {
 
         {documents.length === 0 ? (
           <EmptyState
-            icon={<FileText />}
+            icon={<FileIcon />}
             title={t("notices.none_title")}
             description={t("notices.none_description")}
           />

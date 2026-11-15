@@ -28,6 +28,12 @@ export interface PrimerDialogProps {
   children?: ReactNode;
   width?: "small" | "medium" | "large" | "xlarge";
   position?: "center" | "left" | "right";
+  /**
+   * False for a dialog the reader must answer explicitly (a secret shown
+   * once): no close icon, and Escape and the backdrop do nothing. The
+   * caller closes it from its own button.
+   */
+  dismissible?: boolean;
   testId?: string;
   /** Buttons for the footer, already rendered. */
   footer?: ReactNode;
@@ -43,6 +49,7 @@ export function PrimerDialog({
   children,
   width = "medium",
   position = "center",
+  dismissible = true,
   testId,
   footer,
 }: PrimerDialogProps) {
@@ -53,7 +60,9 @@ export function PrimerDialog({
       title={title}
       width={width}
       position={position}
-      onClose={() => onOpenChange(false)}
+      onClose={() => {
+        if (dismissible) onOpenChange(false);
+      }}
       renderHeader={({ dialogLabelId, dialogDescriptionId }) => (
         <Dialog.Header className="flex items-start justify-between gap-3">
           <div className="min-w-0">
@@ -74,6 +83,7 @@ export function PrimerDialog({
             ) : null}
             {headerExtra}
           </div>
+          {dismissible ? (
           <IconButton
             icon={XIcon}
             variant="invisible"
@@ -82,6 +92,7 @@ export function PrimerDialog({
             unsafeDisableTooltip
             onClick={() => onOpenChange(false)}
           />
+          ) : null}
         </Dialog.Header>
       )}
       renderFooter={footer ? () => <Dialog.Footer>{footer}</Dialog.Footer> : undefined}

@@ -14,8 +14,13 @@
  * tone comes from existing Tailwind tokens. All visible strings flow
  * through `t()` (CLAUDE.md i18n rule).
  */
+import {
+  CopyIcon,
+  KeyIcon,
+  PlusIcon,
+  TrashIcon,
+} from "@primer/octicons-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Copy, KeyRound, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -23,7 +28,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { PageHeader } from "@/components/PageHeader";
 import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Badge } from "@/components/primer/badge";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/primer/Button";
 import { Skeleton } from "@/components/primer/Skeleton";
 import { useToast } from "@/components/primer/toast";
 import { CreateApiKeyDialog } from "@/features/integrations/CreateApiKeyDialog";
@@ -107,7 +112,7 @@ function BreadthBadge({ breadth }: { breadth: APIKeyPermissionBreadth }) {
 function ScopeBadge({ scope }: { scope: APIKeyScope }) {
   const { t } = useTranslation("integrations");
   const toneClass: Record<APIKeyScope, string> = {
-    org: "border-purple-300 bg-purple-50 text-purple-700",
+    org: "border-status-info-border bg-status-info-subtle text-status-info-foreground",
     team: "border-transparent bg-brand-subtle text-brand",
     project: "border-status-success-border bg-status-success-subtle text-status-success-foreground",
   };
@@ -151,7 +156,7 @@ function WebhookCard({
           onClick={() => onCopy(url)}
           data-testid={`${testId}-copy`}
         >
-          <Copy className="h-3 w-3" aria-hidden />
+          <CopyIcon size={12} />
           <span>{t("webhooks.copy")}</span>
         </Button>
       </div>
@@ -281,7 +286,7 @@ export function IntegrationsPage() {
       <PageHeader
         title={
           <>
-            <KeyRound className="h-4 w-4" aria-hidden />
+            <KeyIcon size={16} />
             {t("page.title")}
           </>
         }
@@ -334,7 +339,7 @@ export function IntegrationsPage() {
                 onClick={() => setCreateOpen(true)}
                 data-testid="integrations-create-key"
               >
-                <Plus className="h-3 w-3" aria-hidden />
+                <PlusIcon size={12} />
                 <span>{t("api_keys.create_button")}</span>
               </Button>
             ) : null}
@@ -478,7 +483,7 @@ export function IntegrationsPage() {
                                 data-testid="integrations-key-revoke"
                                 data-key-id={row.id}
                               >
-                                <Trash2 className="h-3 w-3" aria-hidden />
+                                <TrashIcon size={12} />
                                 <span>{t("api_keys.revoke")}</span>
                               </Button>
                             ) : null}
@@ -497,7 +502,7 @@ export function IntegrationsPage() {
                           renders no create button for. */}
                       <EmptyState
                         data-testid="integrations-keys-empty"
-                        icon={<KeyRound />}
+                        icon={<KeyIcon />}
                         title={t("api_keys.empty")}
                         description={
                           canIssueAnyKey
@@ -512,7 +517,7 @@ export function IntegrationsPage() {
                               onClick={() => setCreateOpen(true)}
                               data-testid="integrations-keys-empty-create"
                             >
-                              <Plus className="h-3 w-3" aria-hidden />
+                              <PlusIcon size={12} />
                               <span>{t("api_keys.create_button")}</span>
                             </Button>
                           ) : undefined

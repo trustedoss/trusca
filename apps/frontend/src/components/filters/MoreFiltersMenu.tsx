@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
+import {
+  CheckIcon,
+  PlusIcon,
+} from "@primer/octicons-react";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
-import { Check, Plus } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { cn } from "@/lib/utils";
@@ -24,7 +27,7 @@ import { cn } from "@/lib/utils";
  * CLAUDE.md "디자인 시스템": filters appear inline at the top of lists, no
  * modal filter dialogs. The button trigger is the same compact h-9 height as
  * the other toolbar controls; the popover uses `bg-popover` so it lays opaque
- * over the table below. Color is paired with the Plus icon + label — never
+ * over the table below. Color is paired with the plus icon + label, never
  * color-only.
  */
 
@@ -90,7 +93,7 @@ export function MoreFiltersMenu({
             className,
           )}
         >
-          <Plus className="h-3.5 w-3.5" aria-hidden />
+          <PlusIcon size={14} />
           <span>{t("filters.more_filters.trigger")}</span>
         </button>
       </DropdownMenuPrimitive.Trigger>
@@ -124,7 +127,7 @@ export function MoreFiltersMenu({
               >
                 <span className="flex h-4 w-4 shrink-0 items-center justify-center">
                   {isActive ? (
-                    <Check className="h-3.5 w-3.5" aria-hidden />
+                    <CheckIcon size={14} />
                   ) : null}
                 </span>
                 <span className="truncate">{option.label}</span>

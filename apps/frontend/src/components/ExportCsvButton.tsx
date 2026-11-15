@@ -14,11 +14,13 @@
  * the message key that belongs to it, and a failure that carries neither
  * still lands on a real sentence rather than a blank toast.
  */
-import { Download } from "lucide-react";
+import {
+  DownloadIcon,
+} from "@primer/octicons-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/primer/Button";
 import { useToast } from "@/components/primer/toast";
 import { problemMessage } from "@/lib/problemMessage";
 import { ProblemError } from "@/lib/problem";
@@ -118,7 +120,7 @@ export function ExportCsvButton({
         data-testid={testId}
         data-exporting={exporting ? "true" : undefined}
       >
-        <Download className="h-4 w-4" aria-hidden />
+        <DownloadIcon size={16} />
         {tCommon("export.csv")}
       </Button>
       {blocked ? (

@@ -26,7 +26,11 @@
  * No hardcoded English in JSX — every visible string flows through `t()`
  * under the `profile` and `common` namespaces.
  */
-import { Loader2, Trash2, UserCircle2 } from "lucide-react";
+import {
+  PersonIcon,
+  TrashIcon,
+} from "@primer/octicons-react";
+import { Spinner } from "@primer/react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -35,7 +39,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { MfaEnrolment } from "./MfaEnrolment";
 import { ProviderIcon } from "@/components/ProviderIcon";
 import { Alert, AlertDescription } from "@/components/primer/alert";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/primer/Button";
 import { Skeleton } from "@/components/primer/Skeleton";
 import { useToast } from "@/components/primer/toast";
 import {
@@ -162,7 +166,7 @@ function IdentityRow({
             title={unlinkLocked ? t("unlink.blocks_login_alert") : undefined}
             data-testid="profile-identity-unlink"
           >
-            <Trash2 className="h-3 w-3" aria-hidden />
+            <TrashIcon size={12} />
             <span>{t("connected_accounts.unlink.button")}</span>
           </Button>
         </span>
@@ -198,7 +202,7 @@ function IdentityRow({
               data-testid="profile-identity-confirm-ok"
             >
               {isPending ? (
-                <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                <Spinner size="small" />
               ) : null}
               {t("connected_accounts.unlink.confirm")}
             </Button>
@@ -282,7 +286,7 @@ export function UserProfilePage() {
       <PageHeader
         title={
           <>
-            <UserCircle2 className="h-4 w-4" aria-hidden />
+            <PersonIcon size={16} />
             {t("page.title")}
           </>
         }

@@ -173,6 +173,11 @@ describe("IntakeRequestsPage", () => {
     picker.focus();
     await userEvent.keyboard("{Enter}");
     await screen.findByText("Payments API");
+    // The overlay moves focus into the search box on a later frame; the keys
+    // below only reach the list once it has.
+    await waitFor(() =>
+      expect(screen.getByTestId("intake-project-search")).toHaveFocus(),
+    );
     // cmdk highlights the first option; the arrow moves to the second.
     await userEvent.keyboard("{ArrowDown}{Enter}");
 

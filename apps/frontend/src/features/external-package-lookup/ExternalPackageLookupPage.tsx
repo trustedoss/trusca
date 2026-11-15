@@ -9,8 +9,11 @@
  * already carries internal usage (the backend cross-references it), so this
  * page never makes a second call to find out who else already uses it.
  */
-import { PackageSearch } from "lucide-react";
+import {
+  PackageDependenciesIcon,
+} from "@primer/octicons-react";
 import { useState } from "react";
+import { Select } from "@primer/react";
 import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router-dom";
 
@@ -18,9 +21,9 @@ import { EmptyState } from "@/components/EmptyState";
 import { PageHeader } from "@/components/PageHeader";
 import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Badge } from "@/components/primer/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Button } from "@/components/primer/Button";
+import { Input } from "@/components/primer/Input";
+import { Label } from "@/components/primer/Label";
 import {
   EXTERNAL_PACKAGE_ECOSYSTEMS,
   type ExternalPackageEcosystem,
@@ -46,7 +49,7 @@ export function ExternalPackageLookupPage() {
       <div className="flex h-full flex-col" data-testid="external-package-lookup-page">
         <PageHeader title={t("title")} description={t("subtitle")} />
         <EmptyState
-          icon={<PackageSearch className="h-8 w-8" aria-hidden />}
+          icon={<PackageDependenciesIcon size={32} />}
           title={t("disabled.title")}
           description={t("disabled.description")}
           data-testid="external-package-lookup-disabled"
@@ -74,9 +77,8 @@ export function ExternalPackageLookupPage() {
             <Label htmlFor="external-package-ecosystem" className="text-xs">
               {t("field.ecosystem")}
             </Label>
-            <select
+            <Select
               id="external-package-ecosystem"
-              className="flex h-10 w-40 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background transition-colors duration-fast ease-out-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
               value={ecosystem}
               onChange={(event) =>
                 setEcosystem(event.target.value as ExternalPackageEcosystem)
@@ -88,7 +90,7 @@ export function ExternalPackageLookupPage() {
                   {t(`ecosystem.${slug}`)}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
           <div className="min-w-[16rem] flex-1 space-y-1">
             <Label htmlFor="external-package-name" className="text-xs">
@@ -123,7 +125,7 @@ export function ExternalPackageLookupPage() {
 
         {result && !result.found ? (
           <EmptyState
-            icon={<PackageSearch className="h-8 w-8" aria-hidden />}
+            icon={<PackageDependenciesIcon size={32} />}
             title={t("not_found.title")}
             description={t("not_found.description")}
             data-testid="external-package-lookup-not-found"

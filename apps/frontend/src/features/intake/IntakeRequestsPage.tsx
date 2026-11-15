@@ -10,8 +10,10 @@
  * has asked yet" and would leave them waiting for an answer to a question
  * nothing recorded.
  */
+import {
+  NoteIcon,
+} from "@primer/octicons-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ClipboardList } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
@@ -21,11 +23,11 @@ import { PageHeader } from "@/components/PageHeader";
 import RelativeTime from "@/components/RelativeTime";
 import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Badge } from "@/components/primer/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Button } from "@/components/primer/Button";
+import { Input } from "@/components/primer/Input";
+import { Label } from "@/components/primer/Label";
 import { Skeleton } from "@/components/primer/Skeleton";
-import { Textarea } from "@/components/ui/textarea";
+import { Textarea } from "@/components/primer/Textarea";
 import { useToast } from "@/components/primer/toast";
 import { useDeploymentFeatures } from "@/features/about/api/useDeploymentFeatures";
 import {
@@ -112,7 +114,7 @@ export function IntakeRequestsPage() {
       <div className="flex h-full flex-col" data-testid="intake-page">
         <PageHeader title={t("title")} description={t("subtitle")} />
         <EmptyState
-          icon={<ClipboardList className="h-8 w-8" aria-hidden />}
+          icon={<NoteIcon size={32} />}
           title={t("disabled.title")}
           description={t("disabled.description")}
           data-testid="intake-disabled"
@@ -192,7 +194,7 @@ export function IntakeRequestsPage() {
           </Alert>
         ) : items.length === 0 ? (
           <EmptyState
-            icon={<ClipboardList className="h-8 w-8" aria-hidden />}
+            icon={<NoteIcon size={32} />}
             title={t("empty.title")}
             description={t("empty.description")}
             data-testid="intake-empty"
