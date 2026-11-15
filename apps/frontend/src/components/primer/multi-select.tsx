@@ -101,7 +101,7 @@ export function MultiSelect({
       >
         <span className="truncate">{triggerText}</span>
       </ActionMenu.Button>
-      <ActionMenu.Overlay width="auto" minWidth="small">
+      <ActionMenu.Overlay width="small">
         <ActionList selectionVariant="multiple">
           {options.map((option) => (
             <ActionList.Item
