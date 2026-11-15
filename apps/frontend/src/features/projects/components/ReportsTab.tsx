@@ -33,15 +33,18 @@
  *   - Color is never the only signal: the type badge pairs a token-tinted
  *     background with a localised label (Notice / SBOM / Vuln PDF / VEX).
  */
-import { Download } from "lucide-react";
+import {
+  DownloadIcon,
+} from "@primer/octicons-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Select } from "@primer/react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 
 import { EmptyState as SharedEmptyState } from "@/components/EmptyState";
 import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Badge } from "@/components/primer/badge";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/primer/Button";
 import {
   Card,
   CardContent,
@@ -538,7 +541,7 @@ function VulnPdfCard({ projectId }: { projectId: string }) {
                   defaultValue: "Generating…",
                 })
               : t("vulnerabilities.toolbar.download_pdf", {
-                  defaultValue: "Download PDF",
+                  defaultValue: "DownloadIcon PDF",
                 })}
           </Button>
           <Button
@@ -556,7 +559,7 @@ function VulnPdfCard({ projectId }: { projectId: string }) {
                   defaultValue: "Generating…",
                 })
               : t("vulnerabilities.toolbar.download_xlsx", {
-                  defaultValue: "Download Excel",
+                  defaultValue: "DownloadIcon Excel",
                 })}
           </Button>
         </div>
@@ -611,20 +614,19 @@ function NoticeCard({
       </CardHeader>
       <CardContent className="p-4 pt-0">
         <div className="flex items-center gap-2">
-          <select
+          <Select
             value={format}
             onChange={(event) => setFormat(event.target.value as NoticeFormat)}
             disabled={notice.isLoading}
             aria-label={t("reports.cards.notice.format_label")}
             data-testid="reports-card-notice-format"
-            className="h-9 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           >
             {NOTICE_DOWNLOAD_FORMATS.map((fmt) => (
               <option key={fmt} value={fmt}>
                 {t(`reports.cards.notice.format_${fmt}`)}
               </option>
             ))}
-          </select>
+          </Select>
           <Button
             type="button"
             size="sm"
@@ -672,7 +674,7 @@ function ReportsHistoryEmpty() {
   return (
     <SharedEmptyState
       data-testid="reports-history-empty"
-      icon={<Download />}
+      icon={<DownloadIcon />}
       title={t("reports.history.empty.title")}
       description={t("reports.history.empty.body")}
     />

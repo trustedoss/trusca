@@ -54,7 +54,7 @@ const VISUAL_BY_STATE: Record<ReachabilityState, Visual> = {
   // Calm: analysed-and-dead. Subtle muted chip, neutral dot.
   unreachable: {
     tone: "none",
-    className: "border-input bg-muted text-slate-600 dark:text-slate-300",
+    className: "border-input bg-muted text-muted-foreground",
     dot: "bg-risk-info",
   },
   // Neutral: not analysed. Only shown in non-compact (drawer) surfaces.

@@ -1,32 +1,30 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
 import {
-  ArrowLeft,
-  ArrowLeftRight,
-  ArrowRight,
-  ChevronDown,
-  Minus,
-  ShieldCheck,
-  ShieldX,
-  TrendingDown,
-  TrendingUp,
-} from "lucide-react";
+  ArrowLeftIcon,
+  ArrowRightIcon,
+  ArrowSwitchIcon,
+  CheckIcon,
+  ChevronDownIcon,
+  DashIcon,
+  GraphIcon,
+  ShieldCheckIcon,
+  ShieldXIcon,
+} from "@primer/octicons-react";
+import { ActionList, ActionMenu } from "@primer/react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Badge } from "@/components/primer/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/primer/card";
+import { Button } from "@/components/primer/Button";
 import {
-  DropdownMenu,
-  DropdownMenuActiveCheck,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/primer/card";
 import { Skeleton } from "@/components/primer/Skeleton";
 import type {
   DiffComponent,
@@ -65,7 +63,12 @@ import { cn } from "@/lib/utils";
 
 const PAGE_SIZE = 50;
 
-const SEVERITY_ORDER: DiffSeverityBucket[] = ["critical", "high", "medium", "low"];
+const SEVERITY_ORDER: DiffSeverityBucket[] = [
+  "critical",
+  "high",
+  "medium",
+  "low",
+];
 const LICENSE_ORDER: DiffLicenseCategory[] = [
   "prohibited",
   "conditional",
@@ -91,7 +94,8 @@ export function ComparePage() {
   const baseParam = searchParams.get("base");
   const targetParam = searchParams.get("target");
   const base = baseParam && baseParam.length > 0 ? baseParam : undefined;
-  const target = targetParam && targetParam.length > 0 ? targetParam : undefined;
+  const target =
+    targetParam && targetParam.length > 0 ? targetParam : undefined;
 
   const releases = useReleases(projectId, { page: 1, size: PAGE_SIZE });
   const items = releases.data?.items ?? [];
@@ -213,7 +217,7 @@ export function ComparePage() {
             title={t("compare.selector.swap")}
             data-testid="compare-swap"
           >
-            <ArrowLeftRight className="h-4 w-4" aria-hidden />
+            <ArrowSwitchIcon size={16} />
           </Button>
           <ReleaseSelector
             kind="target"
@@ -322,16 +326,12 @@ function ReleaseSelector({
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-1">
       <span className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        {kind === "base" ? (
-          <ArrowLeft className="h-3.5 w-3.5" aria-hidden />
-        ) : null}
+        {kind === "base" ? <ArrowLeftIcon size={14} /> : null}
         {t(labelKey)}
-        {kind === "target" ? (
-          <ArrowRight className="h-3.5 w-3.5" aria-hidden />
-        ) : null}
+        {kind === "target" ? <ArrowRightIcon size={14} /> : null}
       </span>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
+      <ActionMenu>
+        <ActionMenu.Anchor>
           <Button
             type="button"
             variant="outline"
@@ -341,37 +341,44 @@ function ReleaseSelector({
             data-scan-id={selectedScanId ?? ""}
             className="h-8 w-full justify-between gap-2 px-3 text-sm font-medium"
           >
-            <span className="truncate" data-testid={`compare-selector-${kind}-label`}>
+            <span
+              className="truncate"
+              data-testid={`compare-selector-${kind}-label`}
+            >
               {triggerLabel}
             </span>
-            <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-60" aria-hidden />
+            <ChevronDownIcon size={14} className="shrink-0 opacity-60" />
           </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent
-          align="start"
-          className="max-h-[24rem] w-72 overflow-y-auto"
-          data-testid={`compare-selector-${kind}-menu`}
-        >
-          <DropdownMenuLabel>
-            {t("compare.selector.menu_label")}
-          </DropdownMenuLabel>
-          {items.map((item) => {
-            const active = item.scan_id === selectedScanId;
-            return (
-              <DropdownMenuItem
-                key={item.scan_id}
-                onSelect={() => onSelect(item.scan_id)}
-                data-testid={`compare-selector-${kind}-item`}
-                data-scan-id={item.scan_id}
-                data-active={active ? "true" : "false"}
-              >
-                <span className="truncate">{releaseLabel(item, locale)}</span>
-                <DropdownMenuActiveCheck active={active} />
-              </DropdownMenuItem>
-            );
-          })}
-        </DropdownMenuContent>
-      </DropdownMenu>
+        </ActionMenu.Anchor>
+        <ActionMenu.Overlay width="medium" maxHeight="medium">
+          <div data-testid={`compare-selector-${kind}-menu`}>
+            <ActionList>
+              <ActionList.GroupHeading>
+                {t("compare.selector.menu_label")}
+              </ActionList.GroupHeading>
+              {items.map((item) => {
+                const active = item.scan_id === selectedScanId;
+                return (
+                  <ActionList.Item
+                    key={item.scan_id}
+                    onSelect={() => onSelect(item.scan_id)}
+                    data-testid={`compare-selector-${kind}-item`}
+                    data-scan-id={item.scan_id}
+                    data-active={active ? "true" : "false"}
+                  >
+                    <span className="truncate">
+                      {releaseLabel(item, locale)}
+                    </span>
+                    {active ? (
+                      <CheckIcon size={16} className="ml-auto shrink-0" />
+                    ) : null}
+                  </ActionList.Item>
+                );
+              })}
+            </ActionList>
+          </div>
+        </ActionMenu.Overlay>
+      </ActionMenu>
     </div>
   );
 }
@@ -468,10 +475,7 @@ function SummaryStrip({ diff }: { diff: ProjectDiff }) {
               data-testid={`compare-severity-${bucket}`}
             >
               <span
-                className={cn(
-                  "text-xs font-medium",
-                  SEVERITY_TOKEN[bucket],
-                )}
+                className={cn("text-xs font-medium", SEVERITY_TOKEN[bucket])}
               >
                 {t(`severity.${bucket}`)}
               </span>
@@ -539,7 +543,8 @@ function NumberDelta({
   format,
 }: NumberDeltaProps) {
   const { t } = useTranslation("project_detail");
-  const baseText = pair.base != null ? format(pair.base) : t("compare.summary.no_value");
+  const baseText =
+    pair.base != null ? format(pair.base) : t("compare.summary.no_value");
   const targetText =
     pair.target != null ? format(pair.target) : t("compare.summary.no_value");
 
@@ -552,10 +557,14 @@ function NumberDelta({
   if (delta != null && delta !== 0 && higherIsWorse) {
     if (delta > 0) {
       tone = "text-risk-critical-foreground";
-      aria = t("compare.summary.delta_increase_aria", { delta: Math.abs(delta) });
+      aria = t("compare.summary.delta_increase_aria", {
+        delta: Math.abs(delta),
+      });
     } else {
-      tone = "text-emerald-600";
-      aria = t("compare.summary.delta_decrease_aria", { delta: Math.abs(delta) });
+      tone = "text-status-success-foreground";
+      aria = t("compare.summary.delta_decrease_aria", {
+        delta: Math.abs(delta),
+      });
     }
   }
 
@@ -565,12 +574,14 @@ function NumberDelta({
       data-testid={testid}
       data-delta={delta ?? ""}
     >
-      <span className={cn("text-muted-foreground", compact ? "text-sm" : "text-lg")}>
+      <span
+        className={cn("text-muted-foreground", compact ? "text-sm" : "text-lg")}
+      >
         {baseText}
       </span>
-      <ArrowRight
-        className="h-3.5 w-3.5 shrink-0 self-center text-muted-foreground"
-        aria-hidden
+      <ArrowRightIcon
+        size={14}
+        className="shrink-0 self-center text-muted-foreground"
       />
       <span className={cn("font-semibold", compact ? "text-sm" : "text-lg")}>
         {targetText}
@@ -581,11 +592,7 @@ function NumberDelta({
           data-testid={`${testid}-direction`}
           aria-label={aria}
         >
-          {delta > 0 ? (
-            <TrendingUp className="h-3 w-3" aria-hidden />
-          ) : (
-            <TrendingDown className="h-3 w-3" aria-hidden />
-          )}
+          {delta > 0 ? <GraphIcon size={12} /> : <GraphIcon size={12} />}
           {delta > 0 ? "+" : "−"}
           {Math.abs(delta)}
         </span>
@@ -594,7 +601,7 @@ function NumberDelta({
           className="flex items-center gap-0.5 text-xs text-muted-foreground"
           data-testid={`${testid}-direction`}
         >
-          <Minus className="h-3 w-3" aria-hidden />
+          <DashIcon size={12} />
         </span>
       )}
     </div>
@@ -616,13 +623,13 @@ function GateDelta({ pair }: { pair: DiffValuePair<DiffGateStatus | null> }) {
       data-target={pair.target ?? "none"}
     >
       <GatePill status={pair.base} side="base" />
-      <ArrowRight
+      <ArrowRightIcon
         className={cn(
           "h-3.5 w-3.5 shrink-0",
           worsened
             ? "text-risk-critical"
             : improved
-              ? "text-emerald-600"
+              ? "text-status-success-foreground"
               : "text-muted-foreground",
         )}
         aria-label={
@@ -668,7 +675,7 @@ function GatePill({
         data-testid={`compare-gate-${side}`}
         data-gate="pass"
       >
-        <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
+        <ShieldCheckIcon size={14} />
         {t("compare.summary.gate_pass")}
       </Badge>
     );
@@ -680,7 +687,7 @@ function GatePill({
       data-testid={`compare-gate-${side}`}
       data-gate="fail"
     >
-      <ShieldX className="h-3.5 w-3.5" aria-hidden />
+      <ShieldXIcon size={14} />
       {t("compare.summary.gate_fail")}
     </Badge>
   );
@@ -697,13 +704,17 @@ function ComponentsSection({ diff }: { diff: ProjectDiff }) {
   return (
     <Card data-testid="compare-components">
       <CardHeader>
-        <CardTitle className="text-base">{t("compare.components.title")}</CardTitle>
+        <CardTitle className="text-base">
+          {t("compare.components.title")}
+        </CardTitle>
       </CardHeader>
       <CardContent className="space-y-5">
         <ComponentGroup
           testid="compare-components-removed"
           tone="removed"
-          header={t("compare.components.removed_header", { count: removed.length })}
+          header={t("compare.components.removed_header", {
+            count: removed.length,
+          })}
           empty={t("compare.components.removed_empty")}
           items={removed}
           renderItem={(c) => <RemovedAddedRow component={c} sign="−" />}
@@ -721,7 +732,9 @@ function ComponentsSection({ diff }: { diff: ProjectDiff }) {
         <ComponentGroup
           testid="compare-components-changed"
           tone="changed"
-          header={t("compare.components.changed_header", { count: changed.length })}
+          header={t("compare.components.changed_header", {
+            count: changed.length,
+          })}
           empty={t("compare.components.changed_empty")}
           items={changed}
           renderItem={(c) => <ChangedRow change={c} />}
@@ -744,7 +757,7 @@ interface ComponentGroupProps<T> {
 
 const GROUP_HEADER_TONE: Record<"removed" | "added" | "changed", string> = {
   removed: "text-risk-critical-foreground",
-  added: "text-emerald-600",
+  added: "text-status-success-foreground",
   changed: "text-risk-medium-foreground",
 };
 
@@ -763,7 +776,10 @@ function ComponentGroup<T>({
         {header}
       </h3>
       {items.length === 0 ? (
-        <p className="mt-1 text-xs text-muted-foreground" data-testid={`${testid}-empty`}>
+        <p
+          className="mt-1 text-xs text-muted-foreground"
+          data-testid={`${testid}-empty`}
+        >
           {empty}
         </p>
       ) : (
@@ -784,7 +800,10 @@ function ComponentGroup<T>({
   );
 }
 
-function componentDisplayName(c: { name: string; namespace: string | null }): string {
+function componentDisplayName(c: {
+  name: string;
+  namespace: string | null;
+}): string {
   return c.namespace ? `${c.namespace}/${c.name}` : c.name;
 }
 
@@ -801,7 +820,7 @@ function RemovedAddedRow({
         aria-hidden
         className={cn(
           "shrink-0 font-mono text-sm font-bold",
-          sign === "+" ? "text-emerald-600" : "text-risk-critical",
+          sign === "+" ? "text-status-success-foreground" : "text-risk-critical",
         )}
       >
         {sign}
@@ -820,7 +839,10 @@ function ChangedRow({ change }: { change: DiffComponentChange }) {
   const { t } = useTranslation("project_detail");
   return (
     <>
-      <span aria-hidden className="shrink-0 font-mono text-sm font-bold text-risk-medium">
+      <span
+        aria-hidden
+        className="shrink-0 font-mono text-sm font-bold text-risk-medium"
+      >
         ~
       </span>
       <span className="min-w-0 flex-1 truncate text-sm font-medium">
@@ -886,20 +908,32 @@ interface VulnGroupProps {
   sign: "+" | "−";
 }
 
-function VulnGroup({ testid, tone, header, empty, items, sign }: VulnGroupProps) {
+function VulnGroup({
+  testid,
+  tone,
+  header,
+  empty,
+  items,
+  sign,
+}: VulnGroupProps) {
   const { t } = useTranslation("project_detail");
   return (
     <div data-testid={testid} data-count={items.length}>
       <h3
         className={cn(
           "text-sm font-semibold",
-          tone === "added" ? "text-emerald-600" : "text-risk-critical-foreground",
+          tone === "added"
+            ? "text-status-success-foreground"
+            : "text-risk-critical-foreground",
         )}
       >
         {header}
       </h3>
       {items.length === 0 ? (
-        <p className="mt-1 text-xs text-muted-foreground" data-testid={`${testid}-empty`}>
+        <p
+          className="mt-1 text-xs text-muted-foreground"
+          data-testid={`${testid}-empty`}
+        >
           {empty}
         </p>
       ) : (
@@ -915,7 +949,7 @@ function VulnGroup({ testid, tone, header, empty, items, sign }: VulnGroupProps)
                 aria-hidden
                 className={cn(
                   "shrink-0 font-mono text-sm font-bold",
-                  sign === "+" ? "text-risk-critical" : "text-emerald-600",
+                  sign === "+" ? "text-risk-critical" : "text-status-success-foreground",
                 )}
               >
                 {sign}
@@ -966,7 +1000,9 @@ function LicensesSection({ diff }: { diff: ProjectDiff }) {
   return (
     <Card data-testid="compare-licenses">
       <CardHeader>
-        <CardTitle className="text-base">{t("compare.licenses.title")}</CardTitle>
+        <CardTitle className="text-base">
+          {t("compare.licenses.title")}
+        </CardTitle>
       </CardHeader>
       <CardContent>
         <table className="w-full text-sm" data-testid="compare-licenses-table">
@@ -1010,7 +1046,9 @@ function LicensesSection({ diff }: { diff: ProjectDiff }) {
                           variant="destructive"
                           data-testid={`compare-license-${category}-introduced`}
                           aria-label={t("compare.licenses.introduced_aria", {
-                            category: t(`compare.licenses.category.${category}`),
+                            category: t(
+                              `compare.licenses.category.${category}`,
+                            ),
                           })}
                         >
                           {t("compare.licenses.introduced_badge")}

@@ -6,17 +6,10 @@ import { useTranslation } from "react-i18next";
 
 import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Badge } from "@/components/primer/badge";
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/primer/Button";
+import { PrimerDialog } from "@/components/primer/PrimerDialog";
+import { Input } from "@/components/primer/Input";
+import { Textarea } from "@/components/primer/Textarea";
 import type { TeamScopedRole } from "@/features/projects/api/projectDetailApi";
 import {
   useUnwaiveLicense,
@@ -132,7 +125,8 @@ export function LicenseWaiveAction({
     const trimmed = reason.trim();
     // reason (always) + expiry (forbidden waivers) are required — submit stays
     // disabled too, this is the belt-and-braces guard.
-    if (trimmed.length === 0 || (requireExpiry && expiresAt.length === 0)) return;
+    if (trimmed.length === 0 || (requireExpiry && expiresAt.length === 0))
+      return;
     waive.mutate(
       {
         teamId,
@@ -198,9 +192,7 @@ export function LicenseWaiveAction({
           data-testid="license-unwaive"
           data-role-gated={!canWaive ? "true" : undefined}
         >
-          {unwaive.isPending
-            ? t("waive.unwaiving")
-            : t("waive.unwaive_button")}
+          {unwaive.isPending ? t("waive.unwaiving") : t("waive.unwaive_button")}
         </Button>
         {unwaive.isError ? (
           <span
@@ -238,22 +230,40 @@ export function LicenseWaiveAction({
         {t("waive.waive_button")}
       </Button>
 
-      <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogContent
-          className="max-w-md"
-          data-testid="license-waive-dialog"
-          aria-describedby={`${reasonId}-desc`}
-        >
-          <DialogHeader>
-            <DialogTitle>{t("waive.dialog_title")}</DialogTitle>
-            <DialogDescription id={`${reasonId}-desc`}>
-              {t("waive.dialog_description", {
-                spdx_id: spdxId ?? t("compliance.row.no_spdx_id"),
-                component: componentLabel,
-              })}
-            </DialogDescription>
-          </DialogHeader>
-
+      <PrimerDialog
+        open={open}
+        onOpenChange={handleOpenChange}
+        title={t("waive.dialog_title")}
+        description={t("waive.dialog_description", {
+          spdx_id: spdxId ?? t("compliance.row.no_spdx_id"),
+          component: componentLabel,
+        })}
+        width="large"
+        testId="license-waive-dialog"
+        footer={
+          <>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => handleOpenChange(false)}
+              data-testid="license-waive-cancel"
+            >
+              {t("waive.cancel")}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              disabled={missingRequired || waive.isPending}
+              onClick={handleSubmit}
+              data-testid="license-waive-submit"
+            >
+              {waive.isPending ? t("waive.waiving") : t("waive.submit")}
+            </Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-3">
             <div className="flex flex-col gap-1.5">
               <label
@@ -310,29 +320,8 @@ export function LicenseWaiveAction({
               </AlertDescription>
             </Alert>
           ) : null}
-
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => handleOpenChange(false)}
-              data-testid="license-waive-cancel"
-            >
-              {t("waive.cancel")}
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              disabled={missingRequired || waive.isPending}
-              onClick={handleSubmit}
-              data-testid="license-waive-submit"
-            >
-              {waive.isPending ? t("waive.waiving") : t("waive.submit")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </div>
+      </PrimerDialog>
     </span>
   );
 }

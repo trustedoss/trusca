@@ -60,8 +60,11 @@
  *
  * Read-only domain — no analyst workflow, no transitions, no audit log.
  */
-import { FileCheck } from "lucide-react";
+import {
+  FileBadgeIcon,
+} from "@primer/octicons-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Select } from "@primer/react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 import { Virtuoso } from "react-virtuoso";
@@ -69,12 +72,12 @@ import { Virtuoso } from "react-virtuoso";
 import { EmptyState } from "@/components/EmptyState";
 import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Badge } from "@/components/primer/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Button } from "@/components/primer/Button";
+import { Input } from "@/components/primer/Input";
 import { MultiSelect } from "@/components/primer/multi-select";
 import { Skeleton } from "@/components/primer/Skeleton";
 import { VIRTUOSO_TABLE_BODY } from "@/components/primer/virtuoso-table-body";
-import { Switch } from "@/components/ui/switch";
+import { Switch } from "@/components/primer/switch";
 import type {
   LicenseCategoryName,
   TeamScopedRole,
@@ -560,7 +563,7 @@ export function ComplianceTab({
         <EmptyState
           data-testid="compliance-empty"
           className="m-6"
-          icon={<FileCheck />}
+          icon={<FileBadgeIcon />}
           title={
             hasNarrowingFilters
               ? t("compliance.empty.filtered_title")
@@ -794,7 +797,7 @@ function ComplianceToolbar({
           >
             {t("licenses.toolbar.filter_conflict")}
           </label>
-          <select
+          <Select block
             id="compliance-conflict"
             value={conflict ?? ""}
             onChange={(event) =>
@@ -804,7 +807,7 @@ function ComplianceToolbar({
                   : undefined,
               )
             }
-            className="mt-1 h-9 w-40 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            className="mt-1 w-40"
             data-testid="compliance-conflict-filter"
           >
             <option value="">{t("licenses.toolbar.conflict.all")}</option>
@@ -813,7 +816,7 @@ function ComplianceToolbar({
                 {t(`licenses.conflict.verdict.${verdict}`)}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
       ) : null}
 
@@ -824,13 +827,13 @@ function ComplianceToolbar({
         >
           {t("compliance.filter.sort_label")}
         </label>
-        <select
+        <Select block
           id="compliance-sort"
           value={sort}
           onChange={(event) =>
             onSortChange(event.target.value as ComplianceSortKey)
           }
-          className="mt-1 h-9 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          className="mt-1"
           data-testid="compliance-sort"
         >
           {SORT_OPTIONS.map((key) => (
@@ -838,7 +841,7 @@ function ComplianceToolbar({
               {t(`compliance.filter.sort.${key}`)}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
 
       <div className="flex flex-col">
@@ -848,16 +851,16 @@ function ComplianceToolbar({
         >
           {t("compliance.filter.order_label")}
         </label>
-        <select
+        <Select block
           id="compliance-order"
           value={order}
           onChange={(event) => onOrderChange(event.target.value as SortOrder)}
-          className="mt-1 h-9 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          className="mt-1"
           data-testid="compliance-order"
         >
           <option value="asc">{t("compliance.filter.order_asc")}</option>
           <option value="desc">{t("compliance.filter.order_desc")}</option>
-        </select>
+        </Select>
       </div>
 
       <ComplianceNoticeDownload
@@ -902,20 +905,19 @@ function ComplianceNoticeDownload({
         {t("compliance.notice_download.format_label")}
       </label>
       <div className="mt-1 flex h-9 items-center gap-2">
-        <select
+        <Select
           id="compliance-notice-format"
           value={format}
           onChange={(event) => setFormat(event.target.value as NoticeFormat)}
           disabled={notice.isLoading}
           data-testid="compliance-notice-format"
-          className="h-9 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
         >
           {NOTICE_DOWNLOAD_FORMATS.map((fmt) => (
             <option key={fmt} value={fmt}>
               {t(`compliance.notice_download.format_${fmt}`)}
             </option>
           ))}
-        </select>
+        </Select>
         <Button
           type="button"
           size="sm"

@@ -1,12 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
-import { ChevronRight, GitCompare, ShieldCheck, ShieldX } from "lucide-react";
+import {
+  ChevronRightIcon,
+  DiffIcon,
+  ShieldCheckIcon,
+  ShieldXIcon,
+} from "@primer/octicons-react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 
 import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Badge } from "@/components/primer/badge";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/primer/Button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/primer/card";
 import { Skeleton } from "@/components/primer/Skeleton";
 import { useReleases } from "@/features/projects/api/useReleases";
@@ -117,7 +122,7 @@ export function ReleasesTab({ projectId, onViewSnapshot }: ReleasesTabProps) {
             aria-label={t("compare.open_button_aria")}
             data-testid="releases-compare-button"
           >
-            <GitCompare className="h-3.5 w-3.5" aria-hidden />
+            <DiffIcon size={14} />
             {t("compare.open_button")}
           </Button>
         </CardHeader>
@@ -281,7 +286,7 @@ function ReleaseRow({ release, locale, onView }: ReleaseRowProps) {
         <GateBadge status={release.gate_status} />
       </td>
       <td className="px-3 py-2 text-right text-muted-foreground" aria-hidden>
-        <ChevronRight className="ml-auto h-4 w-4" data-testid="release-row-view" />
+        <ChevronRightIcon size={16} className="ml-auto" data-testid="release-row-view" />
       </td>
     </tr>
   );
@@ -335,14 +340,14 @@ function GateBadge({ status }: { status: ReleaseGateStatus | null }) {
   if (status === "pass") {
     return (
       <Badge tone="success" className="gap-1.5" data-testid="release-gate-pass">
-        <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
+        <ShieldCheckIcon size={14} />
         {t("releases.gate.pass")}
       </Badge>
     );
   }
   return (
     <Badge variant="destructive" className="gap-1.5" data-testid="release-gate-fail">
-      <ShieldX className="h-3.5 w-3.5" aria-hidden />
+      <ShieldXIcon size={14} />
       {t("releases.gate.fail")}
     </Badge>
   );

@@ -21,14 +21,15 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
+import { Select } from "@primer/react";
 import { useTranslation } from "react-i18next";
 import { z } from "zod";
 
 import { Alert, AlertDescription } from "@/components/primer/alert";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/primer/Button";
+import { Input } from "@/components/primer/Input";
+import { Label } from "@/components/primer/Label";
+import { Textarea } from "@/components/primer/Textarea";
 import { problemMessage } from "@/lib/problemMessage";
 import { DISTRIBUTION_MODELS } from "@/lib/projectConstants";
 import {
@@ -425,9 +426,8 @@ export function SettingsTab({ projectId, project }: SettingsTabProps) {
           <Label htmlFor="settings-ai-usage-context">
             {t("settings.field.ai_usage_context")}
           </Label>
-          <select
+          <Select block
             id="settings-ai-usage-context"
-            className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             {...register("ai_usage_context")}
             data-testid="settings-ai-usage-context-select"
             aria-describedby="settings-ai-usage-context-help"
@@ -440,7 +440,7 @@ export function SettingsTab({ projectId, project }: SettingsTabProps) {
                 {t(`settings.field.ai_usage_context_option.${scenario}`)}
               </option>
             ))}
-          </select>
+          </Select>
           <p
             id="settings-ai-usage-context-help"
             className="text-xs text-muted-foreground"
@@ -498,9 +498,8 @@ export function SettingsTab({ projectId, project }: SettingsTabProps) {
           <Label htmlFor="settings-distribution-model">
             {t("settings.field.distribution_model")}
           </Label>
-          <select
+          <Select block
             id="settings-distribution-model"
-            className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             {...register("distribution_model")}
             data-testid="settings-distribution-model-select"
             aria-describedby="settings-distribution-model-help"
@@ -513,7 +512,7 @@ export function SettingsTab({ projectId, project }: SettingsTabProps) {
                 {t(`settings.field.distribution_model_option.${model}`)}
               </option>
             ))}
-          </select>
+          </Select>
           <p
             id="settings-distribution-model-help"
             className="text-xs text-muted-foreground"
@@ -540,7 +539,7 @@ export function SettingsTab({ projectId, project }: SettingsTabProps) {
           </Button>
           {actionToast ? (
             <span
-              className="text-xs text-emerald-700"
+              className="text-xs text-status-success-foreground"
               data-testid="settings-toast"
               aria-live="polite"
             >
@@ -579,7 +578,7 @@ export function SettingsTab({ projectId, project }: SettingsTabProps) {
           <div className="space-y-3" data-testid="project-git-credential-configured">
             <div className="flex flex-wrap items-center gap-2">
               <span
-                className="inline-flex items-center gap-2 rounded-md border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700"
+                className="inline-flex items-center gap-2 rounded-md border border-status-success-border bg-status-success-subtle px-2.5 py-1 text-xs font-medium text-status-success-foreground"
                 data-testid="project-git-credential-badge"
               >
                 <span aria-hidden className="font-mono tracking-widest">

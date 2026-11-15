@@ -48,7 +48,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/primer/Skeleton";
-import { Switch } from "@/components/ui/switch";
+import { Switch } from "@/components/primer/switch";
 import { useToast } from "@/components/primer/toast";
 import { useClampPage, usePageParam, useUrlFlag } from "@/hooks/useUrlState";
 import type {

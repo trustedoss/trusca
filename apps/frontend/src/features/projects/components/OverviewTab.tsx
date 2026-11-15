@@ -547,7 +547,7 @@ export function OverviewTab({
                   {project.has_git_credential ? (
                     <Badge
                       variant="outline"
-                      className="ml-2 border-emerald-300 bg-emerald-50 text-xs text-emerald-800"
+                      className="ml-2 border-status-success-border bg-status-success-subtle text-xs text-status-success-foreground"
                       data-testid="overview-info-has-credential"
                     >
                       {t("overview.info_card.credential_configured", {
