@@ -1,13 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
-import {
-  CheckIcon,
-  PlusIcon,
-} from "@primer/octicons-react";
-import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
+import { CheckIcon, PlusIcon } from "@primer/octicons-react";
+import { ActionList, ActionMenu } from "@primer/react";
 import { useTranslation } from "react-i18next";
-
-import { cn } from "@/lib/utils";
 
 /**
  * MoreFiltersMenu — W9 #52 generic "+ Add filter" affordance.
@@ -78,64 +73,38 @@ export function MoreFiltersMenu({
   }
 
   return (
-    <DropdownMenuPrimitive.Root>
-      <DropdownMenuPrimitive.Trigger asChild>
-        <button
-          type="button"
-          disabled={disabled}
-          aria-label={t("filters.more_filters.aria")}
-          data-testid={testId}
-          className={cn(
-            "inline-flex h-8 items-center gap-1 rounded-md border border-input bg-background px-3 text-xs font-medium text-muted-foreground",
-            "hover:bg-muted hover:text-foreground",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-            "disabled:cursor-not-allowed disabled:opacity-50",
-            className,
-          )}
-        >
-          <PlusIcon size={14} />
-          <span>{t("filters.more_filters.trigger")}</span>
-        </button>
-      </DropdownMenuPrimitive.Trigger>
-      <DropdownMenuPrimitive.Portal>
-        <DropdownMenuPrimitive.Content
-          align="start"
-          sideOffset={4}
-          className={cn(
-            "z-50 min-w-[12rem] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md",
-            "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
-          )}
-        >
-          {availableFilters.map((option) => {
-            const isActive = activeFilterIds.has(option.id);
-            return (
-              <DropdownMenuPrimitive.Item
-                key={option.id}
-                onSelect={(event) => {
-                  // Let the menu close naturally — discovery affordances are
-                  // single-shot. The parent handles the toggle semantics.
-                  event.preventDefault();
-                  onSelect(option.id);
-                }}
-                data-testid={`${testId}-option-${option.id}`}
-                data-active={isActive ? "true" : "false"}
-                className={cn(
-                  "relative flex cursor-pointer select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none transition-colors duration-fast ease-out-soft",
-                  "focus:bg-accent focus:text-accent-foreground data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground",
-                  isActive && "text-muted-foreground",
-                )}
-              >
-                <span className="flex h-4 w-4 shrink-0 items-center justify-center">
-                  {isActive ? (
-                    <CheckIcon size={14} />
-                  ) : null}
-                </span>
-                <span className="truncate">{option.label}</span>
-              </DropdownMenuPrimitive.Item>
-            );
-          })}
-        </DropdownMenuPrimitive.Content>
-      </DropdownMenuPrimitive.Portal>
-    </DropdownMenuPrimitive.Root>
+    <ActionMenu>
+      <ActionMenu.Button
+        leadingVisual={PlusIcon}
+        disabled={disabled}
+        aria-label={t("filters.more_filters.aria")}
+        data-testid={testId}
+        className={className}
+      >
+        {t("filters.more_filters.trigger")}
+      </ActionMenu.Button>
+      <ActionMenu.Overlay width="small">
+        <ActionList>
+          {availableFilters.map((option) => (
+            <ActionList.Item
+              key={option.id}
+              // Discovery is single-shot: the menu closes, and the parent
+              // handles the toggle.
+              onSelect={() => onSelect(option.id)}
+              data-testid={`${testId}-option-${option.id}`}
+              // Not `data-active`: Primer's list item sets that attribute itself.
+              data-filter-active={activeFilterIds.has(option.id) ? "true" : "false"}
+            >
+              {option.label}
+              {activeFilterIds.has(option.id) ? (
+                <ActionList.TrailingVisual>
+                  <CheckIcon size={16} />
+                </ActionList.TrailingVisual>
+              ) : null}
+            </ActionList.Item>
+          ))}
+        </ActionList>
+      </ActionMenu.Overlay>
+    </ActionMenu>
   );
 }

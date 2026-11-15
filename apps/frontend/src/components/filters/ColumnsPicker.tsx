@@ -1,14 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
-import {
-  CheckIcon,
-  ColumnsIcon,
-} from "@primer/octicons-react";
-import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
+import { ColumnsIcon } from "@primer/octicons-react";
+import { ActionList, ActionMenu } from "@primer/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-
-import { cn } from "@/lib/utils";
 
 /**
  * ColumnsPicker — W9 #52 generic "Columns" affordance.
@@ -83,9 +78,7 @@ export function loadInitialVisibility(
   storageKey: string,
   columns: ColumnsPickerColumn[],
 ): Set<string> {
-  const required = new Set(
-    columns.filter((c) => c.required).map((c) => c.id),
-  );
+  const required = new Set(columns.filter((c) => c.required).map((c) => c.id));
   if (typeof window === "undefined" || !window.localStorage) {
     return new Set(columns.map((c) => c.id));
   }
@@ -122,7 +115,10 @@ export function loadInitialVisibility(
 export function saveVisibility(storageKey: string, visible: Set<string>): void {
   if (typeof window === "undefined" || !window.localStorage) return;
   try {
-    window.localStorage.setItem(storageKey, JSON.stringify(Array.from(visible)));
+    window.localStorage.setItem(
+      storageKey,
+      JSON.stringify(Array.from(visible)),
+    );
   } catch {
     /* private-mode / quota — silently ignore. */
   }
@@ -168,86 +164,54 @@ export function ColumnsPicker({
     [columns, onChange, storageKey, visibleColumns],
   );
 
-  const hint = useMemo(
-    () => t("filters.columns.required_hint"),
-    [t],
-  );
+  const hint = useMemo(() => t("filters.columns.required_hint"), [t]);
 
+  const baseId = testId.replace(/-trigger$/, "");
   return (
-    <DropdownMenuPrimitive.Root>
-      <DropdownMenuPrimitive.Trigger asChild>
-        <button
-          type="button"
-          disabled={disabled}
-          aria-label={t("filters.columns.aria")}
-          data-testid={testId}
-          className={cn(
-            "inline-flex h-8 items-center gap-1 rounded-md border border-input bg-background px-3 text-xs font-medium text-muted-foreground",
-            "hover:bg-muted hover:text-foreground",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-            "disabled:cursor-not-allowed disabled:opacity-50",
-            className,
-          )}
-        >
-          <ColumnsIcon size={14} />
-          <span>{t("filters.columns.trigger")}</span>
-        </button>
-      </DropdownMenuPrimitive.Trigger>
-      <DropdownMenuPrimitive.Portal>
-        <DropdownMenuPrimitive.Content
-          align="end"
-          sideOffset={4}
-          className={cn(
-            "z-50 min-w-[14rem] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md",
-            "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
-          )}
-        >
+    <ActionMenu>
+      <ActionMenu.Button
+        leadingVisual={ColumnsIcon}
+        disabled={disabled}
+        aria-label={t("filters.columns.aria")}
+        data-testid={testId}
+        className={className}
+      >
+        {t("filters.columns.trigger")}
+      </ActionMenu.Button>
+      <ActionMenu.Overlay width="small">
+        <ActionList selectionVariant="multiple">
           {columns.map((column) => {
-            const isVisible =
-              column.required || visibleColumns.has(column.id);
+            const isVisible = column.required || visibleColumns.has(column.id);
             return (
-              <DropdownMenuPrimitive.CheckboxItem
+              <ActionList.Item
                 key={column.id}
-                checked={isVisible}
-                onSelect={(event) => event.preventDefault()}
-                onCheckedChange={() => handleToggle(column.id, column)}
+                selected={isVisible}
                 disabled={column.required}
-                data-testid={`${testId.replace(
-                  /-trigger$/,
-                  "",
-                )}-option-${column.id}`}
+                // Keep the menu open so several columns can be toggled at once.
+                onSelect={(event) => {
+                  event.preventDefault();
+                  handleToggle(column.id, column);
+                }}
+                data-testid={`${baseId}-option-${column.id}`}
                 data-required={column.required ? "true" : "false"}
                 data-visible={isVisible ? "true" : "false"}
-                className={cn(
-                  "relative flex cursor-pointer select-none items-center gap-2 rounded-sm py-1.5 pl-2 pr-2 text-sm outline-none transition-colors duration-fast ease-out-soft",
-                  "focus:bg-accent focus:text-accent-foreground data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground",
-                  "data-[disabled]:pointer-events-none data-[disabled]:opacity-60",
-                )}
               >
-                <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border border-input">
-                  {isVisible ? (
-                    <CheckIcon size={14} />
-                  ) : null}
-                </span>
-                <span className="flex flex-1 items-center justify-between gap-2">
-                  <span className="truncate">{column.label}</span>
-                  {column.required ? (
+                {column.label}
+                {column.required ? (
+                  <ActionList.TrailingVisual>
                     <span
-                      className="shrink-0 text-[10px] uppercase tracking-wide text-muted-foreground"
-                      data-testid={`${testId.replace(
-                        /-trigger$/,
-                        "",
-                      )}-required-hint-${column.id}`}
+                      className="text-[10px] uppercase tracking-wide text-muted-foreground"
+                      data-testid={`${baseId}-required-hint-${column.id}`}
                     >
                       {hint}
                     </span>
-                  ) : null}
-                </span>
-              </DropdownMenuPrimitive.CheckboxItem>
+                  </ActionList.TrailingVisual>
+                ) : null}
+              </ActionList.Item>
             );
           })}
-        </DropdownMenuPrimitive.Content>
-      </DropdownMenuPrimitive.Portal>
-    </DropdownMenuPrimitive.Root>
+        </ActionList>
+      </ActionMenu.Overlay>
+    </ActionMenu>
   );
 }
