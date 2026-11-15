@@ -27,16 +27,20 @@
  * (chore PR #8 F4) — the toolbar surfaces a hint that plain-text search
  * will not match those columns.
  */
-import { Download, RefreshCw } from "lucide-react";
+import {
+  DownloadIcon,
+  SyncIcon,
+} from "@primer/octicons-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Select } from "@primer/react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 
 import { PageHeader } from "@/components/PageHeader";
 import { Alert, AlertDescription } from "@/components/primer/alert";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Button } from "@/components/primer/Button";
+import { Input } from "@/components/primer/Input";
+import { Label } from "@/components/primer/Label";
 import { Skeleton } from "@/components/primer/Skeleton";
 import RelativeTime from "@/components/RelativeTime";
 import { AdminAuditDrawer } from "@/features/admin/audit/AdminAuditDrawer";
@@ -292,7 +296,7 @@ export function AdminAuditPage() {
           >
             {t("admin.audit.filter.target_table_label")}
           </Label>
-          <select
+          <Select block
             id="admin-audit-target-table"
             data-testid="admin-audit-target-table"
             className={cn(
@@ -315,7 +319,7 @@ export function AdminAuditPage() {
                 {value}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
         <div>
           <Label
@@ -397,13 +401,7 @@ export function AdminAuditPage() {
             disabled={auditQuery.isFetching}
             data-testid="admin-audit-refresh"
           >
-            <RefreshCw
-              className={cn(
-                "h-4 w-4",
-                auditQuery.isFetching && "animate-spin",
-              )}
-              aria-hidden
-            />
+            <SyncIcon className={cn( "h-4 w-4", auditQuery.isFetching && "animate-spin", )} />
             {t("admin.audit.actions.refresh")}
           </Button>
           <Button
@@ -412,7 +410,7 @@ export function AdminAuditPage() {
             disabled={exporting}
             data-testid="admin-audit-export-csv"
           >
-            <Download className="h-4 w-4" aria-hidden />
+            <DownloadIcon size={16} />
             {t("admin.audit.actions.export_csv")}
           </Button>
         </div>
@@ -531,10 +529,9 @@ export function AdminAuditPage() {
           >
             {t("admin.users.pagination.page_size_label")}
           </label>
-          <select
+          <Select
             id="admin-audit-page-size"
             data-testid="admin-audit-page-size"
-            className="h-8 rounded-md border border-input bg-background px-2"
             value={pageSize}
             onChange={(e) => setPageSize(Number(e.target.value))}
           >
@@ -543,7 +540,7 @@ export function AdminAuditPage() {
                 {opt}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
 
         <div className="flex items-center gap-2">

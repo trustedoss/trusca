@@ -6,10 +6,11 @@
  * controlled props in. No modal — every filter is inline (CLAUDE.md "디자인
  * 시스템" §filter rules).
  */
+import { Select } from "@primer/react";
 import { useTranslation } from "react-i18next";
 
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Input } from "@/components/primer/Input";
+import { Label } from "@/components/primer/Label";
 import type { UserRole } from "@/features/admin/api/adminUsersApi";
 import { cn } from "@/lib/utils";
 
@@ -63,7 +64,7 @@ export function AdminUsersToolbar({
         >
           {t("admin.users.column.role")}
         </Label>
-        <select
+        <Select block
           id="admin-users-role-filter"
           data-testid="admin-users-role-filter"
           className={cn(
@@ -78,7 +79,7 @@ export function AdminUsersToolbar({
           <option value="group_admin">{t("admin.users.role.group_admin")}</option>
           <option value="developer">{t("admin.users.role.developer")}</option>
           <option value="viewer">{t("admin.users.role.viewer")}</option>
-        </select>
+        </Select>
       </div>
 
       <div className="basis-40">
@@ -88,7 +89,7 @@ export function AdminUsersToolbar({
         >
           {t("admin.users.column.active")}
         </Label>
-        <select
+        <Select block
           id="admin-users-active-filter"
           data-testid="admin-users-active-filter"
           className={cn(
@@ -103,7 +104,7 @@ export function AdminUsersToolbar({
           <option value="all">{t("admin.users.filter.active_all")}</option>
           <option value="active">{t("admin.users.filter.active_only")}</option>
           <option value="inactive">{t("admin.users.filter.inactive_only")}</option>
-        </select>
+        </Select>
       </div>
     </div>
   );

@@ -16,23 +16,17 @@
  *   - Delete team button: inline confirm + propagates Problem extension
  *     `team_has_active_scans` into the toast.
  */
+import { Spinner, Select } from "@primer/react";
 import { useQuery } from "@tanstack/react-query";
-import { Loader2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Badge } from "@/components/primer/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { Button } from "@/components/primer/Button";
+import { Input } from "@/components/primer/Input";
+import { Label } from "@/components/primer/Label";
+import { PrimerDialog } from "@/components/primer/PrimerDialog";
 import { Skeleton } from "@/components/primer/Skeleton";
 import {
   useAddTeamMember,
@@ -228,7 +222,11 @@ export function AdminTeamDrawer({
     if (!detail.data) return;
     try {
       await remove.mutateAsync({ teamId: detail.data.id, userId });
-      notify(t("admin.teams.toast.member_removed"), "success", "member_removed");
+      notify(
+        t("admin.teams.toast.member_removed"),
+        "success",
+        "member_removed",
+      );
       setConfirm(null);
     } catch (err) {
       notify(t(adminErrorMessageKey(err)), "error", adminErrorExtension(err));
@@ -276,21 +274,18 @@ export function AdminTeamDrawer({
   }
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent
-        side="right"
-        className="flex w-full max-w-lg flex-col gap-4 overflow-y-auto sm:max-w-lg"
-        data-testid="admin-team-drawer"
-      >
-        <SheetHeader>
-          <SheetTitle>
-            {detail.data?.name || t("admin.teams.title")}
-          </SheetTitle>
-          <SheetDescription className="font-mono text-xs">
-            {detail.data?.slug ?? ""}
-          </SheetDescription>
-        </SheetHeader>
-
+    <PrimerDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={detail.data?.name || t("admin.teams.title")}
+      description={
+        <span className="font-mono text-xs">{detail.data?.slug ?? ""}</span>
+      }
+      position="right"
+      width="large"
+      testId="admin-team-drawer"
+    >
+      <div className="flex flex-col gap-4">
         {detail.isLoading ? (
           <div className="space-y-2" data-testid="admin-team-drawer-loading">
             <Skeleton className="h-6 w-1/2" />
@@ -439,9 +434,7 @@ export function AdminTeamDrawer({
                     disabled={update.isPending}
                     data-testid="admin-team-edit-save"
                   >
-                    {update.isPending ? (
-                      <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                    ) : null}
+                    {update.isPending ? <Spinner size="small" /> : null}
                     {t("admin.teams.form.save")}
                   </Button>
                 </div>
@@ -470,14 +463,13 @@ export function AdminTeamDrawer({
                     <Label htmlFor="admin-team-member-role" className="text-xs">
                       {t("admin.teams.form.role_label")}
                     </Label>
-                    <select
+                    <Select block
                       id="admin-team-member-role"
                       data-testid="admin-team-member-role"
                       value={memberRole}
                       onChange={(e) =>
                         setMemberRole(e.target.value as TeamMembershipRole)
                       }
-                      className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
                     >
                       <option value="group_admin">
                         {t("admin.users.role.group_admin")}
@@ -485,7 +477,7 @@ export function AdminTeamDrawer({
                       <option value="developer">
                         {t("admin.users.role.developer")}
                       </option>
-                    </select>
+                    </Select>
                   </div>
                 </div>
                 <div className="flex justify-end gap-2">
@@ -502,9 +494,7 @@ export function AdminTeamDrawer({
                     disabled={add.isPending || !memberUserId.trim()}
                     data-testid="admin-team-member-add-save"
                   >
-                    {add.isPending ? (
-                      <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                    ) : null}
+                    {add.isPending ? <Spinner size="small" /> : null}
                     {t("admin.teams.form.add")}
                   </Button>
                 </div>
@@ -520,12 +510,11 @@ export function AdminTeamDrawer({
                   <Label htmlFor="admin-team-move-target" className="text-xs">
                     {t("admin.teams.form.move_target_label")}
                   </Label>
-                  <select
+                  <Select block
                     id="admin-team-move-target"
                     data-testid="admin-team-move-target"
                     value={moveTargetId}
                     onChange={(e) => setMoveTargetId(e.target.value)}
-                    className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
                   >
                     <option
                       value=""
@@ -542,7 +531,7 @@ export function AdminTeamDrawer({
                         {candidate.name}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </div>
                 <div className="flex justify-end gap-2">
                   <Button
@@ -558,9 +547,7 @@ export function AdminTeamDrawer({
                     disabled={reparent.isPending}
                     data-testid="admin-team-move-save"
                   >
-                    {reparent.isPending ? (
-                      <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                    ) : null}
+                    {reparent.isPending ? <Spinner size="small" /> : null}
                     {t("admin.teams.form.move")}
                   </Button>
                 </div>
@@ -633,7 +620,7 @@ export function AdminTeamDrawer({
                     data-testid="admin-team-subgroup-save"
                   >
                     {createSubgroupMutation.isPending ? (
-                      <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                      <Spinner size="small" />
                     ) : null}
                     {t("admin.teams.form.create_subgroup")}
                   </Button>
@@ -660,7 +647,7 @@ export function AdminTeamDrawer({
                         key={m.user_id}
                         className={cn(
                           "flex flex-col gap-1 px-3 py-2 text-sm",
-                          isPending && "bg-amber-50",
+                          isPending && "bg-status-warning-subtle",
                         )}
                         data-testid="admin-team-member-row"
                         data-user-id={m.user_id}
@@ -704,7 +691,7 @@ export function AdminTeamDrawer({
                             className="flex items-center justify-end gap-2"
                             data-testid="admin-team-member-confirm-strip"
                           >
-                            <span className="mr-auto text-xs text-amber-900">
+                            <span className="mr-auto text-xs text-status-warning-foreground">
                               {t("admin.teams.confirm.remove_member")}
                             </span>
                             <Button
@@ -721,10 +708,7 @@ export function AdminTeamDrawer({
                               data-testid="admin-team-member-confirm-ok"
                             >
                               {remove.isPending ? (
-                                <Loader2
-                                  className="h-4 w-4 animate-spin"
-                                  aria-hidden
-                                />
+                                <Spinner size="small" />
                               ) : null}
                               {t("admin.actions.confirm")}
                             </Button>
@@ -758,9 +742,7 @@ export function AdminTeamDrawer({
                     disabled={del.isPending}
                     data-testid="admin-team-delete-confirm-ok"
                   >
-                    {del.isPending ? (
-                      <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                    ) : null}
+                    {del.isPending ? <Spinner size="small" /> : null}
                     {t("admin.actions.confirm")}
                   </Button>
                 </div>
@@ -768,8 +750,8 @@ export function AdminTeamDrawer({
             ) : null}
           </>
         ) : null}
-      </SheetContent>
-    </Sheet>
+      </div>
+    </PrimerDialog>
   );
 }
 

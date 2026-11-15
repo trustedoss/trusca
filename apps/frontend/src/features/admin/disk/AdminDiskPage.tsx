@@ -15,13 +15,18 @@
  * When the backend reports a per-item `error` (path missing / permission
  * denied) the card surfaces an inline `Alert` instead of the gauge.
  */
-import { AlertCircle, CheckCircle2, RefreshCw, ShieldAlert } from "lucide-react";
+import {
+  AlertIcon,
+  CheckCircleIcon,
+  ShieldIcon,
+  SyncIcon,
+} from "@primer/octicons-react";
 import { useTranslation } from "react-i18next";
 
 import { PageHeader } from "@/components/PageHeader";
 import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Badge } from "@/components/primer/badge";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/primer/Button";
 import { Skeleton } from "@/components/primer/Skeleton";
 import {
   type AdminDiskItem,
@@ -53,26 +58,26 @@ function formatBytes(bytes: number | null): string {
 function statusColors(status: DiskHealthStatus): {
   badge: string;
   bar: string;
-  icon: typeof CheckCircle2;
+  icon: typeof CheckCircleIcon;
 } {
   if (status === "ok") {
     return {
       badge: "border-status-success-border bg-status-success-subtle text-status-success-foreground",
-      bar: "bg-emerald-500",
-      icon: CheckCircle2,
+      bar: "bg-status-success",
+      icon: CheckCircleIcon,
     };
   }
   if (status === "degraded") {
     return {
       badge: "border-status-warning-border bg-status-warning-subtle text-status-warning-foreground",
-      bar: "bg-amber-500",
-      icon: ShieldAlert,
+      bar: "bg-status-warning-subtle0",
+      icon: ShieldIcon,
     };
   }
   return {
     badge: "border-status-danger-border bg-status-danger-subtle text-status-danger-foreground",
-    bar: "bg-red-500",
-    icon: AlertCircle,
+    bar: "bg-status-danger",
+    icon: AlertIcon,
   };
 }
 
@@ -233,10 +238,7 @@ export function AdminDiskPage() {
             disabled={diskQuery.isFetching}
             data-testid="admin-disk-refresh"
           >
-            <RefreshCw
-              className={cn("h-4 w-4", diskQuery.isFetching && "animate-spin")}
-              aria-hidden
-            />
+            <SyncIcon className={cn("h-4 w-4", diskQuery.isFetching && "animate-spin")} />
             {t("admin.disk.actions.refresh")}
           </Button>
         }

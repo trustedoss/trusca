@@ -7,7 +7,12 @@
  * The admin domain has no severity — palette is neutral / blue / slate
  * instead of the risk colors.
  */
-import { Eye, ShieldCheck, Users as UsersIcon, User } from "lucide-react";
+import {
+  EyeIcon,
+  PeopleIcon,
+  PersonIcon,
+  ShieldCheckIcon,
+} from "@primer/octicons-react";
 import { useTranslation } from "react-i18next";
 
 import { Badge } from "@/components/primer/badge";
@@ -26,12 +31,12 @@ export function RoleBadge({ role, className }: RoleBadgeProps) {
   // for anyone reading the icon first.
   const Icon =
     role === "super_admin"
-      ? ShieldCheck
+      ? ShieldCheckIcon
       : role === "group_admin"
-        ? UsersIcon
+        ? PeopleIcon
         : role === "viewer"
-          ? Eye
-          : User;
+          ? EyeIcon
+          : PersonIcon;
   const variantClass =
     role === "super_admin"
       ? "bg-foreground/10 text-foreground border-transparent"

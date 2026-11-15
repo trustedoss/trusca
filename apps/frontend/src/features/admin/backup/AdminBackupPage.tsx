@@ -12,7 +12,7 @@
  *
  * Compact 40px-row table mirroring `AdminUsersPage`:
  *   name (mono) | kind badge | created_at (relative + ISO tooltip) | size
- *   (human) | db_revision (last 7 chars, mono) | actions (Download / Delete).
+ *   (human) | db_revision (last 7 chars, mono) | actions (DownloadIcon / Delete).
  *
  * Auto rows render the Delete control as a disabled tooltip stub
  * ("Auto backups are pruned after 7 days") — the backend returns 409 on
@@ -28,16 +28,23 @@
  * reload after 30 seconds. We deliberately do NOT auto-reload; the operator
  * may want to capture log lines first.
  */
-import { Database, Download, Loader2, RefreshCw, Trash2, UploadCloud } from "lucide-react";
+import {
+  DatabaseIcon,
+  DownloadIcon,
+  SyncIcon,
+  TrashIcon,
+  UploadIcon,
+} from "@primer/octicons-react";
+import { Spinner } from "@primer/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { PageHeader } from "@/components/PageHeader";
 import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Badge } from "@/components/primer/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Button } from "@/components/primer/Button";
+import { Input } from "@/components/primer/Input";
+import { Label } from "@/components/primer/Label";
 import { Skeleton } from "@/components/primer/Skeleton";
 import { useToast } from "@/components/primer/toast";
 import {
@@ -203,7 +210,7 @@ export function AdminBackupPage() {
       />
 
       {restoreQueued ? (
-        <div className="border-b bg-amber-50 px-6 py-3" data-testid="admin-backup-restore-queued">
+        <div className="border-b bg-status-warning-subtle px-6 py-3" data-testid="admin-backup-restore-queued">
           <Alert className="border-status-warning-border bg-status-warning-subtle text-status-warning-foreground">
             <AlertDescription>
               {t("admin.backup.restore.queued_banner")}
@@ -224,9 +231,9 @@ export function AdminBackupPage() {
             data-testid="admin-backup-manual-trigger"
           >
             {triggerManual.isPending ? (
-              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+              <Spinner size="small" />
             ) : (
-              <Database className="h-4 w-4" aria-hidden />
+              <DatabaseIcon size={16} />
             )}
             {t("admin.backup.actions.manual_trigger")}
           </Button>
@@ -246,7 +253,7 @@ export function AdminBackupPage() {
               onClick={() => fileInputRef.current?.click()}
               data-testid="admin-backup-file-picker"
             >
-              <UploadCloud className="h-4 w-4" aria-hidden />
+              <UploadIcon size={16} />
               {t("admin.backup.actions.choose_file")}
             </Button>
             {restoreFile ? (
@@ -267,13 +274,7 @@ export function AdminBackupPage() {
             disabled={backupsQuery.isFetching}
             data-testid="admin-backup-refresh"
           >
-            <RefreshCw
-              className={cn(
-                "h-4 w-4",
-                backupsQuery.isFetching && "animate-spin",
-              )}
-              aria-hidden
-            />
+            <SyncIcon className={cn( "h-4 w-4", backupsQuery.isFetching && "animate-spin", )} />
             {t("admin.backup.actions.refresh")}
           </Button>
         </div>
@@ -281,7 +282,7 @@ export function AdminBackupPage() {
 
       {restoreFile ? (
         <div
-          className="border-b bg-amber-50 px-6 py-3"
+          className="border-b bg-status-warning-subtle px-6 py-3"
           data-testid="admin-backup-restore-strip"
         >
           <Alert className="border-status-warning-border bg-status-warning-subtle text-status-warning-foreground">
@@ -292,7 +293,7 @@ export function AdminBackupPage() {
               <div className="flex flex-wrap items-center gap-3">
                 <Label
                   htmlFor="admin-backup-restore-confirm"
-                  className="text-xs text-amber-900"
+                  className="text-xs text-status-warning-foreground"
                 >
                   {t("admin.backup.restore.type_to_confirm", {
                     token: RESTORE_CONFIRM_TOKEN,
@@ -315,7 +316,7 @@ export function AdminBackupPage() {
                   data-testid="admin-backup-restore-submit"
                 >
                   {uploadMut.isPending ? (
-                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                    <Spinner size="small" />
                   ) : null}
                   {t("admin.backup.actions.restore")}
                 </Button>
@@ -484,7 +485,7 @@ function BackupRow({
               disabled={isDownloadPending}
               data-testid="admin-backup-action-download"
             >
-              <Download className="h-4 w-4" aria-hidden />
+              <DownloadIcon size={16} />
               {t("admin.backup.actions.download")}
             </Button>
             {isAuto ? (
@@ -495,7 +496,7 @@ function BackupRow({
                 title={t("admin.backup.tooltip.auto_pruned")}
                 data-testid="admin-backup-action-delete-disabled"
               >
-                <Trash2 className="h-4 w-4" aria-hidden />
+                <TrashIcon size={16} />
                 {t("admin.backup.actions.delete")}
               </Button>
             ) : (
@@ -505,7 +506,7 @@ function BackupRow({
                 onClick={onRequestDelete}
                 data-testid="admin-backup-action-delete"
               >
-                <Trash2 className="h-4 w-4" aria-hidden />
+                <TrashIcon size={16} />
                 {t("admin.backup.actions.delete")}
               </Button>
             )}
@@ -514,7 +515,7 @@ function BackupRow({
       </tr>
       {showConfirm ? (
         <tr
-          className="border-b bg-amber-50/50"
+          className="border-b bg-status-warning-subtle"
           data-testid="admin-backup-confirm-strip"
           data-name={item.name}
         >
@@ -538,7 +539,7 @@ function BackupRow({
                   data-testid="admin-backup-confirm-ok"
                 >
                   {isDeletePending ? (
-                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                    <Spinner size="small" />
                   ) : null}
                   {t("admin.actions.confirm")}
                 </Button>

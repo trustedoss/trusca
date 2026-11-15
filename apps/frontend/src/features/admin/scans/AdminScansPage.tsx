@@ -15,15 +15,18 @@
  * future PR (the existing `useScanWebSocket` hook is per-scan and the
  * cross-team queue would require a fan-out we don't ship yet).
  */
-import { RefreshCw } from "lucide-react";
+import {
+  SyncIcon,
+} from "@primer/octicons-react";
 import { useEffect, useMemo, useState } from "react";
+import { Select } from "@primer/react";
 import { useTranslation } from "react-i18next";
 
 import { PageHeader } from "@/components/PageHeader";
 import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Badge } from "@/components/primer/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Button } from "@/components/primer/Button";
+import { Input } from "@/components/primer/Input";
 import { Skeleton } from "@/components/primer/Skeleton";
 import { AdminScanDrawer, ScanStatusBadge } from "@/features/admin/scans/AdminScanDrawer";
 import {
@@ -188,7 +191,7 @@ export function AdminScansPage() {
             {t(`admin.scans.tabs.${value}`)}
           </Button>
         ))}
-        <select
+        <Select block
           aria-label={t("admin.scans.filter.kind_label")}
           data-testid="admin-scans-kind"
           className={cn(
@@ -205,7 +208,7 @@ export function AdminScansPage() {
               {t(`admin.scans.filter.kind.${value}`)}
             </option>
           ))}
-        </select>
+        </Select>
         <Input
           aria-label={t("admin.scans.filter.project_label")}
           data-testid="admin-scans-project"
@@ -225,13 +228,7 @@ export function AdminScansPage() {
             disabled={scansQuery.isFetching}
             data-testid="admin-scans-refresh"
           >
-            <RefreshCw
-              className={cn(
-                "h-4 w-4",
-                scansQuery.isFetching && "animate-spin",
-              )}
-              aria-hidden
-            />
+            <SyncIcon className={cn( "h-4 w-4", scansQuery.isFetching && "animate-spin", )} />
             {t("admin.scans.actions.refresh")}
           </Button>
         </div>
@@ -351,10 +348,9 @@ export function AdminScansPage() {
           >
             {t("admin.users.pagination.page_size_label")}
           </label>
-          <select
+          <Select
             id="admin-scans-page-size"
             data-testid="admin-scans-page-size"
-            className="h-8 rounded-md border border-input bg-background px-2"
             value={pageSize}
             onChange={(e) => {
               setPageSize(
@@ -367,7 +363,7 @@ export function AdminScansPage() {
                 {opt}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
 
         <div className="flex items-center gap-2">

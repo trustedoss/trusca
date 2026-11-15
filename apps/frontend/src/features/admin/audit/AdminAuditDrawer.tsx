@@ -14,13 +14,7 @@ import { useTranslation } from "react-i18next";
 
 import RelativeTime from "@/components/RelativeTime";
 import { Badge } from "@/components/primer/badge";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { PrimerDialog } from "@/components/primer/PrimerDialog";
 import type { AuditLogItem } from "@/features/admin/audit/api/adminAuditApi";
 
 interface AdminAuditDrawerProps {
@@ -63,7 +57,8 @@ function renderDiffValue(value: unknown): ReactNode {
   if (isSha256Dict(value)) {
     return <Sha256Pill hex={value.sha256} />;
   }
-  if (value === null) return <span className="text-muted-foreground">null</span>;
+  if (value === null)
+    return <span className="text-muted-foreground">null</span>;
   if (typeof value === "string") return <span>{value}</span>;
   if (typeof value === "number" || typeof value === "boolean") {
     return <span className="font-mono text-xs">{String(value)}</span>;
@@ -83,19 +78,16 @@ export function AdminAuditDrawer({
   const { t } = useTranslation("admin");
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent
-        side="right"
-        className="flex w-full max-w-xl flex-col gap-4 overflow-y-auto sm:max-w-xl"
-        data-testid="admin-audit-drawer"
-      >
-        <SheetHeader>
-          <SheetTitle>{t("admin.audit.drawer.title")}</SheetTitle>
-          <SheetDescription className="font-mono text-xs">
-            {entry?.id ?? ""}
-          </SheetDescription>
-        </SheetHeader>
-
+    <PrimerDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={t("admin.audit.drawer.title")}
+      description={<span className="font-mono text-xs">{entry?.id ?? ""}</span>}
+      position="right"
+      width="large"
+      testId="admin-audit-drawer"
+    >
+      <div className="flex flex-col gap-4">
         {entry ? (
           <>
             <section className="grid grid-cols-2 gap-3 text-xs">
@@ -176,8 +168,8 @@ export function AdminAuditDrawer({
             </Badge>
           </>
         ) : null}
-      </SheetContent>
-    </Sheet>
+      </div>
+    </PrimerDialog>
   );
 }
 

@@ -23,13 +23,13 @@
  * carries `data-testid` + raw `data-value`.
  */
 import {
-  AlertCircle,
-  CalendarClock,
-  CheckCircle2,
-  CircleOff,
-  RefreshCw,
-  ShieldAlert,
-} from "lucide-react";
+  AlertIcon,
+  CalendarIcon,
+  CheckCircleIcon,
+  CircleSlashIcon,
+  ShieldIcon,
+  SyncIcon,
+} from "@primer/octicons-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -56,23 +56,23 @@ const STALE_AFTER_DAYS = 180;
 type PanelStatus = "disabled" | "stale" | "skipped" | "ok";
 
 function statusVisuals(status: PanelStatus): {
-  icon: typeof CheckCircle2;
+  icon: typeof CheckCircleIcon;
   badge: string;
 } {
   if (status === "disabled") {
     return {
-      icon: CircleOff,
-      badge: "border-border bg-muted text-slate-600",
+      icon: CircleSlashIcon,
+      badge: "border-border bg-muted text-foreground/80",
     };
   }
   if (status === "stale" || status === "skipped") {
     return {
-      icon: ShieldAlert,
+      icon: ShieldIcon,
       badge: "border-status-warning-border bg-status-warning-subtle text-status-warning-foreground",
     };
   }
   return {
-    icon: CheckCircle2,
+    icon: CheckCircleIcon,
     badge: "border-status-success-border bg-status-success-subtle text-status-success-foreground",
   };
 }
@@ -118,7 +118,7 @@ function KpiTile({ label, value, tooltip, testId, dataValue, accent }: KpiTilePr
     <div
       className={cn(
         "rounded-md border bg-background p-3",
-        accent && "border-amber-300",
+        accent && "border-status-warning-border",
       )}
       data-testid={testId}
       data-value={dataValue ?? undefined}
@@ -148,16 +148,12 @@ export function EolPanel({ now }: EolPanelProps = {}) {
   const renderHeading = (badge?: ReactNode) => (
     <div className="mb-3 flex items-center justify-between gap-2">
       <h2 className="flex items-center gap-2 text-sm font-semibold">
-        <CalendarClock className="h-4 w-4 text-muted-foreground" aria-hidden />
+        <CalendarIcon size={16} className="text-muted-foreground" />
         {t("admin.eol.heading")}
       </h2>
       <div className="flex items-center gap-2">
         {query.isFetching ? (
-          <RefreshCw
-            className="h-3 w-3 animate-spin text-muted-foreground"
-            aria-hidden
-            data-testid="eol-fetching"
-          />
+          <SyncIcon size={12} className="animate-spin text-muted-foreground" data-testid="eol-fetching" />
         ) : null}
         {badge}
       </div>
@@ -247,7 +243,7 @@ export function EolPanel({ now }: EolPanelProps = {}) {
           className="mb-3 flex items-center gap-1.5 text-xs text-status-warning-foreground"
           data-testid="eol-stale-note"
         >
-          <AlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden />
+          <AlertIcon size={14} className="shrink-0" />
           {t("admin.eol.stale_note", { days: ageDays })}
         </p>
       ) : null}
@@ -256,7 +252,7 @@ export function EolPanel({ now }: EolPanelProps = {}) {
           className="mb-3 flex items-center gap-1.5 text-xs text-status-warning-foreground"
           data-testid="eol-skipped-reason"
         >
-          <AlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden />
+          <AlertIcon size={14} className="shrink-0" />
           {t("admin.eol.skipped_reason", { reason: data.skipped_reason })}
         </p>
       ) : null}

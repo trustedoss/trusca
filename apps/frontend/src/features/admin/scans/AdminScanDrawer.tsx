@@ -12,20 +12,14 @@
  * cancelled / succeeded / failed) surface as a toast keyed by the
  * `scan_already_cancelled` Problem extension.
  */
-import { Loader2 } from "lucide-react";
+import { Spinner } from "@primer/react";
 import { type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Badge } from "@/components/primer/badge";
-import { Button } from "@/components/ui/button";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { Button } from "@/components/primer/Button";
+import { PrimerDialog } from "@/components/primer/PrimerDialog";
 import { useToast } from "@/components/primer/toast";
 import {
   type AdminScanListItem,
@@ -65,10 +59,12 @@ export function ScanStatusBadge({ status }: { status: AdminScanStatus }) {
       data-tone={tone}
       className={cn(
         "gap-1 font-mono text-xs",
-        tone === "ok" && "border-status-success-border bg-status-success-subtle text-status-success-foreground",
+        tone === "ok" &&
+          "border-status-success-border bg-status-success-subtle text-status-success-foreground",
         tone === "running" &&
           "border-status-info-border bg-status-info-subtle text-status-info-foreground",
-        tone === "down" && "border-status-danger-border bg-status-danger-subtle text-status-danger-foreground",
+        tone === "down" &&
+          "border-status-danger-border bg-status-danger-subtle text-status-danger-foreground",
         tone === "muted" && "border-muted bg-muted text-muted-foreground",
       )}
     >
@@ -108,23 +104,20 @@ export function AdminScanDrawer({
     scan?.status === "queued" || scan?.status === "running" ? true : false;
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent
-        side="right"
-        className="flex w-full max-w-lg flex-col gap-4 overflow-y-auto sm:max-w-lg"
-        data-testid="admin-scan-drawer"
-      >
-        <SheetHeader>
-          <SheetTitle>
-            {scan
-              ? t("admin.scans.drawer.title", { id: scan.id.slice(0, 8) })
-              : t("admin.scans.title")}
-          </SheetTitle>
-          <SheetDescription className="font-mono text-xs">
-            {scan?.id ?? ""}
-          </SheetDescription>
-        </SheetHeader>
-
+    <PrimerDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={
+        scan
+          ? t("admin.scans.drawer.title", { id: scan.id.slice(0, 8) })
+          : t("admin.scans.title")
+      }
+      description={<span className="font-mono text-xs">{scan?.id ?? ""}</span>}
+      position="right"
+      width="large"
+      testId="admin-scan-drawer"
+    >
+      <div className="flex flex-col gap-4">
         {scan ? (
           <>
             <section
@@ -250,12 +243,7 @@ export function AdminScanDrawer({
                         disabled={cancel.isPending}
                         data-testid="admin-scan-confirm-ok"
                       >
-                        {cancel.isPending ? (
-                          <Loader2
-                            className="h-4 w-4 animate-spin"
-                            aria-hidden
-                          />
-                        ) : null}
+                        {cancel.isPending ? <Spinner size="small" /> : null}
                         {t("admin.actions.confirm")}
                       </Button>
                     </div>
@@ -265,9 +253,8 @@ export function AdminScanDrawer({
             ) : null}
           </>
         ) : null}
-
-      </SheetContent>
-    </Sheet>
+      </div>
+    </PrimerDialog>
   );
 }
 

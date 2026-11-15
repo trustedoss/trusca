@@ -30,12 +30,12 @@
  *     screen-reader users still get the precise ISO string.
  */
 import {
-  AlertCircle,
-  CheckCircle2,
-  Database,
-  RefreshCw,
-  ShieldAlert,
-} from "lucide-react";
+  AlertIcon,
+  CheckCircleIcon,
+  DatabaseIcon,
+  ShieldIcon,
+  SyncIcon,
+} from "@primer/octicons-react";
 import { useTranslation } from "react-i18next";
 
 import { EmptyState } from "@/components/EmptyState";
@@ -57,24 +57,24 @@ import { formatBytes } from "@/lib/zipFolder";
 const DASH = "—";
 
 function freshnessVisuals(freshness: TrivyDbFreshness): {
-  icon: typeof CheckCircle2;
+  icon: typeof CheckCircleIcon;
   badge: string;
 } {
   if (freshness === "fresh") {
     return {
-      icon: CheckCircle2,
+      icon: CheckCircleIcon,
       badge: "border-status-success-border bg-status-success-subtle text-status-success-foreground",
     };
   }
   if (freshness === "stale") {
     return {
-      icon: ShieldAlert,
+      icon: ShieldIcon,
       badge: "border-status-warning-border bg-status-warning-subtle text-status-warning-foreground",
     };
   }
   // very_stale — unknown never reaches here because the empty state owns it.
   return {
-    icon: AlertCircle,
+    icon: AlertIcon,
     badge: "border-status-danger-border bg-status-danger-subtle text-status-danger-foreground",
   };
 }
@@ -121,15 +121,11 @@ export function TrivyDBPanel({ now }: TrivyDBPanelProps = {}) {
   const renderHeading = () => (
     <div className="mb-3 flex items-center justify-between gap-2">
       <h2 className="flex items-center gap-2 text-sm font-semibold">
-        <Database className="h-4 w-4 text-muted-foreground" aria-hidden />
+        <DatabaseIcon size={16} className="text-muted-foreground" />
         {t("admin.trivy_db.heading")}
       </h2>
       {query.isFetching ? (
-        <RefreshCw
-          className="h-3 w-3 animate-spin text-muted-foreground"
-          aria-hidden
-          data-testid="admin-trivy-db-fetching"
-        />
+        <SyncIcon size={12} className="animate-spin text-muted-foreground" data-testid="admin-trivy-db-fetching" />
       ) : null}
     </div>
   );
@@ -197,7 +193,7 @@ export function TrivyDBPanel({ now }: TrivyDBPanelProps = {}) {
       >
         {renderHeading()}
         <EmptyState
-          icon={<Database aria-hidden />}
+          icon={<DatabaseIcon />}
           title={t("admin.trivy_db.empty.title")}
           description={t("admin.trivy_db.empty.description")}
           data-testid="admin-trivy-db-empty"
@@ -240,7 +236,7 @@ export function TrivyDBPanel({ now }: TrivyDBPanelProps = {}) {
     >
       <div className="mb-3 flex items-center justify-between gap-2">
         <h2 className="flex items-center gap-2 text-sm font-semibold">
-          <Database className="h-4 w-4 text-muted-foreground" aria-hidden />
+          <DatabaseIcon size={16} className="text-muted-foreground" />
           {t("admin.trivy_db.heading")}
         </h2>
         <Badge

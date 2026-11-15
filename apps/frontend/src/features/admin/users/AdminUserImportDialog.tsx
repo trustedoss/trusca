@@ -1,21 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
-import { FileUp } from "lucide-react";
+import { UploadIcon } from "@primer/octicons-react";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Alert, AlertDescription } from "@/components/primer/alert";
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/primer/Button";
+import { PrimerDialog } from "@/components/primer/PrimerDialog";
+import { Input } from "@/components/primer/Input";
+import { Textarea } from "@/components/primer/Textarea";
 import type { BulkResult } from "@/features/admin/api/adminUsersApi";
 import { useBulkCreateAdminUsers } from "@/features/admin/api/useAdminUserBulk";
 import { parseUserImportCsv, type ImportParseError } from "@/lib/userImportCsv";
@@ -83,128 +76,18 @@ export function AdminUserImportDialog({
   }
 
   return (
-    <Dialog
+    <PrimerDialog
       open={open}
       onOpenChange={(next) => {
         onOpenChange(next);
         if (!next) reset();
       }}
-    >
-      <DialogContent
-        className="max-w-2xl"
-        data-testid="admin-user-import-dialog"
-      >
-        <DialogHeader>
-          <DialogTitle>{t("admin.users.import.title")}</DialogTitle>
-          <DialogDescription>{t("admin.users.import.description")}</DialogDescription>
-        </DialogHeader>
-
-        <div className="flex flex-col gap-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => fileInputRef.current?.click()}
-              data-testid="admin-user-import-pick"
-            >
-              <FileUp className="mr-1.5 h-4 w-4" aria-hidden="true" />
-              {t("admin.users.import.choose_file")}
-            </Button>
-            <Input
-              ref={fileInputRef}
-              type="file"
-              accept=".csv,text/csv"
-              className="hidden"
-              onChange={handlePick}
-              data-testid="admin-user-import-file"
-            />
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => setText(TEMPLATE)}
-              data-testid="admin-user-import-template"
-            >
-              {t("admin.users.import.insert_header")}
-            </Button>
-          </div>
-
-          <Textarea
-            rows={8}
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder={t("admin.users.import.placeholder")}
-            className="font-mono text-xs"
-            aria-label={t("admin.users.import.textarea_label")}
-            data-testid="admin-user-import-text"
-          />
-
-          {parseErrors.length > 0 ? (
-            <Alert variant="destructive" data-testid="admin-user-import-parse-errors">
-              <AlertDescription>
-                <ul className="flex flex-col gap-1">
-                  {parseErrors.map((error) => (
-                    <li key={`${error.line}-${error.reason}`}>
-                      {t(`admin.users.import.parse_error.${error.reason}`, {
-                        line: error.line,
-                      })}
-                    </li>
-                  ))}
-                </ul>
-              </AlertDescription>
-            </Alert>
-          ) : null}
-
-          {mutation.isError ? (
-            <Alert variant="destructive" data-testid="admin-user-import-error">
-              <AlertDescription>
-                {problemMessage(mutation.error, t, {
-                  action: "admin.users.import.errors.submit",
-                })}
-              </AlertDescription>
-            </Alert>
-          ) : null}
-
-          {result ? (
-            <div className="flex flex-col gap-2" data-testid="admin-user-import-result">
-              <p className="text-sm">
-                {t("admin.users.import.summary", {
-                  succeeded: result.succeeded,
-                  failed: result.failed,
-                })}
-              </p>
-              <div className="max-h-56 overflow-y-auto rounded-md border">
-                <table className="w-full text-xs">
-                  <tbody>
-                    {result.results.map((row) => (
-                      <tr
-                        key={row.index}
-                        className="border-b last:border-b-0"
-                        data-testid="admin-user-import-row"
-                        data-status={row.status}
-                      >
-                        <td className="px-3 py-1.5 font-mono">{row.identifier}</td>
-                        <td className="px-3 py-1.5">
-                          {t(`admin.users.bulk.status.${row.status}`)}
-                        </td>
-                        <td className="px-3 py-1.5 text-muted-foreground">
-                          {row.reason
-                            ? t(`admin.users.bulk.reason.${row.reason}`, {
-                                defaultValue: t("admin.users.bulk.reason.failed"),
-                              })
-                            : ""}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ) : null}
-        </div>
-
-        <DialogFooter>
+      title={t("admin.users.import.title")}
+      description={t("admin.users.import.description")}
+      width="xlarge"
+      testId="admin-user-import-dialog"
+      footer={
+        <>
           <Button
             type="button"
             variant="ghost"
@@ -223,8 +106,121 @@ export function AdminUserImportDialog({
               ? t("admin.users.import.submitting")
               : t("admin.users.import.submit")}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => fileInputRef.current?.click()}
+            data-testid="admin-user-import-pick"
+          >
+            <UploadIcon size={16} className="mr-1.5" />
+            {t("admin.users.import.choose_file")}
+          </Button>
+          <Input
+            ref={fileInputRef}
+            type="file"
+            accept=".csv,text/csv"
+            className="hidden"
+            onChange={handlePick}
+            data-testid="admin-user-import-file"
+          />
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setText(TEMPLATE)}
+            data-testid="admin-user-import-template"
+          >
+            {t("admin.users.import.insert_header")}
+          </Button>
+        </div>
+
+        <Textarea
+          rows={8}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder={t("admin.users.import.placeholder")}
+          className="font-mono text-xs"
+          aria-label={t("admin.users.import.textarea_label")}
+          data-testid="admin-user-import-text"
+        />
+
+        {parseErrors.length > 0 ? (
+          <Alert
+            variant="destructive"
+            data-testid="admin-user-import-parse-errors"
+          >
+            <AlertDescription>
+              <ul className="flex flex-col gap-1">
+                {parseErrors.map((error) => (
+                  <li key={`${error.line}-${error.reason}`}>
+                    {t(`admin.users.import.parse_error.${error.reason}`, {
+                      line: error.line,
+                    })}
+                  </li>
+                ))}
+              </ul>
+            </AlertDescription>
+          </Alert>
+        ) : null}
+
+        {mutation.isError ? (
+          <Alert variant="destructive" data-testid="admin-user-import-error">
+            <AlertDescription>
+              {problemMessage(mutation.error, t, {
+                action: "admin.users.import.errors.submit",
+              })}
+            </AlertDescription>
+          </Alert>
+        ) : null}
+
+        {result ? (
+          <div
+            className="flex flex-col gap-2"
+            data-testid="admin-user-import-result"
+          >
+            <p className="text-sm">
+              {t("admin.users.import.summary", {
+                succeeded: result.succeeded,
+                failed: result.failed,
+              })}
+            </p>
+            <div className="max-h-56 overflow-y-auto rounded-md border">
+              <table className="w-full text-xs">
+                <tbody>
+                  {result.results.map((row) => (
+                    <tr
+                      key={row.index}
+                      className="border-b last:border-b-0"
+                      data-testid="admin-user-import-row"
+                      data-status={row.status}
+                    >
+                      <td className="px-3 py-1.5 font-mono">
+                        {row.identifier}
+                      </td>
+                      <td className="px-3 py-1.5">
+                        {t(`admin.users.bulk.status.${row.status}`)}
+                      </td>
+                      <td className="px-3 py-1.5 text-muted-foreground">
+                        {row.reason
+                          ? t(`admin.users.bulk.reason.${row.reason}`, {
+                              defaultValue: t("admin.users.bulk.reason.failed"),
+                            })
+                          : ""}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </PrimerDialog>
   );
 }

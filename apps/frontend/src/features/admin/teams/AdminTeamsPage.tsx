@@ -12,15 +12,18 @@
  * "New team" expands an inline create form above the table. The form
  * collapses on success and a toast confirms.
  */
-import { Loader2, Plus } from "lucide-react";
+import {
+  PlusIcon,
+} from "@primer/octicons-react";
+import { Spinner, Select } from "@primer/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { PageHeader } from "@/components/PageHeader";
 import { Alert, AlertDescription } from "@/components/primer/alert";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Button } from "@/components/primer/Button";
+import { Input } from "@/components/primer/Input";
+import { Label } from "@/components/primer/Label";
 import { Skeleton } from "@/components/primer/Skeleton";
 import { useCreateTeam } from "@/features/admin/api/useAdminTeamMutations";
 import { useAdminTeams } from "@/features/admin/api/useAdminTeams";
@@ -178,7 +181,7 @@ export function AdminTeamsPage() {
           onClick={() => setShowCreateForm((s) => !s)}
           data-testid="admin-teams-new-button"
         >
-          <Plus className="h-4 w-4" aria-hidden />
+          <PlusIcon size={16} />
           {t("admin.teams.action.create")}
         </Button>
       </div>
@@ -245,7 +248,7 @@ export function AdminTeamsPage() {
               data-testid="admin-teams-create-save"
             >
               {create.isPending ? (
-                <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                <Spinner size="small" />
               ) : null}
               {t("admin.teams.form.create")}
             </Button>
@@ -347,10 +350,9 @@ export function AdminTeamsPage() {
           >
             {t("admin.users.pagination.page_size_label")}
           </label>
-          <select
+          <Select
             id="admin-teams-page-size"
             data-testid="admin-teams-page-size"
-            className="h-8 rounded-md border border-input bg-background px-2"
             value={pageSize}
             onChange={(e) => {
               setPageSize(
@@ -363,7 +365,7 @@ export function AdminTeamsPage() {
                 {opt}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
 
         <div className="flex items-center gap-2">
