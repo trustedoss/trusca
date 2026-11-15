@@ -141,17 +141,25 @@ Two tokens, because one colour cannot do both jobs: the navy accent disappears o
 
 ### Global bar (W14)
 
-The shell's top edge spans the full width, above both the sidebar and the content. It is an ink surface inside a light theme, so it carries its own foreground scale; borrowing the page's would put near-black text on near-black.
+The shell's top edge spans the full width, above both the sidebar and the content. Since the 2026-11 redesign it sits on the card plane with a bottom border in light, so the chrome and the page share one surface family; dark keeps the slate plane. The bar has its own `--bar-*` scale, resolved per theme.
+
+| Token | Light | Use |
+|---|---|---|
+| `--bar` | `#ffffff` | Bar background (the card plane). |
+| `--bar-foreground` | `#18181b` | Primary text and icons: 16.97:1 |
+| `--bar-muted-foreground` | `#52525b` | Secondary text: 7.73:1 |
+| `--bar-border` | `#e7e7e9` | Bottom edge, control outlines |
+| `--bar-accent` | `#f4f4f5` | Hover and chip grounds on the bar |
+
+The `--topbar-*` family stays as the ink scale for the gateway's brand panel only:
 
 | Token | Hex | Use |
 |---|---|---|
-| `--topbar` | `#18181b` | Bar background. The W11 near-black ink; it matched `--primary` until the primary fill became navy in 2026-11. |
+| `--topbar` | `#18181b` | Ink background of the gateway brand panel. The W11 near-black ink; it matched `--primary` until the primary fill became navy in 2026-11. |
 | `--topbar-foreground` | `#fafafa` | Primary text and icons — 16.97:1 |
 | `--topbar-muted-foreground` | `#a1a1aa` | Secondary text — 6.91:1 |
-| `--topbar-border` | `#27272a` | Bottom edge, control outlines |
-| `--topbar-accent` | `#27272a` | Hover / chip grounds on the bar |
 
-Components that appear both on the bar and on a page (the bell, the language toggle, the ⌘K trigger, the brand mark) take an `onInk` prop rather than being duplicated.
+The brand mark shows its slate tile on the light bar and drops the tile on the dark one.
 
 ### Status surfaces (operation / entity state)
 
@@ -275,8 +283,11 @@ The success and danger solids do not move and still clear 3:1 as non-text marks 
 | `--topbar` | `#17213a` | On the popover plane. `#18181b` measured 1.06:1 against this canvas — the bar vanished. |
 | `--topbar-foreground` | `#f1f5f9` | |
 | `--topbar-muted-foreground` | `#94a3b8` | |
-| `--topbar-border` | `#2d3b53` | 1.55:1 against the bar — what separates it from the canvas. |
-| `--topbar-accent` | `#1c2740` | Hover ground inside the bar. |
+| `--bar` | `#17213a` | The global bar, same plane as `--topbar` in dark. |
+| `--bar-foreground` | `#f1f5f9` | |
+| `--bar-muted-foreground` | `#94a3b8` | |
+| `--bar-border` | `#2d3b53` | |
+| `--bar-accent` | `#1c2740` | Hover ground inside the bar. |
 
 The names still hold: `--brand` is "the accent, whatever the theme decides that is", and `--brand-on-ink` is "the teal on the bar".
 

@@ -250,6 +250,13 @@ describe("brand accent and global bar (W14)", () => {
     expect(contrast(token(name), token("topbar"))).toBeGreaterThanOrEqual(4.5);
   });
 
+  it.each([
+    ["--bar-foreground", "bar-foreground"],
+    ["--bar-muted-foreground", "bar-muted-foreground"],
+  ] as const)("%s is readable on the light global bar", (_label, name) => {
+    expect(contrast(token(name), token("bar"))).toBeGreaterThanOrEqual(4.5);
+  });
+
   it("keeps the accent and the logo teal distinct in role", () => {
     // Two tokens because one colour cannot do both jobs: the navy accent is
     // too dark to read on ink, the logo teal too light for white. Asserting
@@ -446,8 +453,8 @@ describe("dark theme contrast", () => {
     // `--topbar: #18181b` measured 1.06:1 against this canvas — the bar
     // vanished. It sits on the card plane now, so what has to be true is
     // that the bar reads as a surface and its border reads as an edge.
-    expect(contrast(dark("topbar"), dark("background"))).toBeGreaterThan(1.1);
-    expect(contrast(dark("topbar-border"), dark("topbar"))).toBeGreaterThan(1.3);
+    expect(contrast(dark("bar"), dark("background"))).toBeGreaterThan(1.1);
+    expect(contrast(dark("bar-border"), dark("bar"))).toBeGreaterThan(1.3);
   });
 
   it.each([
@@ -456,6 +463,13 @@ describe("dark theme contrast", () => {
     ["--brand-on-ink", "brand-on-ink"],
   ] as const)("%s is readable on the dark bar", (_label, name) => {
     expect(contrast(dark(name), dark("topbar"))).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it.each([
+    ["--bar-foreground", "bar-foreground"],
+    ["--bar-muted-foreground", "bar-muted-foreground"],
+  ] as const)("%s is readable on the dark global bar", (_label, name) => {
+    expect(contrast(dark(name), dark("bar"))).toBeGreaterThanOrEqual(4.5);
   });
 
   it("lightens the accent in dark, where light's navy would disappear", () => {
