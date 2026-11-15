@@ -9,7 +9,7 @@
 import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { TableRowsSkeleton } from "@/components/ui/skeletons";
+import { TableRowsSkeleton } from "@/components/primer/skeletons";
 
 function renderRows(props: { rows?: number; columns: string[] }) {
   return render(

@@ -29,10 +29,13 @@
  * deployment being full and has nothing to do with how many tabs this reader
  * has open.
  */
-import { PlugZap, RefreshCw } from "lucide-react";
+import {
+  PlugIcon,
+  SyncIcon,
+} from "@primer/octicons-react";
 import { useTranslation } from "react-i18next";
 
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/primer/Button";
 
 /**
  * Close code to the sentence that is true of it.
@@ -169,7 +172,7 @@ export function StreamStopped({
       role="status"
     >
       <div className="flex items-start gap-2">
-        <PlugZap className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+        <PlugIcon size={16} className="mt-0.5 shrink-0 text-muted-foreground" />
         <div className="min-w-0">
           <p className="text-sm font-medium">{t(copy.titleKey)}</p>
           <p className="text-xs text-muted-foreground">
@@ -189,7 +192,7 @@ export function StreamStopped({
             onClick={onReconnect}
             data-testid={`${copy.testId}-reconnect`}
           >
-            <RefreshCw className="h-3.5 w-3.5" aria-hidden />
+            <SyncIcon size={14} />
             {t("stream_stopped.retry")}
           </Button>
         </div>

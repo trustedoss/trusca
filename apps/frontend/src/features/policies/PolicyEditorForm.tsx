@@ -21,13 +21,14 @@
  * No hardcoded color hex literals or English strings — Tailwind tokens + `t()`
  * only (CLAUDE.md design system + i18n rules).
  */
+import { Select } from "@primer/react";
 import { useTranslation } from "react-i18next";
 
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Button } from "@/components/primer/Button";
+import { Input } from "@/components/primer/Input";
+import { Label } from "@/components/primer/Label";
 import { Switch } from "@/components/primer/switch";
-import { Textarea } from "@/components/ui/textarea";
+import { Textarea } from "@/components/primer/Textarea";
 import { cn } from "@/lib/utils";
 import type {
   CompoundOperator,
@@ -56,8 +57,8 @@ interface Props {
 /** Category dot — color paired with a label so color is never the only signal. */
 function CategoryDot({ category }: { category: PolicyCategory }) {
   const dot: Record<PolicyCategory, string> = {
-    allowed: "bg-emerald-500",
-    conditional: "bg-amber-500",
+    allowed: "bg-status-success",
+    conditional: "bg-risk-medium",
     forbidden: "bg-destructive",
   };
   return (
@@ -175,7 +176,7 @@ export function PolicyEditorForm({ draft, onChange, readOnly = false }: Props) {
         <span className="text-xs text-muted-foreground">
           {t("policies.fields.unknown.help")}
         </span>
-        <select
+        <Select block
           id="policy-unknown"
           data-testid="policy-unknown-select"
           className={cn(selectClass, "max-w-xs")}
@@ -192,7 +193,7 @@ export function PolicyEditorForm({ draft, onChange, readOnly = false }: Props) {
               {t(`policies.category.${opt}`)}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
 
       {/* Compound operator strategy */}
@@ -212,7 +213,7 @@ export function PolicyEditorForm({ draft, onChange, readOnly = false }: Props) {
               >
                 {op}
               </Label>
-              <select
+              <Select block
                 id={`policy-compound-${op}`}
                 data-testid={`policy-compound-${op}`}
                 className={selectClass}
@@ -232,7 +233,7 @@ export function PolicyEditorForm({ draft, onChange, readOnly = false }: Props) {
                     {t(`policies.strategy.${opt}`)}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
           ))}
         </div>
@@ -288,7 +289,7 @@ export function PolicyEditorForm({ draft, onChange, readOnly = false }: Props) {
                   data-testid="policy-override-key"
                   onChange={(e) => setOverrideKey(key, e.target.value)}
                 />
-                <select
+                <Select block
                   className={selectClass}
                   value={value}
                   disabled={readOnly}
@@ -303,7 +304,7 @@ export function PolicyEditorForm({ draft, onChange, readOnly = false }: Props) {
                       {t(`policies.category.${opt}`)}
                     </option>
                   ))}
-                </select>
+                </Select>
                 {!readOnly ? (
                   <Button
                     type="button"

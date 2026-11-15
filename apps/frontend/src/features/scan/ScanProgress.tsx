@@ -1,19 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
-import { useQuery } from "@tanstack/react-query";
 import {
-  Ban,
-  CheckCircle2,
-  Circle,
-  Loader2,
-  XCircle,
-} from "lucide-react";
+  BlockedIcon,
+  CheckCircleIcon,
+  CircleIcon,
+  XCircleIcon,
+} from "@primer/octicons-react";
+import { Spinner } from "@primer/react";
+import { useQuery } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Alert, AlertDescription } from "@/components/primer/alert";
-import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
+import { Button } from "@/components/primer/Button";
+import { Progress } from "@/components/primer/progress";
 import { Skeleton } from "@/components/primer/Skeleton";
 import { ScanCancelButton } from "@/features/scans/ScanCancelButton";
 import { StreamStopped } from "@/features/scan/StreamStopped";
@@ -250,7 +250,7 @@ export function ScanProgress({
           role="status"
           aria-live="polite"
         >
-          <Ban className="h-4 w-4" aria-hidden />
+          <BlockedIcon size={16} />
           <AlertDescription>{t("progress.cancelled_notice")}</AlertDescription>
         </Alert>
       ) : null}
@@ -283,7 +283,7 @@ export function ScanProgress({
               className={cn(
                 "flex items-center gap-2 rounded-md border px-2 py-1.5",
                 isCurrent && "border-primary/40 bg-primary/5",
-                isCompleted && "border-emerald-200 text-foreground",
+                isCompleted && "border-status-success-border text-foreground",
                 isFailedAtThisStep && "border-risk-critical/40 text-risk-critical-foreground",
               )}
               data-step={s}
@@ -298,25 +298,13 @@ export function ScanProgress({
               }
             >
               {isCompleted ? (
-                <CheckCircle2
-                  className="h-3.5 w-3.5 text-emerald-600"
-                  aria-hidden
-                />
+                <CheckCircleIcon size={14} className="text-status-success-foreground" />
               ) : isCurrent ? (
-                <Loader2
-                  className="h-3.5 w-3.5 animate-spin text-brand"
-                  aria-hidden
-                />
+                <Spinner size="small" className="text-brand" />
               ) : isFailedAtThisStep ? (
-                <XCircle
-                  className="h-3.5 w-3.5 text-risk-critical"
-                  aria-hidden
-                />
+                <XCircleIcon size={14} className="text-risk-critical" />
               ) : (
-                <Circle
-                  className="h-3.5 w-3.5 text-muted-foreground"
-                  aria-hidden
-                />
+                <CircleIcon size={14} className="text-muted-foreground" />
               )}
               <span>{t(`progress.step_${s}`, t("progress.step_unknown"))}</span>
             </li>

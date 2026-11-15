@@ -18,7 +18,7 @@ import { useTranslation } from "react-i18next";
 import RelativeTime from "@/components/RelativeTime";
 import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Badge } from "@/components/primer/badge";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/primer/Button";
 import { Skeleton } from "@/components/primer/Skeleton";
 import { useToast } from "@/components/primer/toast";
 import {

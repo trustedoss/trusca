@@ -13,8 +13,12 @@
  *     hex literals — to satisfy CLAUDE.md "never hardcode color hex values".
  *   - Color is paired with a text label (CLAUDE.md accessibility rule).
  */
-import { ClipboardCheck, FilterX } from "lucide-react";
+import {
+  ChecklistIcon,
+  FilterIcon,
+} from "@primer/octicons-react";
 import { useCallback, useMemo } from "react";
+import { Select } from "@primer/react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 
@@ -22,9 +26,9 @@ import { EmptyState } from "@/components/EmptyState";
 import { PageHeader } from "@/components/PageHeader";
 import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Badge } from "@/components/primer/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Button } from "@/components/primer/Button";
+import { Input } from "@/components/primer/Input";
+import { Label } from "@/components/primer/Label";
 import { Skeleton } from "@/components/primer/Skeleton";
 import { ApprovalsDrawer } from "@/features/approvals/ApprovalsDrawer";
 import { TransitionApprovalsPanel } from "@/features/approvals/TransitionApprovalsPanel";
@@ -107,9 +111,9 @@ function StatusBadge({
   t: (key: string) => string;
 }) {
   const colorMap: Record<ApprovalStatus, string> = {
-    pending: "border-yellow-300 bg-yellow-50 text-yellow-700",
+    pending: "border-status-warning-border bg-status-warning-subtle text-status-warning-foreground",
     under_review: "border-status-info-border bg-status-info-subtle text-status-info-foreground",
-    approved: "border-green-300 bg-green-50 text-green-700",
+    approved: "border-status-success-border bg-status-success-subtle text-status-success-foreground",
     rejected: "border-status-danger-border bg-status-danger-subtle text-status-danger-foreground",
   };
   return (
@@ -303,10 +307,9 @@ export function ApprovalsPage() {
           >
             {t("approvals.column.status")}
           </Label>
-          <select
+          <Select
             id="approval-status-filter"
             data-testid="approval-status-filter"
-            className="h-8 rounded-md border border-input bg-background px-2 text-sm"
             value={statusFilter}
             onChange={(e) => {
               setStatusFilter(e.target.value as StatusFilter);
@@ -321,7 +324,7 @@ export function ApprovalsPage() {
                     : t(`approvals.status.${opt}`)}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
 
         {/* P2 #7 — From / To date pickers.
@@ -631,7 +634,7 @@ export function ApprovalsPage() {
                 <td colSpan={6} className="px-6 py-6">
                   <EmptyState
                     data-testid="approvals-empty"
-                    icon={hasFilters ? <FilterX /> : <ClipboardCheck />}
+                    icon={hasFilters ? <FilterIcon /> : <ChecklistIcon />}
                     title={
                       hasFilters
                         ? t("approvals.empty_filtered")

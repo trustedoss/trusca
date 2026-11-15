@@ -19,7 +19,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Badge } from "@/components/primer/badge";
 import { Button } from "@/components/ui/button";
-import { TableRowsSkeleton } from "@/components/ui/skeletons";
+import { TableRowsSkeleton } from "@/components/primer/skeletons";
 import { useAdminUsers } from "@/features/admin/api/useAdminUsers";
 import type { UserRole } from "@/features/admin/api/adminUsersApi";
 import { useToast } from "@/components/primer/toast";

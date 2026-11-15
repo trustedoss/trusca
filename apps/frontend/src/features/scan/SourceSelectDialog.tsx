@@ -1,23 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
-import { Box, FileArchive, FolderOpen, GitBranch, KeyRound } from "lucide-react";
+import {
+  FileDirectoryIcon,
+  FileZipIcon,
+  GitBranchIcon,
+  KeyIcon,
+  PackageIcon,
+} from "@primer/octicons-react";
 import { useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 
 import { Alert, AlertDescription } from "@/components/primer/alert";
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Progress } from "@/components/ui/progress";
+import { Button } from "@/components/primer/Button";
+import { PrimerDialog } from "@/components/primer/PrimerDialog";
+import { Input } from "@/components/primer/Input";
+import { Label } from "@/components/primer/Label";
+import { Progress } from "@/components/primer/progress";
 import { Switch } from "@/components/primer/switch";
 import {
   type ScanStage,
@@ -68,25 +67,25 @@ type ScanKind = "source" | "container";
 
 interface MethodMeta {
   value: SourceMethod;
-  icon: typeof GitBranch;
+  icon: typeof GitBranchIcon;
   testid: string;
 }
 
 const METHODS: MethodMeta[] = [
-  { value: "git", icon: GitBranch, testid: "source-method-git" },
-  { value: "upload", icon: FileArchive, testid: "source-method-upload" },
-  { value: "folder", icon: FolderOpen, testid: "source-method-folder" },
+  { value: "git", icon: GitBranchIcon, testid: "source-method-git" },
+  { value: "upload", icon: FileZipIcon, testid: "source-method-upload" },
+  { value: "folder", icon: FileDirectoryIcon, testid: "source-method-folder" },
 ];
 
 interface KindMeta {
   value: ScanKind;
-  icon: typeof GitBranch;
+  icon: typeof GitBranchIcon;
   testid: string;
 }
 
 const KINDS: KindMeta[] = [
-  { value: "source", icon: GitBranch, testid: "scan-kind-source" },
-  { value: "container", icon: Box, testid: "scan-kind-container" },
+  { value: "source", icon: GitBranchIcon, testid: "scan-kind-source" },
+  { value: "container", icon: PackageIcon, testid: "scan-kind-container" },
 ];
 
 export function SourceSelectDialog({
@@ -162,8 +161,8 @@ export function SourceSelectDialog({
     if (method === "folder") {
       return Boolean(
         folderInspection &&
-          !folderInspection.isEmpty &&
-          !folderInspection.exceedsMax,
+        !folderInspection.isEmpty &&
+        !folderInspection.exceedsMax,
       );
     }
     return false;
@@ -254,39 +253,61 @@ export function SourceSelectDialog({
   const stageLabel = stageLabelKey(progress.stage);
 
   return (
-    <Dialog
+    <PrimerDialog
       open={open}
       onOpenChange={(next) => {
-        if (!next) {
-          resetTransient();
-          setImageRef("");
-          setImageRefTouched(false);
-          setRelease("");
-          setVerbose(false);
-        }
-        onOpenChange(next);
+        // A transfer in flight keeps the dialog open; the footer buttons are
+        // disabled for the same reason.
+        if (isBusy) return;
+        ((next) => {
+          if (!next) {
+            resetTransient();
+            setImageRef("");
+            setImageRefTouched(false);
+            setRelease("");
+            setVerbose(false);
+          }
+          onOpenChange(next);
+        })(next);
       }}
+      title={t("source.title")}
+      description={
+        kind === "container"
+          ? t("container.subtitle", {
+              defaultValue:
+                "Scan a container image for {{project}} with Trivy.",
+              project: project.name,
+            })
+          : t("source.subtitle", { project: project.name })
+      }
+      width="large"
+      testId="source-select-dialog"
+      footer={
+        <>
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => {
+              resetTransient();
+              onOpenChange(false);
+            }}
+            disabled={isBusy}
+            data-testid="source-cancel"
+          >
+            {t("source.cancel")}
+          </Button>
+          <Button
+            type="button"
+            onClick={handleSubmit}
+            disabled={!canSubmit}
+            data-testid="source-submit"
+          >
+            {isBusy ? t("source.starting") : t("source.start")}
+          </Button>
+        </>
+      }
     >
-      <DialogContent
-        className="max-w-xl"
-        data-testid="source-select-dialog"
-        onInteractOutside={(e) => {
-          if (isBusy) e.preventDefault();
-        }}
-      >
-        <DialogHeader>
-          <DialogTitle>{t("source.title")}</DialogTitle>
-          <DialogDescription>
-            {kind === "container"
-              ? t("container.subtitle", {
-                  defaultValue:
-                    "Scan a container image for {{project}} with Trivy.",
-                  project: project.name,
-                })
-              : t("source.subtitle", { project: project.name })}
-          </DialogDescription>
-        </DialogHeader>
-
+      <div className="flex flex-col gap-4">
         <div
           role="radiogroup"
           aria-label={t("kind.legend", { defaultValue: "Scan type" })}
@@ -407,11 +428,7 @@ export function SourceSelectDialog({
           />
         )}
 
-        <ReleaseField
-          value={release}
-          onChange={setRelease}
-          disabled={isBusy}
-        />
+        <ReleaseField value={release} onChange={setRelease} disabled={isBusy} />
 
         <VerboseField
           checked={verbose}
@@ -439,34 +456,13 @@ export function SourceSelectDialog({
 
         {errorMessage ? (
           <Alert variant="destructive" data-testid="source-error">
-            <AlertDescription aria-live="polite">{errorMessage}</AlertDescription>
+            <AlertDescription aria-live="polite">
+              {errorMessage}
+            </AlertDescription>
           </Alert>
         ) : null}
-
-        <DialogFooter>
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={() => {
-              resetTransient();
-              onOpenChange(false);
-            }}
-            disabled={isBusy}
-            data-testid="source-cancel"
-          >
-            {t("source.cancel")}
-          </Button>
-          <Button
-            type="button"
-            onClick={handleSubmit}
-            disabled={!canSubmit}
-            data-testid="source-submit"
-          >
-            {isBusy ? t("source.starting") : t("source.start")}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      </div>
+    </PrimerDialog>
   );
 }
 
@@ -520,7 +516,7 @@ function GitPanel({
         data-testid="source-git-credential-hint"
         data-configured={hasGitCredential ? "true" : "false"}
       >
-        <KeyRound className="h-3 w-3 shrink-0" aria-hidden />
+        <KeyIcon size={12} className="shrink-0" />
         {hasGitCredential ? (
           <span>{t("source.git.credential_configured")}</span>
         ) : (
@@ -687,10 +683,7 @@ function FolderPanel({
       </p>
 
       {inspection && !inspection.isEmpty ? (
-        <div
-          className="space-y-1 text-xs"
-          data-testid="source-folder-summary"
-        >
+        <div className="space-y-1 text-xs" data-testid="source-folder-summary">
           <p className="text-foreground">
             {t("source.folder.selected", {
               count: inspection.files.length,
@@ -838,7 +831,10 @@ function ContainerPanel({
 }: ContainerPanelProps) {
   const { t } = useTranslation("scans");
   return (
-    <div className="min-h-[7rem] space-y-2" data-testid="source-container-panel">
+    <div
+      className="min-h-[7rem] space-y-2"
+      data-testid="source-container-panel"
+    >
       <label
         htmlFor="scan-image-ref-input"
         className="block text-xs font-medium text-muted-foreground"

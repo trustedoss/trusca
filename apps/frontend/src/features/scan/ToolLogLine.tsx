@@ -25,7 +25,7 @@ import type { ScanLogMessage } from "@/hooks/useScanWebSocket";
 // fall back to the neutral foreground.
 export const STAGE_BADGE_CLASS: Record<string, string> = {
   cdxgen: "border-transparent bg-brand-subtle text-brand",
-  scancode: "border-amber-500/30 bg-amber-500/10 text-amber-700",
+  scancode: "border-amber-500/30 bg-risk-medium/10 text-amber-700",
   // W6-#43f: Trivy is the vulnerability scanner — colour the badge with the
   // risk-high token so it reads as "security tool" in the unified log stream.
   // G0-7: the tint behind this badge paints for the first time, and the

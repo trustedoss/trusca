@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
+import {
+  ChevronLeftIcon,
+  DownloadIcon,
+  SearchIcon,
+} from "@primer/octicons-react";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronLeft, Download, SearchX } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -15,7 +19,7 @@ import { Link, useParams } from "react-router-dom";
 import { EmptyState } from "@/components/EmptyState";
 import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Badge } from "@/components/primer/badge";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/primer/Button";
 import { Skeleton } from "@/components/primer/Skeleton";
 import { ScanProgress } from "@/features/scan/ScanProgress";
 import { OsEolPanel } from "@/features/scan/OsEolPanel";
@@ -41,7 +45,7 @@ import { getScan, type ScanStatus } from "@/lib/projectsApi";
  * full-width route the user can deep-link, reload, and share. Layout:
  *
  *   ┌─────────────────────────────────────────────────────────┐
- *   │  Scan abcd1234 [running] [v1.2.3]    [Download log]    │  header
+ *   │  Scan abcd1234 [running] [v1.2.3]    [DownloadIcon log]    │  header
  *   ├─────────────────────────────────────────────────────────┤
  *   │  <ScanProgress hideInlineLog />                         │  progress
  *   │                                                         │
@@ -59,7 +63,7 @@ import { getScan, type ScanStatus } from "@/lib/projectsApi";
  *   - Auto-scroll to the bottom on new messages, BUT pause when the user
  *     scrolls up. Detection: `scrollTop + clientHeight >= scrollHeight - 10`.
  *     Resumes when the user scrolls back to the bottom.
- *   - Download button calls `GET /api/v1/scans/{id}/log` (backend RFC 7807
+ *   - DownloadIcon button calls `GET /api/v1/scans/{id}/log` (backend RFC 7807
  *     404 — existence-hide). Disabled while the scan is `queued` AND no log
  *     lines have streamed yet.
  *   - Uses the shared `ToolLogLine` so the row styling stays byte-for-byte
@@ -118,7 +122,7 @@ export function ScanDetailPage() {
   // simply not true: nothing in the app invalidates this query. That left the
   // page's liveness entirely dependent on the socket, and the download button
   // is gated on `liveStatus === "queued"`, so a socket that never delivered
-  // left a finished scan showing a permanently disabled Download button with
+  // left a finished scan showing a permanently disabled DownloadIcon button with
   // no recovery short of a manual reload. The hook deliberately does NOT
   // auto-reconnect after a 4429 capacity close, and a proxy or load balancer
   // that drops an idle upgrade ends in the same place, so this is reachable
@@ -231,7 +235,7 @@ export function ScanDetailPage() {
     return () => cancelAnimationFrame(id);
   }, [filteredMessages.length, pinnedToBottom, filter]);
 
-  // ---- Download log. Disabled until either (a) we have streamed at least
+  // ---- DownloadIcon log. Disabled until either (a) we have streamed at least
   // one line in this session, (b) the persisted status has moved past
   // `queued` (the worker has started writing the on-disk log), or (c) this
   // page's own socket has observed a real step on its initial sync frame.
@@ -363,7 +367,7 @@ export function ScanDetailPage() {
         {scanQuery.isError ? (
           <EmptyState
             data-testid="scan-detail-page-error"
-            icon={<SearchX />}
+            icon={<SearchIcon />}
             title={problemMessage(scanQuery.error, t, {
               prefix: "detail.errors",
               allowDetailFallback: false,
@@ -584,7 +588,7 @@ function PageHeader({
           className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors duration-fast ease-out-soft hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           data-testid="scan-detail-page-back-link"
         >
-          <ChevronLeft className="h-3.5 w-3.5" aria-hidden />
+          <ChevronLeftIcon size={14} />
           {t("detail.back_to_project")}
         </Link>
 
@@ -625,7 +629,7 @@ function PageHeader({
             disabled={downloadDisabled}
             data-testid="scan-detail-page-download"
           >
-            <Download className="mr-1 h-3.5 w-3.5" aria-hidden />
+            <DownloadIcon size={14} className="mr-1" />
             {downloading
               ? `${t("detail.download")}…`
               : t("detail.download")}
