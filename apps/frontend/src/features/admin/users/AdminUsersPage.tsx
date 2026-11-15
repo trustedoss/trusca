@@ -12,13 +12,14 @@
  * table without an extra round-trip beyond the invalidation.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Select } from "@primer/react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 
 import { PageHeader } from "@/components/PageHeader";
 import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Badge } from "@/components/primer/badge";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/primer/Button";
 import { TableRowsSkeleton } from "@/components/primer/skeletons";
 import { useAdminUsers } from "@/features/admin/api/useAdminUsers";
 import type { UserRole } from "@/features/admin/api/adminUsersApi";
@@ -387,10 +388,9 @@ export function AdminUsersPage() {
           >
             {t("admin.users.pagination.page_size_label")}
           </label>
-          <select
+          <Select
             id="admin-users-page-size"
             data-testid="admin-users-page-size"
-            className="h-8 rounded-md border border-input bg-background px-2"
             value={pageSize}
             onChange={(e) => {
               setPageSize(Number(e.target.value) as PageSize);
@@ -401,7 +401,7 @@ export function AdminUsersPage() {
                 {opt}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
 
         <div className="flex items-center gap-2">

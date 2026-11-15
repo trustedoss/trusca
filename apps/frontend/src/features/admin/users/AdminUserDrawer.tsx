@@ -18,22 +18,16 @@
  * Errors translate via `adminErrorMessageKey` so domain invariants
  * (last_super_admin_protected, cannot_modify_self) surface in the toast.
  */
-import { Loader2 } from "lucide-react";
+import { Spinner, Select } from "@primer/react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Badge } from "@/components/primer/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { Button } from "@/components/primer/Button";
+import { Input } from "@/components/primer/Input";
+import { Label } from "@/components/primer/Label";
+import { PrimerDialog } from "@/components/primer/PrimerDialog";
 import { Skeleton } from "@/components/primer/Skeleton";
 import { useAdminUser } from "@/features/admin/api/useAdminUser";
 import {
@@ -103,7 +97,7 @@ export function AdminUserDrawer({
     if (detail.data) {
       const fallbackRole: UserRole = detail.data.is_superuser
         ? "super_admin"
-        : detail.data.memberships[0]?.role ?? "developer";
+        : (detail.data.memberships[0]?.role ?? "developer");
       setRoleSelection(fallbackRole);
     }
   }, [detailId, detail.data]);
@@ -138,9 +132,7 @@ export function AdminUserDrawer({
         payload: {
           role: roleSelection,
           team_id:
-            roleSelection === "super_admin"
-              ? null
-              : (teamIdInput.trim() || null),
+            roleSelection === "super_admin" ? null : teamIdInput.trim() || null,
         },
       });
       setShowRoleForm(false);
@@ -214,21 +206,20 @@ export function AdminUserDrawer({
   }
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent
-        side="right"
-        className="flex w-full max-w-lg flex-col gap-4 overflow-y-auto sm:max-w-lg"
-        data-testid="admin-user-drawer"
-      >
-        <SheetHeader>
-          <SheetTitle>
-            {detail.data?.full_name || detail.data?.email || t("admin.users.title")}
-          </SheetTitle>
-          <SheetDescription className="font-mono text-xs">
-            {detail.data?.email ?? ""}
-          </SheetDescription>
-        </SheetHeader>
-
+    <PrimerDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={
+        detail.data?.full_name || detail.data?.email || t("admin.users.title")
+      }
+      description={
+        <span className="font-mono text-xs">{detail.data?.email ?? ""}</span>
+      }
+      position="right"
+      width="large"
+      testId="admin-user-drawer"
+    >
+      <div className="flex flex-col gap-4">
         {detail.isLoading ? (
           <div className="space-y-2" data-testid="admin-user-drawer-loading">
             <Skeleton className="h-6 w-1/2" />
@@ -253,7 +244,7 @@ export function AdminUserDrawer({
                 role={
                   detail.data.is_superuser
                     ? "super_admin"
-                    : detail.data.memberships[0]?.role ?? "developer"
+                    : (detail.data.memberships[0]?.role ?? "developer")
                 }
               />
               <Badge
@@ -273,7 +264,10 @@ export function AdminUserDrawer({
             </section>
 
             <section className="grid grid-cols-2 gap-3 text-xs">
-              <Meta label={t("admin.users.drawer.created_at")} value={createdRel} />
+              <Meta
+                label={t("admin.users.drawer.created_at")}
+                value={createdRel}
+              />
               <Meta
                 label={t("admin.users.drawer.last_login_at")}
                 value={lastLoginRel}
@@ -294,10 +288,7 @@ export function AdminUserDrawer({
               />
             </section>
 
-            <section
-              className="space-y-2"
-              data-testid="admin-user-memberships"
-            >
+            <section className="space-y-2" data-testid="admin-user-memberships">
               <h3 className="text-sm font-semibold">
                 {t("admin.users.drawer.memberships")}
               </h3>
@@ -398,10 +389,9 @@ export function AdminUserDrawer({
                     >
                       {t("admin.users.form.role_label")}
                     </Label>
-                    <select
+                    <Select block
                       id="admin-user-role-select"
                       data-testid="admin-user-role-select"
-                      className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm"
                       value={roleSelection}
                       onChange={(e) =>
                         setRoleSelection(e.target.value as UserRole)
@@ -419,7 +409,7 @@ export function AdminUserDrawer({
                       <option value="viewer">
                         {t("admin.users.role.viewer")}
                       </option>
-                    </select>
+                    </Select>
                   </div>
                   {roleSelection !== "super_admin" ? (
                     <div>
@@ -455,9 +445,7 @@ export function AdminUserDrawer({
                     disabled={updateRole.isPending}
                     data-testid="admin-user-role-save"
                   >
-                    {updateRole.isPending ? (
-                      <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                    ) : null}
+                    {updateRole.isPending ? <Spinner size="small" /> : null}
                     {t("admin.users.form.save")}
                   </Button>
                 </div>
@@ -493,8 +481,8 @@ export function AdminUserDrawer({
             ) : null}
           </>
         ) : null}
-      </SheetContent>
-    </Sheet>
+      </div>
+    </PrimerDialog>
   );
 }
 
@@ -521,7 +509,12 @@ interface ConfirmStripProps {
   isPending: boolean;
 }
 
-function ConfirmStrip({ kind, onCancel, onConfirm, isPending }: ConfirmStripProps) {
+function ConfirmStrip({
+  kind,
+  onCancel,
+  onConfirm,
+  isPending,
+}: ConfirmStripProps) {
   const { t } = useTranslation("admin");
   return (
     <div
@@ -546,9 +539,7 @@ function ConfirmStrip({ kind, onCancel, onConfirm, isPending }: ConfirmStripProp
           disabled={isPending}
           data-testid="admin-user-confirm-ok"
         >
-          {isPending ? (
-            <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-          ) : null}
+          {isPending ? <Spinner size="small" /> : null}
           {t("admin.actions.confirm")}
         </Button>
       </div>

@@ -27,7 +27,12 @@
  * `data-status`, each row `data-testid="anonymisation-backlog-row"` with a raw
  * `data-waiting-days` so Playwright asserts wire values, not formatted text.
  */
-import { AlertCircle, CheckCircle2, Clock, ShieldAlert } from "lucide-react";
+import {
+  AlertIcon,
+  CheckCircleIcon,
+  ClockIcon,
+  ShieldIcon,
+} from "@primer/octicons-react";
 import { useTranslation } from "react-i18next";
 
 import { EmptyState } from "@/components/EmptyState";
@@ -60,7 +65,7 @@ export function panelStatus(items: AwaitingExecutionItem[]): PanelStatus {
 }
 
 function statusVisuals(status: PanelStatus): {
-  icon: typeof CheckCircle2;
+  icon: typeof CheckCircleIcon;
   badge: string;
 } {
   if (status === "clear") {
@@ -72,19 +77,19 @@ function statusVisuals(status: PanelStatus): {
     // not a pattern to copy: the token lint fails a NEW raw colour, and the
     // semantic pairing for a muted surface is its own foreground.
     return {
-      icon: CheckCircle2,
+      icon: CheckCircleIcon,
       badge: "border-border bg-muted text-muted-foreground",
     };
   }
   if (status === "waiting") {
     return {
-      icon: Clock,
+      icon: ClockIcon,
       badge:
         "border-status-warning-border bg-status-warning-subtle text-status-warning-foreground",
     };
   }
   return {
-    icon: ShieldAlert,
+    icon: ShieldIcon,
     badge:
       "border-status-danger-border bg-status-danger-subtle text-status-danger-foreground",
   };
@@ -118,7 +123,7 @@ export function AnonymisationBacklogPanel() {
           {t("admin.anonymisation.title")}
         </h2>
         <Alert variant="destructive" className="mt-3">
-          <AlertCircle className="h-4 w-4" />
+          <AlertIcon size={16} />
           <AlertDescription>{t(adminErrorMessageKey(error))}</AlertDescription>
         </Alert>
       </section>
@@ -152,7 +157,7 @@ export function AnonymisationBacklogPanel() {
       {items.length === 0 ? (
         <EmptyState
           className="mt-3"
-          icon={<CheckCircle2 className="h-5 w-5" aria-hidden="true" />}
+          icon={<CheckCircleIcon size={20} />}
           title={t("admin.anonymisation.empty.title")}
           description={t("admin.anonymisation.empty.description")}
           data-testid="anonymisation-backlog-empty"
@@ -194,7 +199,7 @@ export function AnonymisationBacklogPanel() {
                         : "border-status-warning-border bg-status-warning-subtle text-status-warning-foreground",
                     )}
                   >
-                    <Clock className="h-3 w-3" aria-hidden="true" />
+                    <ClockIcon size={12} />
                     {t("admin.anonymisation.waiting", {
                       count: item.waiting_days,
                     })}

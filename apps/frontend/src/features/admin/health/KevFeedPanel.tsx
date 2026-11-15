@@ -28,13 +28,12 @@
  * against wire values instead of locale-formatted text.
  */
 import {
-  AlertCircle,
-  CheckCircle2,
-  CircleOff,
-  RefreshCw,
-  ShieldAlert,
-  Siren,
-} from "lucide-react";
+  AlertIcon,
+  CheckCircleIcon,
+  CircleSlashIcon,
+  ShieldIcon,
+  SyncIcon,
+} from "@primer/octicons-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -59,24 +58,24 @@ const DASH = "—";
 type PanelStatus = "disabled" | "skipped" | "synced";
 
 function statusVisuals(status: PanelStatus): {
-  icon: typeof CheckCircle2;
+  icon: typeof CheckCircleIcon;
   badge: string;
 } {
   if (status === "disabled") {
     // Muted — mirrors the Badge `muted` variant palette (BUG-001-safe slate).
     return {
-      icon: CircleOff,
-      badge: "border-border bg-muted text-slate-600",
+      icon: CircleSlashIcon,
+      badge: "border-border bg-muted text-foreground/80",
     };
   }
   if (status === "skipped") {
     return {
-      icon: ShieldAlert,
+      icon: ShieldIcon,
       badge: "border-status-warning-border bg-status-warning-subtle text-status-warning-foreground",
     };
   }
   return {
-    icon: CheckCircle2,
+    icon: CheckCircleIcon,
     badge: "border-status-success-border bg-status-success-subtle text-status-success-foreground",
   };
 }
@@ -142,16 +141,12 @@ export function KevFeedPanel({ now }: KevFeedPanelProps = {}) {
   const renderHeading = (badge?: ReactNode) => (
     <div className="mb-3 flex items-center justify-between gap-2">
       <h2 className="flex items-center gap-2 text-sm font-semibold">
-        <Siren className="h-4 w-4 text-muted-foreground" aria-hidden />
+        <AlertIcon size={16} className="text-muted-foreground" />
         {t("admin.kev_feed.heading")}
       </h2>
       <div className="flex items-center gap-2">
         {query.isFetching ? (
-          <RefreshCw
-            className="h-3 w-3 animate-spin text-muted-foreground"
-            aria-hidden
-            data-testid="kev-feed-fetching"
-          />
+          <SyncIcon size={12} className="animate-spin text-muted-foreground" data-testid="kev-feed-fetching" />
         ) : null}
         {badge}
       </div>
@@ -262,7 +257,7 @@ export function KevFeedPanel({ now }: KevFeedPanelProps = {}) {
       >
         {renderHeading(badge)}
         <EmptyState
-          icon={<Siren aria-hidden />}
+          icon={<AlertIcon />}
           title={t("admin.kev_feed.empty.title")}
           description={t("admin.kev_feed.empty.description")}
           data-testid="kev-feed-empty"
@@ -285,7 +280,7 @@ export function KevFeedPanel({ now }: KevFeedPanelProps = {}) {
           className="mb-3 flex items-center gap-1.5 text-xs text-status-warning-foreground"
           data-testid="kev-feed-skipped-reason"
         >
-          <AlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden />
+          <AlertIcon size={14} className="shrink-0" />
           {t("admin.kev_feed.skipped_reason", { reason: data.skipped_reason })}
         </p>
       ) : null}

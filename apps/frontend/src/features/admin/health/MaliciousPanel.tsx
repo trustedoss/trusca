@@ -21,13 +21,13 @@
  * tile carries `data-testid` + raw `data-value`.
  */
 import {
-  AlertCircle,
-  CheckCircle2,
-  CircleOff,
-  RefreshCw,
-  ShieldAlert,
-  ShieldX,
-} from "lucide-react";
+  AlertIcon,
+  CheckCircleIcon,
+  CircleSlashIcon,
+  ShieldIcon,
+  ShieldXIcon,
+  SyncIcon,
+} from "@primer/octicons-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -50,16 +50,16 @@ type PanelStatus = "ok" | "stale" | "skipped" | "disabled";
 function statusVisuals(status: PanelStatus) {
   switch (status) {
     case "disabled":
-      return { icon: CircleOff, badge: "text-muted-foreground" };
+      return { icon: CircleSlashIcon, badge: "text-muted-foreground" };
     case "stale":
     case "skipped":
       return {
-        icon: AlertCircle,
+        icon: AlertIcon,
         badge: "border-status-warning text-status-warning-foreground",
       };
     default:
       return {
-        icon: CheckCircle2,
+        icon: CheckCircleIcon,
         badge: "border-status-success text-status-success-foreground",
       };
   }
@@ -103,16 +103,12 @@ export function MaliciousPanel() {
   const renderHeading = (badge?: ReactNode) => (
     <div className="mb-3 flex items-center justify-between gap-2">
       <h2 className="flex items-center gap-2 text-sm font-semibold">
-        <ShieldX className="h-4 w-4 text-muted-foreground" aria-hidden />
+        <ShieldXIcon size={16} className="text-muted-foreground" />
         {t("admin.malicious.heading")}
       </h2>
       <div className="flex items-center gap-2">
         {query.isFetching ? (
-          <RefreshCw
-            className="h-3 w-3 animate-spin text-muted-foreground"
-            aria-hidden
-            data-testid="malicious-fetching"
-          />
+          <SyncIcon size={12} className="animate-spin text-muted-foreground" data-testid="malicious-fetching" />
         ) : null}
         {badge}
       </div>
@@ -197,7 +193,7 @@ export function MaliciousPanel() {
           className="mb-3 flex items-center gap-1.5 text-xs text-status-warning-foreground"
           data-testid="malicious-stale-note"
         >
-          <AlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden />
+          <AlertIcon size={14} className="shrink-0" />
           {t("admin.malicious.stale_note")}
         </p>
       ) : null}
@@ -207,7 +203,7 @@ export function MaliciousPanel() {
           className="mb-3 flex items-center gap-1.5 text-xs text-risk-critical-foreground"
           data-testid="malicious-newly-flagged-note"
         >
-          <ShieldAlert className="h-3.5 w-3.5 shrink-0" aria-hidden />
+          <ShieldIcon size={14} className="shrink-0" />
           {t("admin.malicious.newly_flagged_note", {
             count: data.newly_flagged,
           })}

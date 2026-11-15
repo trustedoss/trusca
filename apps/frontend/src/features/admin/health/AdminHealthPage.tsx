@@ -10,13 +10,18 @@
  * The query polls every 30s. There is no manual mutation surface — operators
  * use the per-component pages (DT / Scans / Disk) for actions.
  */
-import { AlertCircle, CheckCircle2, RefreshCw, ShieldAlert } from "lucide-react";
+import {
+  AlertIcon,
+  CheckCircleIcon,
+  ShieldIcon,
+  SyncIcon,
+} from "@primer/octicons-react";
 import { useTranslation } from "react-i18next";
 
 import { PageHeader } from "@/components/PageHeader";
 import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Badge } from "@/components/primer/badge";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/primer/Button";
 import { Skeleton } from "@/components/primer/Skeleton";
 import {
   type HealthComponent,
@@ -33,28 +38,28 @@ import { formatRelativeToNow } from "@/lib/relativeTime";
 import { cn } from "@/lib/utils";
 
 function statusVisuals(status: HealthStatus): {
-  icon: typeof CheckCircle2;
+  icon: typeof CheckCircleIcon;
   badge: string;
   ring: string;
 } {
   if (status === "ok") {
     return {
-      icon: CheckCircle2,
+      icon: CheckCircleIcon,
       badge: "border-status-success-border bg-status-success-subtle text-status-success-foreground",
-      ring: "border-emerald-200",
+      ring: "border-status-success-border",
     };
   }
   if (status === "degraded") {
     return {
-      icon: ShieldAlert,
+      icon: ShieldIcon,
       badge: "border-status-warning-border bg-status-warning-subtle text-status-warning-foreground",
-      ring: "border-amber-200",
+      ring: "border-status-warning-border",
     };
   }
   return {
-    icon: AlertCircle,
+    icon: AlertIcon,
     badge: "border-status-danger-border bg-status-danger-subtle text-status-danger-foreground",
-    ring: "border-red-200",
+    ring: "border-status-danger-border",
   };
 }
 
@@ -168,10 +173,7 @@ export function AdminHealthPage() {
             disabled={healthQuery.isFetching}
             data-testid="admin-health-refresh"
           >
-            <RefreshCw
-              className={cn("h-4 w-4", healthQuery.isFetching && "animate-spin")}
-              aria-hidden
-            />
+            <SyncIcon className={cn("h-4 w-4", healthQuery.isFetching && "animate-spin")} />
             {t("admin.health.actions.refresh")}
           </Button>
         }
