@@ -19,10 +19,10 @@
  *   obtain a fresh ETag, then passes it to transitionApproval(). This satisfies
  *   the CLAUDE.md optimistic-concurrency pattern.
  */
-import { Spinner } from "@primer/react";
 import { type ReactNode, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { Spinner } from "@/components/primer/Spinner";
 import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Badge } from "@/components/primer/badge";
 import { Button } from "@/components/primer/Button";

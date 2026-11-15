@@ -66,6 +66,12 @@ export default tseslint.config(
               importNames: TRADEMARK_ICONS,
               message: TRADEMARK_MESSAGE,
             },
+            {
+              name: "@primer/react",
+              importNames: ["Spinner"],
+              message:
+                "Use components/primer/Spinner: Primer's own announces a fixed English label.",
+            },
           ],
           patterns: [
             {
@@ -83,7 +89,10 @@ export default tseslint.config(
   {
     // The one file allowed to draw the mark. It does not exist yet; naming the
     // path here keeps the exception to a single file.
-    files: ["src/features/integrations/GitHubMark.tsx"],
+    files: [
+      "src/features/integrations/GitHubMark.tsx",
+      "src/components/primer/Spinner.tsx",
+    ],
     rules: { "no-restricted-imports": "off" },
   },
   {

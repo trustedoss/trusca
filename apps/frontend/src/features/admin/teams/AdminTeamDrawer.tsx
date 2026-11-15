@@ -16,11 +16,12 @@
  *   - Delete team button: inline confirm + propagates Problem extension
  *     `team_has_active_scans` into the toast.
  */
-import { Spinner, Select } from "@primer/react";
+import { Select } from "@primer/react";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { Spinner } from "@/components/primer/Spinner";
 import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Badge } from "@/components/primer/badge";
 import { Button } from "@/components/primer/Button";

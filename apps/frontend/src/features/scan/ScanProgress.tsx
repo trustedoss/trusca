@@ -6,11 +6,11 @@ import {
   CircleIcon,
   XCircleIcon,
 } from "@primer/octicons-react";
-import { Spinner } from "@primer/react";
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { Spinner } from "@/components/primer/Spinner";
 import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Button } from "@/components/primer/Button";
 import { Progress } from "@/components/primer/progress";

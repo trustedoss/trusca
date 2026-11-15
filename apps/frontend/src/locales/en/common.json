@@ -155,6 +155,9 @@
   "toast": {
     "dismiss": "Dismiss notification"
   },
+  "spinner": {
+    "loading": "Loading"
+  },
   "dialog": {
     "close": "Close"
   }

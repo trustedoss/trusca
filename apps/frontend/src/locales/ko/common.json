@@ -155,6 +155,9 @@
   "toast": {
     "dismiss": "알림 닫기"
   },
+  "spinner": {
+    "loading": "불러오는 중"
+  },
   "dialog": {
     "close": "닫기"
   }

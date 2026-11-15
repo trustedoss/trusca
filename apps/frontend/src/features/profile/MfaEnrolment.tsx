@@ -16,10 +16,10 @@
 import {
   KeyIcon,
 } from "@primer/octicons-react";
-import { Spinner } from "@primer/react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { Spinner } from "@/components/primer/Spinner";
 import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Button } from "@/components/primer/Button";
 import { Input } from "@/components/primer/Input";

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
 import { useEffect, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { Navigate, useLocation } from "react-router-dom";
 
 import { useAuthStore } from "@/stores/authStore";
@@ -19,6 +20,7 @@ interface RequireAuthProps {
  *   - `anonymous`      → redirect to /login, preserving the original target.
  */
 export function RequireAuth({ children }: RequireAuthProps) {
+  const { t } = useTranslation("common");
   const status = useAuthStore((s) => s.status);
   const bootstrap = useAuthStore((s) => s.bootstrap);
   const location = useLocation();
@@ -37,7 +39,7 @@ export function RequireAuth({ children }: RequireAuthProps) {
         aria-busy="true"
         aria-live="polite"
       >
-        <span className="sr-only">Loading…</span>
+        <span className="sr-only">{t("spinner.loading")}</span>
       </div>
     );
   }
