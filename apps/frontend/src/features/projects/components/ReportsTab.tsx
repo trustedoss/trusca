@@ -37,6 +37,7 @@ import {
   DownloadIcon,
 } from "@primer/octicons-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Select } from "@primer/react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 
@@ -613,20 +614,19 @@ function NoticeCard({
       </CardHeader>
       <CardContent className="p-4 pt-0">
         <div className="flex items-center gap-2">
-          <select
+          <Select
             value={format}
             onChange={(event) => setFormat(event.target.value as NoticeFormat)}
             disabled={notice.isLoading}
             aria-label={t("reports.cards.notice.format_label")}
             data-testid="reports-card-notice-format"
-            className="h-9 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           >
             {NOTICE_DOWNLOAD_FORMATS.map((fmt) => (
               <option key={fmt} value={fmt}>
                 {t(`reports.cards.notice.format_${fmt}`)}
               </option>
             ))}
-          </select>
+          </Select>
           <Button
             type="button"
             size="sm"

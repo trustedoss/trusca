@@ -21,6 +21,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
+import { Select } from "@primer/react";
 import { useTranslation } from "react-i18next";
 import { z } from "zod";
 
@@ -425,9 +426,8 @@ export function SettingsTab({ projectId, project }: SettingsTabProps) {
           <Label htmlFor="settings-ai-usage-context">
             {t("settings.field.ai_usage_context")}
           </Label>
-          <select
+          <Select block
             id="settings-ai-usage-context"
-            className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             {...register("ai_usage_context")}
             data-testid="settings-ai-usage-context-select"
             aria-describedby="settings-ai-usage-context-help"
@@ -440,7 +440,7 @@ export function SettingsTab({ projectId, project }: SettingsTabProps) {
                 {t(`settings.field.ai_usage_context_option.${scenario}`)}
               </option>
             ))}
-          </select>
+          </Select>
           <p
             id="settings-ai-usage-context-help"
             className="text-xs text-muted-foreground"
@@ -498,9 +498,8 @@ export function SettingsTab({ projectId, project }: SettingsTabProps) {
           <Label htmlFor="settings-distribution-model">
             {t("settings.field.distribution_model")}
           </Label>
-          <select
+          <Select block
             id="settings-distribution-model"
-            className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             {...register("distribution_model")}
             data-testid="settings-distribution-model-select"
             aria-describedby="settings-distribution-model-help"
@@ -513,7 +512,7 @@ export function SettingsTab({ projectId, project }: SettingsTabProps) {
                 {t(`settings.field.distribution_model_option.${model}`)}
               </option>
             ))}
-          </select>
+          </Select>
           <p
             id="settings-distribution-model-help"
             className="text-xs text-muted-foreground"

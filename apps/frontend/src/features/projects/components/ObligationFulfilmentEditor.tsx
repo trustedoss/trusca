@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
 import { useEffect, useState } from "react";
+import { Select } from "@primer/react";
 import { useTranslation } from "react-i18next";
 
 import { Alert, AlertDescription } from "@/components/primer/alert";
@@ -122,9 +123,8 @@ export function ObligationFulfilmentEditor({
         <Label htmlFor="obligation-fulfilment-status">
           {t("obligations.fulfilment.field.status")}
         </Label>
-        <select
+        <Select block
           id="obligation-fulfilment-status"
-          className="h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           value={status}
           onChange={(e) =>
             setStatus(e.target.value as ObligationFulfilmentStatus)
@@ -136,7 +136,7 @@ export function ObligationFulfilmentEditor({
               {t(`obligations.fulfilment.status.${option}`)}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
 
       <div className="flex flex-col gap-1.5">

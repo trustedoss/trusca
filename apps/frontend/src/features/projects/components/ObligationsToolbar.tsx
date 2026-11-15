@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
 import { useState } from "react";
+import { Select } from "@primer/react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/primer/Button";
@@ -157,13 +158,13 @@ export function ObligationsToolbar({
         >
           {t("obligations.toolbar.sort_label")}
         </label>
-        <select
+        <Select block
           id="obligations-sort"
           value={sort}
           onChange={(event) =>
             onSortChange(event.target.value as ObligationSortKey)
           }
-          className="mt-1 h-9 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          className="mt-1"
           data-testid="obligations-sort"
         >
           {SORT_OPTIONS.map((key) => (
@@ -171,7 +172,7 @@ export function ObligationsToolbar({
               {t(`obligations.toolbar.sort.${key}`)}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
 
       <div className="flex flex-col">
@@ -181,16 +182,16 @@ export function ObligationsToolbar({
         >
           {t("obligations.toolbar.order_label")}
         </label>
-        <select
+        <Select block
           id="obligations-order"
           value={order}
           onChange={(event) => onOrderChange(event.target.value as SortOrder)}
-          className="mt-1 h-9 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          className="mt-1"
           data-testid="obligations-order"
         >
           <option value="asc">{t("obligations.toolbar.order_asc")}</option>
           <option value="desc">{t("obligations.toolbar.order_desc")}</option>
-        </select>
+        </Select>
       </div>
 
       <div className="flex flex-col">
@@ -198,7 +199,7 @@ export function ObligationsToolbar({
           {t("obligations.toolbar.notice_label")}
         </span>
         <div className="mt-1 flex gap-1">
-          <select
+          <Select
             value={noticeFormat}
             onChange={(event) =>
               setNoticeFormat(event.target.value as NoticeFormat)
@@ -206,14 +207,13 @@ export function ObligationsToolbar({
             disabled={isNoticeDownloading}
             aria-label={t("obligations.toolbar.notice_format_label")}
             data-testid="obligations-notice-format"
-            className="h-9 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           >
             {NOTICE_DOWNLOAD_FORMATS.map((fmt) => (
               <option key={fmt} value={fmt}>
                 {t(`obligations.toolbar.notice_format_${fmt}`)}
               </option>
             ))}
-          </select>
+          </Select>
           <Button
             type="button"
             variant="default"
