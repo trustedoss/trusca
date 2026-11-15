@@ -48,7 +48,10 @@ const VARIANT = {
   link: "link",
 } as const;
 
-const SIZE = { default: "medium", sm: "small", lg: "large", icon: "medium" } as const;
+// Controls share one height, Primer's medium (32px), so a toolbar of buttons,
+// inputs and selects reads as one row. `sm` is kept as a name for call sites
+// but no longer shrinks the button.
+const SIZE = { default: "medium", sm: "medium", lg: "large", icon: "medium" } as const;
 
 export interface ButtonProps
   extends Omit<ComponentPropsWithoutRef<typeof PrimerButtonTyped>, "variant" | "size" | "as"> {

@@ -303,7 +303,7 @@ export function LicenseWaiveAction({
                 onChange={(e) => setExpiresAt(e.target.value)}
                 data-testid="license-waive-expires"
                 aria-required={requireExpiry ? "true" : undefined}
-                className="h-9"
+                className="h-8"
               />
               <p className="text-xs text-muted-foreground">
                 {requireExpiry

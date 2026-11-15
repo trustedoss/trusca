@@ -133,7 +133,7 @@ export function GroupListPage() {
             placeholder={t("list.search_placeholder")}
             aria-label={t("list.search_aria")}
             maxLength={255}
-            className="h-9"
+            className="h-8"
           />
         </div>
       </div>

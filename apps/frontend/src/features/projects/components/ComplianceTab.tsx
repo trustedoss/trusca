@@ -746,7 +746,7 @@ function ComplianceToolbar({
           onChange={(event) => onSearchChange(event.target.value)}
           placeholder={t("compliance.filter.search_placeholder")}
           data-testid="compliance-search"
-          className="mt-1 h-9"
+          className="mt-1 h-8"
         />
       </div>
 
@@ -777,7 +777,7 @@ function ComplianceToolbar({
         <span className="text-xs font-medium text-muted-foreground">
           {t("compliance.filter.has_obligations")}
         </span>
-        <div className="mt-1 flex h-9 items-center">
+        <div className="mt-1 flex h-8 items-center">
           <Switch
             checked={hasObligations === true}
             onCheckedChange={(checked) =>
@@ -904,7 +904,7 @@ function ComplianceNoticeDownload({
       >
         {t("compliance.notice_download.format_label")}
       </label>
-      <div className="mt-1 flex h-9 items-center gap-2">
+      <div className="mt-1 flex h-8 items-center gap-2">
         <Select
           id="compliance-notice-format"
           value={format}

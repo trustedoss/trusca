@@ -174,7 +174,7 @@ export function AdminTeamsPage() {
             // Matches the bound the URL applies, so a paste is refused at
             // the field rather than silently truncated on the way out.
             maxLength={200}
-            className="h-9"
+            className="h-8"
           />
         </div>
         <Button
@@ -202,7 +202,7 @@ export function AdminTeamsPage() {
                 data-testid="admin-teams-new-name"
                 value={createName}
                 onChange={(e) => setCreateName(e.target.value)}
-                className="h-9"
+                className="h-8"
               />
             </div>
             <div>
@@ -214,7 +214,7 @@ export function AdminTeamsPage() {
                 data-testid="admin-teams-new-slug"
                 value={createSlug}
                 onChange={(e) => setCreateSlug(e.target.value)}
-                className="h-9 font-mono text-xs"
+                className="h-8 font-mono text-xs"
               />
             </div>
             <div>
@@ -226,7 +226,7 @@ export function AdminTeamsPage() {
                 data-testid="admin-teams-new-description"
                 value={createDescription}
                 onChange={(e) => setCreateDescription(e.target.value)}
-                className="h-9"
+                className="h-8"
               />
             </div>
           </div>

@@ -117,7 +117,7 @@ export function VexImportDialog({
         type="button"
         variant="outline"
         size="sm"
-        className="mt-1 h-9"
+        className="mt-1 h-8"
         disabled={!canImport}
         onClick={() => handleOpenChange(true)}
         data-testid="vex-import-open"

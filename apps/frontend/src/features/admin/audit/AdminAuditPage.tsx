@@ -285,7 +285,7 @@ export function AdminAuditPage() {
             data-testid="admin-audit-actor"
             value={actorInput}
             onChange={(e) => setActorInput(e.target.value)}
-            className="h-9 font-mono text-xs"
+            className="h-8 font-mono text-xs"
             maxLength={255}
           />
         </div>
@@ -299,10 +299,6 @@ export function AdminAuditPage() {
           <Select block
             id="admin-audit-target-table"
             data-testid="admin-audit-target-table"
-            className={cn(
-              "flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-            )}
             value={targetTable}
             onChange={(e) =>
               updateFilterParam(
@@ -334,7 +330,7 @@ export function AdminAuditPage() {
             value={actionInput}
             placeholder={t("admin.audit.filter.action_placeholder")}
             onChange={(e) => setActionInput(e.target.value)}
-            className="h-9 font-mono text-xs"
+            className="h-8 font-mono text-xs"
             maxLength={64}
           />
         </div>
@@ -351,7 +347,7 @@ export function AdminAuditPage() {
             type="datetime-local"
             value={fromParam}
             onChange={(e) => updateFilterParam("from", e.target.value || null)}
-            className="h-9 font-mono text-xs"
+            className="h-8 font-mono text-xs"
           />
         </div>
         <div>
@@ -367,7 +363,7 @@ export function AdminAuditPage() {
             type="datetime-local"
             value={toParam}
             onChange={(e) => updateFilterParam("to", e.target.value || null)}
-            className="h-9 font-mono text-xs"
+            className="h-8 font-mono text-xs"
           />
         </div>
         <div>
@@ -383,7 +379,7 @@ export function AdminAuditPage() {
             value={qInput}
             placeholder={t("admin.audit.filter.q_placeholder")}
             onChange={(e) => setQInput(e.target.value)}
-            className="h-9"
+            className="h-8"
             maxLength={255}
           />
         </div>

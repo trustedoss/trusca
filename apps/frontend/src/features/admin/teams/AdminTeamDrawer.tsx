@@ -390,7 +390,7 @@ export function AdminTeamDrawer({
                     data-testid="admin-team-name"
                     value={editName}
                     onChange={(e) => setEditName(e.target.value)}
-                    className="h-9"
+                    className="h-8"
                   />
                 </div>
                 <div>
@@ -402,7 +402,7 @@ export function AdminTeamDrawer({
                     data-testid="admin-team-slug"
                     value={editSlug}
                     onChange={(e) => setEditSlug(e.target.value)}
-                    className="h-9 font-mono text-xs"
+                    className="h-8 font-mono text-xs"
                   />
                   <p className="mt-1 text-[11px] text-muted-foreground">
                     {t("admin.teams.form.slug_help")}
@@ -457,7 +457,7 @@ export function AdminTeamDrawer({
                       data-testid="admin-team-member-user"
                       value={memberUserId}
                       onChange={(e) => setMemberUserId(e.target.value)}
-                      className="h-9 font-mono text-xs"
+                      className="h-8 font-mono text-xs"
                     />
                   </div>
                   <div>
@@ -569,7 +569,7 @@ export function AdminTeamDrawer({
                     data-testid="admin-team-subgroup-name"
                     value={subgroupName}
                     onChange={(e) => setSubgroupName(e.target.value)}
-                    className="h-9"
+                    className="h-8"
                   />
                 </div>
                 <div>
@@ -581,7 +581,7 @@ export function AdminTeamDrawer({
                     data-testid="admin-team-subgroup-slug"
                     value={subgroupSlug}
                     onChange={(e) => setSubgroupSlug(e.target.value)}
-                    className="h-9 font-mono text-xs"
+                    className="h-8 font-mono text-xs"
                   />
                   <p className="mt-1 text-[11px] text-muted-foreground">
                     {t("admin.teams.form.slug_help")}
@@ -599,7 +599,7 @@ export function AdminTeamDrawer({
                     data-testid="admin-team-subgroup-description"
                     value={subgroupDescription}
                     onChange={(e) => setSubgroupDescription(e.target.value)}
-                    className="h-9"
+                    className="h-8"
                   />
                 </div>
                 <div className="flex justify-end gap-2">

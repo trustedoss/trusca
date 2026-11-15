@@ -50,7 +50,7 @@ export function VexExportMenu({
             type="button"
             variant="outline"
             size="sm"
-            className="h-9"
+            className="h-8"
             disabled={exporter.busyFormat !== null}
             onClick={() => {
               // Errors surface via exporter.error below — swallow the rejection

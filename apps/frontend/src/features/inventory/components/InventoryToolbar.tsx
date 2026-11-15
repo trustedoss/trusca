@@ -132,7 +132,7 @@ export function InventoryToolbar({
           onChange={(event) => onSearchChange(event.target.value)}
           placeholder={t("toolbar.search_placeholder")}
           data-testid="inventory-search"
-          className="mt-1 h-9"
+          className="mt-1 h-8"
         />
       </div>
 

@@ -9,7 +9,7 @@
  *   - opening the dropdown renders one option row per available filter with
  *     `data-testid="<base>-option-<id>"` so callers can target them,
  *   - clicking an option fires `onSelect(filterId)` exactly once, and
- *   - rows for active filters carry `data-active="true"` so the user can see
+ *   - rows for active filters carry `data-filter-active="true"` so the user can see
  *     which facets are already turned on without re-reading the toolbar.
  */
 import { render, screen, waitFor } from "@testing-library/react";
@@ -98,7 +98,7 @@ describe("MoreFiltersMenu", () => {
     expect(onSelect).toHaveBeenCalledWith("license_category");
   });
 
-  it("marks rows for active filters with data-active=true", async () => {
+  it("marks rows for active filters with data-filter-active=true", async () => {
     setup({
       availableFilters: OPTIONS,
       activeFilterIds: new Set(["name_search"]),
@@ -107,11 +107,11 @@ describe("MoreFiltersMenu", () => {
     const row = await waitFor(() =>
       screen.getByTestId("more-filters-trigger-option-name_search"),
     );
-    expect(row).toHaveAttribute("data-active", "true");
+    expect(row).toHaveAttribute("data-filter-active", "true");
     const inactive = screen.getByTestId(
       "more-filters-trigger-option-license_category",
     );
-    expect(inactive).toHaveAttribute("data-active", "false");
+    expect(inactive).toHaveAttribute("data-filter-active", "false");
   });
 
   it("uses a custom test id when provided so two menus can co-exist", async () => {
