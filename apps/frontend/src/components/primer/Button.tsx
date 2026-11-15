@@ -25,6 +25,13 @@ import {
 
 import { cn } from "@/lib/utils";
 
+// Primer lays a button's label out as a block, which stacks an icon above its
+// text. The shadcn button this replaces was an inline flex row; this wrapper
+// keeps that, so an icon and its label sit side by side as they always did.
+function Content({ children }: { children: React.ReactNode }) {
+  return <span className="inline-flex items-center gap-1.5">{children}</span>;
+}
+
 // Primer types `as` per element; this wrapper forwards whatever element the
 // caller's child is, so the polymorphic props are loosened once, here.
 const PrimerButton = PrimerButtonTyped as unknown as ElementType;
@@ -73,14 +80,14 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
           {...childProps}
           className={cn(common.className, childClass as string | undefined)}
         >
-          {inner}
+          <Content>{inner as React.ReactNode}</Content>
         </PrimerButton>
       );
     }
   }
   return (
     <PrimerButton ref={ref} {...common} {...rest}>
-      {children}
+      <Content>{children}</Content>
     </PrimerButton>
   );
 });
