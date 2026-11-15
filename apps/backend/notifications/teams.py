@@ -43,9 +43,9 @@ def _build_message_card(*, title: str, text: str) -> dict[str, Any]:
     return {
         "@type": "MessageCard",
         "@context": "https://schema.org/extensions",
-        # ThemeColor is a 6-digit hex without the leading '#'. We use a
-        # neutral blue; severity-coloured variants are a follow-up.
-        "themeColor": "0078D7",
+        # ThemeColor is a 6-digit hex without the leading '#'. It is the
+        # portal's accent (--brand); severity-coloured variants are a follow-up.
+        "themeColor": "1D4ED8",
         "summary": title,
         "title": title,
         "text": text,
