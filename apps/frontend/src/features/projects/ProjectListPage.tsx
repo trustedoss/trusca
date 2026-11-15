@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
 import { useQuery } from "@tanstack/react-query";
-import { FolderOpen } from "lucide-react";
+import { FileDirectoryIcon } from "@primer/octicons-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router-dom";
@@ -9,8 +9,9 @@ import { Virtuoso } from "react-virtuoso";
 
 import { EmptyState } from "@/components/EmptyState";
 import { PageHeader } from "@/components/PageHeader";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/primer/Button";
+import { Notice } from "@/components/primer/Notice";
+import { PrimerDialog } from "@/components/primer/PrimerDialog";
 import {
   Card,
   CardContent,
@@ -22,13 +23,6 @@ import { Skeleton } from "@/components/primer/Skeleton";
 import { AxisPill } from "@/features/projects/components/AxisPill";
 import { LicenseDistributionChart } from "@/features/projects/components/LicenseDistributionChart";
 import { SeverityDistributionChart } from "@/features/projects/components/SeverityDistributionChart";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
 import { ProjectStatusBadge } from "@/features/projects/components/ProjectStatusBadge";
 import {
   ProjectListToolbar,
@@ -57,7 +51,7 @@ import { cn } from "@/lib/utils";
 /**
  * ProjectListPage — Phase 2 PR #9 task 2.11.
  *
- * Virtualized project list + inline filter toolbar + Sheet-based scan
+ * Virtualized project list + inline filter toolbar + dialog-based scan
  * progress drawer. We fetch one page (size=100, the backend `GET
  * /v1/projects` ceiling) and do client-side search/sort/filter — server-side
  * cursor pagination is a follow-up (TODO in handoff). 100 keeps virtualization
@@ -704,9 +698,9 @@ export function ProjectListPage() {
       <main className="flex flex-1 flex-col" data-testid="project-list-main">
         {isError ? (
           <div className="px-6 py-6">
-            <Alert variant="destructive" data-testid="project-list-error">
-              <AlertDescription>{t("errors.load_failed")}</AlertDescription>
-            </Alert>
+            <Notice tone="error" data-testid="project-list-error">
+              {t("errors.load_failed")}
+            </Notice>
           </div>
         ) : null}
 
@@ -724,14 +718,12 @@ export function ProjectListPage() {
             truncation. Narrowing the search is the way out. */}
         {isTruncated ? (
           <div className="px-6 pt-4">
-            <Alert data-testid="project-list-truncated">
-              <AlertDescription>
-                {t("list.truncated", {
-                  shown: items?.length ?? 0,
-                  total: serverTotal,
-                })}
-              </AlertDescription>
-            </Alert>
+            <Notice tone="info" data-testid="project-list-truncated">
+              {t("list.truncated", {
+                shown: items?.length ?? 0,
+                total: serverTotal,
+              })}
+            </Notice>
           </div>
         ) : null}
 
@@ -739,7 +731,7 @@ export function ProjectListPage() {
           <EmptyState
             data-testid="project-list-empty"
             className="m-6"
-            icon={<FolderOpen />}
+            icon={<FileDirectoryIcon size={24} />}
             title={t("empty.title")}
             description={t("empty.subtitle")}
             action={
@@ -794,21 +786,16 @@ export function ProjectListPage() {
         />
       ) : null}
 
-      <Sheet
+      <PrimerDialog
         open={scanDrawer.open}
-        onOpenChange={(open) =>
-          setScanDrawer((s) => ({ ...s, open }))
-        }
+        onOpenChange={(open) => setScanDrawer((s) => ({ ...s, open }))}
+        title={scanDrawer.projectName ?? ""}
+        description={t("page.subtitle")}
+        position="right"
+        width="large"
+        testId="scan-progress-drawer"
       >
-        <SheetContent
-          side="right"
-          className="flex flex-col gap-4"
-          data-testid="scan-progress-drawer"
-        >
-          <SheetHeader>
-            <SheetTitle>{scanDrawer.projectName ?? ""}</SheetTitle>
-            <SheetDescription>{t("page.subtitle")}</SheetDescription>
-          </SheetHeader>
+        <div className="flex flex-col gap-4">
           {scanDrawer.scanId ? (
             <>
               <ScanProgress
@@ -838,8 +825,8 @@ export function ProjectListPage() {
               </div>
             </>
           ) : null}
-        </SheetContent>
-      </Sheet>
+        </div>
+      </PrimerDialog>
     </div>
   );
 }

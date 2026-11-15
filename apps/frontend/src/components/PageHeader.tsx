@@ -2,7 +2,7 @@
 // Copyright 2026 TRUSCA contributors
 import type { HTMLAttributes, ReactNode } from "react";
 
-import { PageTitle, Subtitle } from "@/components/ui/typography";
+import { PageTitle, Subtitle } from "@/components/primer/typography";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { cn } from "@/lib/utils";
 

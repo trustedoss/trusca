@@ -1,23 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
+import { CheckIcon } from "@primer/octicons-react";
 import { useQuery } from "@tanstack/react-query";
-import { Check, ChevronsUpDown } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { Button } from "@/components/ui/button";
-import {
-  Command,
-  CommandEmpty,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { PaletteEmpty, PaletteItem } from "@/components/primer/CommandPalette";
+import { ComboboxPopover } from "@/components/primer/ComboboxPopover";
 import { listGroups } from "@/features/groups/api/groupsApi";
 import { cn } from "@/lib/utils";
 import type { TeamMembership } from "@/stores/authStore";
@@ -131,112 +120,86 @@ export function TeamCombobox({
   }
 
   return (
-    <Popover open={open} onOpenChange={handleOpenChange}>
-      <PopoverTrigger asChild>
-        <Button
-          id={triggerId}
-          type="button"
-          variant="outline"
-          role="combobox"
-          aria-expanded={open}
-          data-testid="project-team-combobox-trigger"
-          className="w-full justify-between font-normal"
+    <ComboboxPopover
+      open={open}
+      onOpenChange={handleOpenChange}
+      triggerId={triggerId}
+      triggerTestId="project-team-combobox-trigger"
+      triggerLabel={selected ? selected.name : placeholder}
+      searchValue={searchInput}
+      onSearchChange={setSearchInput}
+      searchPlaceholder={t("create.team_combobox_search_placeholder")}
+      searchTestId="project-team-combobox-search"
+      listTestId="project-team-combobox-list"
+    >
+      {isBelowMinLength ? (
+        <div
+          className="py-6 text-center text-sm text-muted-foreground"
+          data-testid="project-team-combobox-min-length-hint"
         >
-          <span className="truncate">
-            {selected ? selected.name : placeholder}
-          </span>
-          <ChevronsUpDown
-            className="h-4 w-4 shrink-0 opacity-50"
-            aria-hidden
-          />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
-        <Command shouldFilter={false}>
-          <CommandInput
-            value={searchInput}
-            onValueChange={setSearchInput}
-            placeholder={t("create.team_combobox_search_placeholder")}
-            data-testid="project-team-combobox-search"
-          />
-          <CommandList data-testid="project-team-combobox-list">
-            {isBelowMinLength ? (
-              <div
-                className="py-6 text-center text-sm text-muted-foreground"
-                data-testid="project-team-combobox-min-length-hint"
-              >
-                {t("create.team_combobox_min_length_hint")}
-              </div>
-            ) : isSearching ? (
-              isSearchLoading ? (
-                <div
-                  role="status"
-                  aria-live="polite"
-                  className="py-6 text-center text-sm text-muted-foreground"
-                  data-testid="project-team-combobox-loading"
-                >
-                  {t("create.team_combobox_searching")}
-                </div>
-              ) : searchResults.length === 0 ? (
-                <CommandEmpty data-testid="project-team-combobox-empty">
-                  {t("create.team_combobox_empty")}
-                </CommandEmpty>
-              ) : (
-                searchResults.map((group) => (
-                  <CommandItem
-                    key={group.id}
-                    value={group.id}
-                    data-testid="project-team-combobox-option"
-                    data-group-id={group.id}
-                    onSelect={() =>
-                      handleSelect({ id: group.id, name: group.name })
-                    }
-                  >
-                    <Check
-                      className={cn(
-                        "mr-2 h-4 w-4 shrink-0",
-                        selected?.id === group.id ? "opacity-100" : "opacity-0",
-                      )}
-                      aria-hidden
-                    />
-                    <span className="flex min-w-0 flex-col">
-                      <span className="truncate">{group.name}</span>
-                      <span className="truncate font-mono text-xs text-muted-foreground">
-                        {group.slug}
-                      </span>
-                    </span>
-                  </CommandItem>
-                ))
-              )
-            ) : teams.length === 0 ? (
-              <CommandEmpty data-testid="project-team-combobox-empty">
-                {t("create.team_combobox_empty")}
-              </CommandEmpty>
-            ) : (
-              teams.map((team) => (
-                <CommandItem
-                  key={team.id}
-                  value={team.id}
-                  data-testid="project-team-combobox-option"
-                  data-group-id={team.id}
-                  onSelect={() =>
-                    handleSelect({ id: team.id, name: team.name })
-                  }
-                >
-                  <Check
-                    className={cn(
-                      "mr-2 h-4 w-4 shrink-0",
-                      selected?.id === team.id ? "opacity-100" : "opacity-0",
-                    )}
-                    aria-hidden
-                  />
-                  <span className="truncate">{team.name}</span>
-                </CommandItem>
-              ))
-            )}
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
+          {t("create.team_combobox_min_length_hint")}
+        </div>
+      ) : isSearching ? (
+        isSearchLoading ? (
+          <div
+            role="status"
+            aria-live="polite"
+            className="py-6 text-center text-sm text-muted-foreground"
+            data-testid="project-team-combobox-loading"
+          >
+            {t("create.team_combobox_searching")}
+          </div>
+        ) : searchResults.length === 0 ? (
+          <PaletteEmpty data-testid="project-team-combobox-empty">
+            {t("create.team_combobox_empty")}
+          </PaletteEmpty>
+        ) : (
+          searchResults.map((group) => (
+            <PaletteItem
+              key={group.id}
+              value={group.id}
+              data-testid="project-team-combobox-option"
+              data-group-id={group.id}
+              onSelect={() => handleSelect({ id: group.id, name: group.name })}
+            >
+              <CheckIcon
+                className={cn(
+                  "mr-2 shrink-0",
+                  selected?.id === group.id ? "opacity-100" : "opacity-0",
+                )}
+              />
+              <span className="flex min-w-0 flex-col">
+                <span className="truncate">{group.name}</span>
+                <span className="truncate font-mono text-xs text-muted-foreground">
+                  {group.slug}
+                </span>
+              </span>
+            </PaletteItem>
+          ))
+        )
+      ) : teams.length === 0 ? (
+        <PaletteEmpty data-testid="project-team-combobox-empty">
+          {t("create.team_combobox_empty")}
+        </PaletteEmpty>
+      ) : (
+        teams.map((team) => (
+          <PaletteItem
+            key={team.id}
+            value={team.id}
+            data-testid="project-team-combobox-option"
+            data-group-id={team.id}
+            onSelect={() => handleSelect({ id: team.id, name: team.name })}
+          >
+            <CheckIcon
+              className={cn(
+                "mr-2 shrink-0",
+                selected?.id === team.id ? "opacity-100" : "opacity-0",
+              )}
+            />
+            <span className="truncate">{team.name}</span>
+          </PaletteItem>
+        ))
+      )}
+    </ComboboxPopover>
   );
 }

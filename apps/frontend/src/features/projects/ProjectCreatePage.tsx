@@ -8,12 +8,12 @@ import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { z } from "zod";
 
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { PageTitle, Subtitle } from "@/components/ui/typography";
+import { Button } from "@/components/primer/Button";
+import { Input } from "@/components/primer/Input";
+import { Label } from "@/components/primer/Label";
+import { Notice } from "@/components/primer/Notice";
+import { Textarea } from "@/components/primer/Textarea";
+import { PageTitle, Subtitle } from "@/components/primer/typography";
 import { createProject } from "@/lib/projectsApi";
 import { problemMessage } from "@/lib/problemMessage";
 import { useActiveTeam } from "@/hooks/useActiveTeam";
@@ -301,23 +301,21 @@ export function ProjectCreatePage() {
         </div>
 
         {!hasTeam ? (
-          <Alert
-            variant="destructive"
+          <Notice
+            tone="error"
             data-testid="project-create-no-team"
             data-reason={activeTeamUnresolved ? "active_team_unresolved" : "no_team"}
           >
-            <AlertDescription>
-              {activeTeamUnresolved
-                ? t("create.active_team_unresolved")
-                : t("create.no_team")}
-            </AlertDescription>
-          </Alert>
+            {activeTeamUnresolved
+              ? t("create.active_team_unresolved")
+              : t("create.no_team")}
+          </Notice>
         ) : null}
 
         {submitError ? (
-          <Alert variant="destructive" data-testid="project-create-error">
-            <AlertDescription>{submitError}</AlertDescription>
-          </Alert>
+          <Notice tone="error" data-testid="project-create-error">
+            {submitError}
+          </Notice>
         ) : null}
 
         <div className="flex gap-3">
