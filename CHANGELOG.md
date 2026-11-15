@@ -41,6 +41,22 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   set it to `0` to turn the cleaner off, or set `TOOLCHAIN_CACHE_ROOTS` to the
   directories the cleaner may remove.
 
+### Changed
+
+- **New look across the whole web interface.** Every screen now uses the same
+  component set, with a navy accent in place of teal and cyan for severity
+  Low, so Low no longer shares a colour with the accent. Light and dark themes
+  both follow the new colours; status tints that stayed light in dark mode now
+  follow the theme. Dialogs and drawers share one component, selects and menus
+  look the same on every screen, and an icon and its label sit on one row in
+  every button. Test ids and the screen structure are unchanged.
+- **Documentation screenshots recaptured** in the new look, and the Teams
+  notification card uses the portal accent colour.
+- **Frontend dependencies.** The interface components, design tokens and icons
+  come from `@primer/react`, `@primer/primitives` and `@primer/octicons-react`
+  (pinned versions). The shadcn components, `lucide-react` and four unused
+  Radix packages are removed.
+
 ## [0.23.1] - 2026-10-24
 
 ### Security
