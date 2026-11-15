@@ -18,6 +18,7 @@ import {
   FilterIcon,
 } from "@primer/octicons-react";
 import { useCallback, useMemo } from "react";
+import { Select } from "@primer/react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 
@@ -306,10 +307,9 @@ export function ApprovalsPage() {
           >
             {t("approvals.column.status")}
           </Label>
-          <select
+          <Select
             id="approval-status-filter"
             data-testid="approval-status-filter"
-            className="h-8 rounded-md border border-input bg-background px-2 text-sm"
             value={statusFilter}
             onChange={(e) => {
               setStatusFilter(e.target.value as StatusFilter);
@@ -324,7 +324,7 @@ export function ApprovalsPage() {
                     : t(`approvals.status.${opt}`)}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
 
         {/* P2 #7 — From / To date pickers.

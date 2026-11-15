@@ -22,6 +22,7 @@
 import { FileIcon } from "@primer/octicons-react";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Select } from "@primer/react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 
@@ -189,10 +190,9 @@ export function PoliciesPage() {
           >
             {t("policies.toolbar.team_label")}
           </Label>
-          <select
+          <Select
             id="policy-team-picker"
             data-testid="policy-team-picker"
-            className="h-8 min-w-[14rem] rounded-md border border-input bg-background px-2 text-sm"
             value={pickerTeamId}
             onChange={(e) => setPickerTeamId(e.target.value)}
           >
@@ -202,7 +202,7 @@ export function PoliciesPage() {
                 {opt.label}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
         <Button
           size="sm"
