@@ -6,7 +6,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { BrowserRouter } from "react-router-dom";
 
 import PrimerRoot from "@/components/primer/PrimerRoot";
-import { ToastProvider } from "@/components/ui/toast";
+import { ToastProvider } from "@/components/primer/toast";
 import { bindAuthBroadcast } from "@/lib/authBroadcast";
 import { createQueryClient } from "@/lib/queryClient";
 import { bindUserScopedState } from "@/lib/userScopedState";

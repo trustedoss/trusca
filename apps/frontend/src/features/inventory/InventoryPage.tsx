@@ -16,7 +16,7 @@ import { Virtuoso } from "react-virtuoso";
 
 import { EmptyState } from "@/components/EmptyState";
 import { PageHeader } from "@/components/PageHeader";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Skeleton } from "@/components/primer/Skeleton";
 import { InventoryDrawer } from "@/features/inventory/components/InventoryDrawer";
 import { InventoryRow } from "@/features/inventory/components/InventoryRow";

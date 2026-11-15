@@ -20,7 +20,7 @@ import {
   SortableColumnHeader,
   nextSortState,
   type SortState,
-} from "@/components/ui/sortable-column-header";
+} from "@/components/primer/sortable-column-header";
 
 describe("nextSortState", () => {
   it("returns asc on first click of an unsorted column", () => {

@@ -1,28 +1,23 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
+import { FileDirectoryIcon } from "@primer/octicons-react";
+import { Spinner } from "@primer/react";
 import { useQuery } from "@tanstack/react-query";
-import { FolderX, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 
 import { EmptyState } from "@/components/EmptyState";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { Alert, AlertDescription } from "@/components/primer/alert";
+import { Button } from "@/components/primer/Button";
+import { PrimerDialog } from "@/components/primer/PrimerDialog";
 import { Skeleton } from "@/components/primer/Skeleton";
 import {
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
-} from "@/components/ui/tabs";
+} from "@/components/primer/tabs";
 import type { ScanSummary } from "@/features/projects/api/projectDetailApi";
 import {
   COMPONENTS_SEARCH_PARAM,
@@ -143,7 +138,8 @@ export function ProjectDetailPage() {
   // reads that historical scan instead of the latest succeeded one. Empty
   // string is treated as "not set" so a hand-edited `?scan=` can't wedge it.
   const scanParam = searchParams.get("scan");
-  const pinnedScanId = scanParam && scanParam.length > 0 ? scanParam : undefined;
+  const pinnedScanId =
+    scanParam && scanParam.length > 0 ? scanParam : undefined;
 
   // W4-C — rewrite a legacy `?tab=` token to its W4-C successor in the URL
   // bar so a deep-link or bookmark settles on the canonical IA. We do this
@@ -199,10 +195,10 @@ export function ProjectDetailPage() {
   // the releases list (shares the ReleasesTab query key, so it's deduped when
   // that tab is open). Falls back to the scan id until the list resolves.
   const i18nLocale = i18n.language;
-  const releasesLookup = useReleases(
-    isHistorical ? projectId : undefined,
-    { page: 1, size: 50 },
-  );
+  const releasesLookup = useReleases(isHistorical ? projectId : undefined, {
+    page: 1,
+    size: 50,
+  });
   const snapshotLabel = (() => {
     const match = releasesLookup.data?.items.find(
       (item) => item.scan_id === pinnedScanId,
@@ -524,10 +520,7 @@ export function ProjectDetailPage() {
       ) : null}
 
       {isHistorical ? (
-        <SnapshotBanner
-          label={snapshotLabel}
-          onBackToLatest={clearScan}
-        />
+        <SnapshotBanner label={snapshotLabel} onBackToLatest={clearScan} />
       ) : null}
 
       {/* The governance band sits above the tabs, not inside one. Everything
@@ -556,10 +549,13 @@ export function ProjectDetailPage() {
         <div className="flex flex-1 items-start px-6 py-10">
           <EmptyState
             data-testid="project-detail-unavailable"
-            icon={<FolderX />}
-            title={t(projectErrorMessageKey(projectQuery.error, "page.errors"), {
-              defaultValue: t("page.load_error"),
-            })}
+            icon={<FileDirectoryIcon />}
+            title={t(
+              projectErrorMessageKey(projectQuery.error, "page.errors"),
+              {
+                defaultValue: t("page.load_error"),
+              },
+            )}
             description={t("page.unavailable_help")}
             action={
               <Button asChild variant="outline" size="sm">
@@ -575,151 +571,155 @@ export function ProjectDetailPage() {
         </div>
       ) : (
         <>
-      {isHistorical ? null : <GovernanceBand projectId={projectId} />}
+          {isHistorical ? null : <GovernanceBand projectId={projectId} />}
 
-      <Tabs value={activeTab} onValueChange={setTab}>
-        {/* W4-C — 8-tab strip. The IA overhaul collapsed Licenses +
+          <Tabs value={activeTab} onValueChange={setTab}>
+            {/* W4-C — 8-tab strip. The IA overhaul collapsed Licenses +
             Obligations into Compliance, SBOM into Reports, and Remediation
             into Vulnerabilities. Legacy `?tab=` tokens still land on the
             right surface via `redirectLegacyTab`. */}
-        <TabsList data-testid="project-detail-tabs">
-          <TabsTrigger
-            value="overview"
-            data-testid="project-detail-tab-overview"
-          >
-            {t("tabs.overview")}
-          </TabsTrigger>
-          <TabsTrigger
-            value="releases"
-            data-testid="project-detail-tab-releases"
-          >
-            {t("tabs.releases")}
-          </TabsTrigger>
-          <TabsTrigger
-            value="components"
-            data-testid="project-detail-tab-components"
-          >
-            {t("tabs.components")}
-          </TabsTrigger>
-          <TabsTrigger
-            value="vulnerabilities"
-            data-testid="project-detail-tab-vulnerabilities"
-          >
-            {t("tabs.vulnerabilities")}
-          </TabsTrigger>
-          {/* P2 #3 — Source (raw artifact) is the cognitive predecessor of
+            <TabsList data-testid="project-detail-tabs">
+              <TabsTrigger
+                value="overview"
+                data-testid="project-detail-tab-overview"
+              >
+                {t("tabs.overview")}
+              </TabsTrigger>
+              <TabsTrigger
+                value="releases"
+                data-testid="project-detail-tab-releases"
+              >
+                {t("tabs.releases")}
+              </TabsTrigger>
+              <TabsTrigger
+                value="components"
+                data-testid="project-detail-tab-components"
+              >
+                {t("tabs.components")}
+              </TabsTrigger>
+              <TabsTrigger
+                value="vulnerabilities"
+                data-testid="project-detail-tab-vulnerabilities"
+              >
+                {t("tabs.vulnerabilities")}
+              </TabsTrigger>
+              {/* P2 #3 — Source (raw artifact) is the cognitive predecessor of
               the classified outputs (Compliance, Reports), so it sits
               between Vulnerabilities and Compliance. */}
-          <TabsTrigger
-            value="source"
-            data-testid="project-detail-tab-source"
-          >
-            {t("tabs.source")}
-          </TabsTrigger>
-          <TabsTrigger
-            value="compliance"
-            data-testid="project-detail-tab-compliance"
-          >
-            {t("tabs.compliance")}
-          </TabsTrigger>
-          <TabsTrigger
-            value="reports"
-            data-testid="project-detail-tab-reports"
-          >
-            {t("tabs.reports")}
-          </TabsTrigger>
-          <TabsTrigger
-            value="settings"
-            data-testid="project-detail-tab-settings"
-          >
-            {t("tabs.settings")}
-          </TabsTrigger>
-        </TabsList>
+              <TabsTrigger
+                value="source"
+                data-testid="project-detail-tab-source"
+              >
+                {t("tabs.source")}
+              </TabsTrigger>
+              <TabsTrigger
+                value="compliance"
+                data-testid="project-detail-tab-compliance"
+              >
+                {t("tabs.compliance")}
+              </TabsTrigger>
+              <TabsTrigger
+                value="reports"
+                data-testid="project-detail-tab-reports"
+              >
+                {t("tabs.reports")}
+              </TabsTrigger>
+              <TabsTrigger
+                value="settings"
+                data-testid="project-detail-tab-settings"
+              >
+                {t("tabs.settings")}
+              </TabsTrigger>
+            </TabsList>
 
-        <TabsContent value="overview">
-          <OverviewTab
-            projectId={projectId}
-            project={project}
-            scanId={pinnedScanId}
-            onSelectScan={handleReopenScan}
-            onJumpToComponents={(scan) => handleViewSnapshotComponents(scan.id)}
-            // Same guard as the Vulnerabilities and Compliance tabs below:
-            // no button on a demo deployment, a historical snapshot, or
-            // before the project has resolved.
-            onScan={
-              project != null && !writesDisabled && !isHistorical
-                ? () => setSourceDialogOpen(true)
-                : undefined
-            }
-          />
-        </TabsContent>
-        <TabsContent value="releases">
-          <ReleasesTab
-            projectId={projectId}
-            onViewSnapshot={handleViewSnapshotComponents}
-          />
-        </TabsContent>
-        <TabsContent value="components">
-          <ComponentsTab
-            projectId={projectId}
-            scanId={pinnedScanId}
-            onScan={
-              project != null && !writesDisabled && !isHistorical
-                ? () => setSourceDialogOpen(true)
-                : undefined
-            }
-          />
-        </TabsContent>
-        <TabsContent value="vulnerabilities">
-          <VulnerabilitiesTab
-            projectId={projectId}
-            projectName={projectQuery.data?.name ?? null}
-            scanId={pinnedScanId}
-            readOnly={isHistorical}
-            onScan={
-              project != null && !writesDisabled && !isHistorical
-                ? () => setSourceDialogOpen(true)
-                : undefined
-            }
-          />
-        </TabsContent>
-        <TabsContent value="source">
-          <SourceTab
-            projectId={projectId}
-            projectName={projectQuery.data?.name ?? null}
-            scanId={pinnedScanId}
-          />
-        </TabsContent>
-        <TabsContent value="compliance">
-          <ComplianceTab
-            projectId={projectId}
-            projectName={projectQuery.data?.name ?? null}
-            scanId={pinnedScanId}
-            teamId={project?.team_id ?? null}
-            projectRole={overview.data?.current_user_role ?? "developer"}
-            readOnly={isHistorical}
-            onScan={
-              project != null && !writesDisabled && !isHistorical
-                ? () => setSourceDialogOpen(true)
-                : undefined
-            }
-          />
-        </TabsContent>
-        <TabsContent value="reports">
-          <ReportsTab
-            projectId={projectId}
-            projectName={projectQuery.data?.name ?? null}
-            scanId={pinnedScanId}
-            lastSucceededScanAt={overview.data?.last_succeeded_scan_at ?? null}
-          />
-        </TabsContent>
-        <TabsContent value="settings">
-          <SettingsTab
-            projectId={projectId}
-            project={projectQuery.data ?? null}
-          />
-        </TabsContent>
-      </Tabs>
+            <TabsContent value="overview">
+              <OverviewTab
+                projectId={projectId}
+                project={project}
+                scanId={pinnedScanId}
+                onSelectScan={handleReopenScan}
+                onJumpToComponents={(scan) =>
+                  handleViewSnapshotComponents(scan.id)
+                }
+                // Same guard as the Vulnerabilities and Compliance tabs below:
+                // no button on a demo deployment, a historical snapshot, or
+                // before the project has resolved.
+                onScan={
+                  project != null && !writesDisabled && !isHistorical
+                    ? () => setSourceDialogOpen(true)
+                    : undefined
+                }
+              />
+            </TabsContent>
+            <TabsContent value="releases">
+              <ReleasesTab
+                projectId={projectId}
+                onViewSnapshot={handleViewSnapshotComponents}
+              />
+            </TabsContent>
+            <TabsContent value="components">
+              <ComponentsTab
+                projectId={projectId}
+                scanId={pinnedScanId}
+                onScan={
+                  project != null && !writesDisabled && !isHistorical
+                    ? () => setSourceDialogOpen(true)
+                    : undefined
+                }
+              />
+            </TabsContent>
+            <TabsContent value="vulnerabilities">
+              <VulnerabilitiesTab
+                projectId={projectId}
+                projectName={projectQuery.data?.name ?? null}
+                scanId={pinnedScanId}
+                readOnly={isHistorical}
+                onScan={
+                  project != null && !writesDisabled && !isHistorical
+                    ? () => setSourceDialogOpen(true)
+                    : undefined
+                }
+              />
+            </TabsContent>
+            <TabsContent value="source">
+              <SourceTab
+                projectId={projectId}
+                projectName={projectQuery.data?.name ?? null}
+                scanId={pinnedScanId}
+              />
+            </TabsContent>
+            <TabsContent value="compliance">
+              <ComplianceTab
+                projectId={projectId}
+                projectName={projectQuery.data?.name ?? null}
+                scanId={pinnedScanId}
+                teamId={project?.team_id ?? null}
+                projectRole={overview.data?.current_user_role ?? "developer"}
+                readOnly={isHistorical}
+                onScan={
+                  project != null && !writesDisabled && !isHistorical
+                    ? () => setSourceDialogOpen(true)
+                    : undefined
+                }
+              />
+            </TabsContent>
+            <TabsContent value="reports">
+              <ReportsTab
+                projectId={projectId}
+                projectName={projectQuery.data?.name ?? null}
+                scanId={pinnedScanId}
+                lastSucceededScanAt={
+                  overview.data?.last_succeeded_scan_at ?? null
+                }
+              />
+            </TabsContent>
+            <TabsContent value="settings">
+              <SettingsTab
+                projectId={projectId}
+                project={projectQuery.data ?? null}
+              />
+            </TabsContent>
+          </Tabs>
         </>
       )}
 
@@ -741,24 +741,18 @@ export function ProjectDetailPage() {
         />
       ) : null}
 
-      <Sheet
+      <PrimerDialog
         open={scanDrawer.open}
         onOpenChange={(open) => setScanDrawer((s) => ({ ...s, open }))}
+        title={project?.name ?? ""}
+        description={t("page.scan_drawer_subtitle")}
+        position="right"
+        // The progress drawer hosts per-step panels whose long ScanCode and
+        // Trivy lines need room, so it takes the widest size.
+        width="xlarge"
+        testId="scan-progress-drawer"
       >
-        <SheetContent
-          side="right"
-          // Default Sheet width (sm:max-w-md ≈ 448px) crammed the tool log
-          // panel — long ScanCode warnings / Trivy report lines wrapped after
-          // ~30 chars. The progress drawer hosts per-step + tool log panels
-          // that benefit from monospace lines breathing, so widen this sheet
-          // specifically (other drawers stay at the default).
-          className="flex flex-col gap-4 sm:max-w-3xl"
-          data-testid="scan-progress-drawer"
-        >
-          <SheetHeader>
-            <SheetTitle>{project?.name ?? ""}</SheetTitle>
-            <SheetDescription>{t("page.scan_drawer_subtitle")}</SheetDescription>
-          </SheetHeader>
+        <div className="flex flex-col gap-4">
           {scanDrawer.scanId ? (
             <>
               <ScanProgress
@@ -789,8 +783,8 @@ export function ProjectDetailPage() {
               </div>
             </>
           ) : null}
-        </SheetContent>
-      </Sheet>
+        </div>
+      </PrimerDialog>
     </div>
   );
 }
@@ -942,7 +936,7 @@ function ProjectDetailHeader({
             aria-label={t("page.scan_active_reopen_aria")}
             className="inline-flex items-center gap-1.5 rounded-full border border-status-info-border bg-status-info-subtle px-2.5 py-1 text-xs font-medium text-status-info-foreground transition-colors duration-fast ease-out-soft hover:border-status-info-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           >
-            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+            <Spinner size="small" />
             {activeScan.status === "queued"
               ? t("page.scan_active_queued")
               : t("page.scan_active_running")}
@@ -959,28 +953,27 @@ function ProjectDetailHeader({
             "Scan" beside "Project not found" still offers an action against a
             project there is nothing to scan. */}
         {isProjectError ? null : (
-        <Button
-          size="sm"
-          onClick={onScan}
-          disabled={!canScan || blockingScan !== null}
-          title={
-            demoReadOnly
-              ? t("page.scan_demo_disabled")
-              : blockingScan !== null
-                ? t("page.scan_already_active", {
-                    defaultValue:
-                      "A scan is already running for this project — open the in-progress drawer to view it.",
-                  })
-                : undefined
-          }
-          data-testid="project-detail-scan"
-          data-scan-blocked={blockingScan !== null ? "active" : undefined}
-        >
-          {t("page.scan")}
-        </Button>
+          <Button
+            size="sm"
+            onClick={onScan}
+            disabled={!canScan || blockingScan !== null}
+            title={
+              demoReadOnly
+                ? t("page.scan_demo_disabled")
+                : blockingScan !== null
+                  ? t("page.scan_already_active", {
+                      defaultValue:
+                        "A scan is already running for this project — open the in-progress drawer to view it.",
+                    })
+                  : undefined
+            }
+            data-testid="project-detail-scan"
+            data-scan-blocked={blockingScan !== null ? "active" : undefined}
+          >
+            {t("page.scan")}
+          </Button>
         )}
       </div>
     </header>
   );
 }
-

@@ -4,16 +4,9 @@ import type { TFunction } from "i18next";
 import { useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Alert, AlertDescription } from "@/components/primer/alert";
+import { Button } from "@/components/primer/Button";
+import { PrimerDialog } from "@/components/primer/PrimerDialog";
 import { useVexImport } from "@/features/projects/api/useVexImport";
 import type {
   VexImportItemError,
@@ -141,19 +134,39 @@ export function VexImportDialog({
         {t("vulnerabilities.vex.import_button")}
       </Button>
 
-      <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogContent
-          className="max-w-lg"
-          data-testid="vex-import-dialog"
-          aria-describedby={`${fileInputId}-desc`}
-        >
-          <DialogHeader>
-            <DialogTitle>{t("vulnerabilities.vex.import_title")}</DialogTitle>
-            <DialogDescription id={`${fileInputId}-desc`}>
-              {t("vulnerabilities.vex.import_description")}
-            </DialogDescription>
-          </DialogHeader>
-
+      <PrimerDialog
+        open={open}
+        onOpenChange={handleOpenChange}
+        title={t("vulnerabilities.vex.import_title")}
+        description={t("vulnerabilities.vex.import_description")}
+        width="large"
+        testId="vex-import-dialog"
+        footer={
+          <>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => handleOpenChange(false)}
+              data-testid="vex-import-cancel"
+            >
+              {t("vulnerabilities.vex.import_close")}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              disabled={!file || mutation.isPending}
+              onClick={handleSubmit}
+              data-testid="vex-import-submit"
+            >
+              {mutation.isPending
+                ? t("vulnerabilities.vex.import_uploading")
+                : t("vulnerabilities.vex.import_submit")}
+            </Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
             <label
               htmlFor={fileInputId}
@@ -215,34 +228,9 @@ export function VexImportDialog({
             </Alert>
           ) : null}
 
-          {summary ? (
-            <VexImportSummaryPanel summary={summary} />
-          ) : null}
-
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => handleOpenChange(false)}
-              data-testid="vex-import-cancel"
-            >
-              {t("vulnerabilities.vex.import_close")}
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              disabled={!file || mutation.isPending}
-              onClick={handleSubmit}
-              data-testid="vex-import-submit"
-            >
-              {mutation.isPending
-                ? t("vulnerabilities.vex.import_uploading")
-                : t("vulnerabilities.vex.import_submit")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          {summary ? <VexImportSummaryPanel summary={summary} /> : null}
+        </div>
+      </PrimerDialog>
     </div>
   );
 }
@@ -343,7 +331,9 @@ function VexImportSummaryPanel({ summary }: SummaryPanelProps) {
                 {/* `detail`, `product`, `vulnerability` are document-supplied;
                     rendered as escaped text by React (no innerHTML). */}
                 <p className="mt-1 text-muted-foreground">
-                  {err.detail /* problem-detail-lint-allow: per-statement text from the uploaded VEX document, not a Problem */}
+                  {
+                    err.detail /* problem-detail-lint-allow: per-statement text from the uploaded VEX document, not a Problem */
+                  }
                 </p>
               </li>
             ))}
@@ -363,10 +353,7 @@ interface SummaryStatProps {
 function SummaryStat({ testId, label, value }: SummaryStatProps) {
   return (
     <div className="rounded-md border bg-muted/30 p-2">
-      <div
-        className="font-mono text-lg tabular-nums"
-        data-testid={testId}
-      >
+      <div className="font-mono text-lg tabular-nums" data-testid={testId}>
         {value}
       </div>
       <div className="text-[10px] uppercase tracking-wide text-muted-foreground">

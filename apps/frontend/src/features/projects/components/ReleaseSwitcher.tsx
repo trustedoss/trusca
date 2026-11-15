@@ -1,20 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
-import { ChevronDown, GitCompare, History, ShieldX } from "lucide-react";
+import {
+  CheckIcon,
+  ChevronDownIcon,
+  DiffIcon,
+  HistoryIcon,
+  ShieldXIcon,
+} from "@primer/octicons-react";
+import { ActionList, ActionMenu } from "@primer/react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 
 import { Badge } from "@/components/primer/badge";
-import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuActiveCheck,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/primer/Button";
 import { useReleases } from "@/features/projects/api/useReleases";
 import type {
   ReleaseSeveritySummary,
@@ -39,7 +37,7 @@ import { cn } from "@/lib/utils";
  *
  * CLAUDE.md "디자인 시스템": design tokens only (no hex), risk colors paired
  * with a label/icon (never color-only), inline (no modal). Built on the shadcn
- * DropdownMenu so keyboard navigation + focus management come for free.
+ * ActionMenu so keyboard navigation + focus management come for free.
  */
 
 const PAGE_SIZE = 50;
@@ -146,8 +144,8 @@ export function ReleaseSwitcher({
   })();
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
+    <ActionMenu>
+      <ActionMenu.Anchor>
         <Button
           type="button"
           size="sm"
@@ -159,77 +157,88 @@ export function ReleaseSwitcher({
           className="h-7 gap-1.5 px-2 text-xs font-medium"
         >
           {isHistorical ? (
-            <History className="h-3.5 w-3.5 text-risk-medium" aria-hidden />
+            <HistoryIcon size={14} className="text-risk-medium" />
           ) : null}
-          <span className="max-w-[16rem] truncate" data-testid="release-switcher-label">
+          <span
+            className="max-w-[16rem] truncate"
+            data-testid="release-switcher-label"
+          >
             {triggerLabel}
           </span>
-          <ChevronDown className="h-3.5 w-3.5 opacity-60" aria-hidden />
+          <ChevronDownIcon size={14} className="opacity-60" />
         </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent
-        align="start"
-        className="max-h-[24rem] w-72 overflow-y-auto"
-        data-testid="release-switcher-menu"
-      >
-        <DropdownMenuLabel>{t("release_switcher.menu_label")}</DropdownMenuLabel>
+      </ActionMenu.Anchor>
+      <ActionMenu.Overlay width="medium" maxHeight="medium">
+        <div data-testid="release-switcher-menu">
+          <ActionList>
+            <ActionList.GroupHeading>
+              {t("release_switcher.menu_label")}
+            </ActionList.GroupHeading>
 
-        <DropdownMenuItem
-          onSelect={onSelectLatest}
-          data-testid="release-switcher-latest"
-          data-active={!isHistorical ? "true" : "false"}
-        >
-          <span className="flex flex-col">
-            <span className="font-medium">{t("release_switcher.latest")}</span>
-            <span className="text-xs text-muted-foreground">
-              {t("release_switcher.latest_hint")}
-            </span>
-          </span>
-          <DropdownMenuActiveCheck active={!isHistorical} />
-        </DropdownMenuItem>
+            <ActionList.Item
+              onSelect={onSelectLatest}
+              data-testid="release-switcher-latest"
+              data-active={!isHistorical ? "true" : "false"}
+            >
+              <span className="flex flex-col">
+                <span className="font-medium">
+                  {t("release_switcher.latest")}
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {t("release_switcher.latest_hint")}
+                </span>
+              </span>
+              {!isHistorical ? (
+                <CheckIcon size={16} className="ml-auto shrink-0" />
+              ) : null}
+            </ActionList.Item>
 
-        {canCompare ? (
-          <DropdownMenuItem
-            onSelect={handleCompare}
-            data-testid="release-switcher-compare"
-          >
-            <GitCompare className="h-3.5 w-3.5 shrink-0" aria-hidden />
-            <span className="font-medium">{t("compare.switcher_item")}</span>
-          </DropdownMenuItem>
-        ) : null}
+            {canCompare ? (
+              <ActionList.Item
+                onSelect={handleCompare}
+                data-testid="release-switcher-compare"
+              >
+                <DiffIcon size={14} className="shrink-0" />
+                <span className="font-medium">
+                  {t("compare.switcher_item")}
+                </span>
+              </ActionList.Item>
+            ) : null}
 
-        <DropdownMenuSeparator />
+            <ActionList.Divider />
 
-        {releases.isLoading ? (
-          <div
-            className="px-2 py-1.5 text-xs text-muted-foreground"
-            data-testid="release-switcher-loading"
-          >
-            {t("release_switcher.loading")}
-          </div>
-        ) : null}
+            {releases.isLoading ? (
+              <div
+                className="px-2 py-1.5 text-xs text-muted-foreground"
+                data-testid="release-switcher-loading"
+              >
+                {t("release_switcher.loading")}
+              </div>
+            ) : null}
 
-        {!releases.isLoading && items.length === 0 ? (
-          <div
-            className="px-2 py-1.5 text-xs text-muted-foreground"
-            data-testid="release-switcher-empty"
-          >
-            {t("release_switcher.none")}
-          </div>
-        ) : null}
+            {!releases.isLoading && items.length === 0 ? (
+              <div
+                className="px-2 py-1.5 text-xs text-muted-foreground"
+                data-testid="release-switcher-empty"
+              >
+                {t("release_switcher.none")}
+              </div>
+            ) : null}
 
-        {items.map((item) => (
-          <ReleaseMenuItem
-            key={item.scan_id}
-            release={item}
-            locale={locale}
-            isLatest={item.scan_id === latestScanId}
-            active={item.scan_id === activeScanId}
-            onSelect={() => onSelectRelease(item.scan_id)}
-          />
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
+            {items.map((item) => (
+              <ReleaseMenuItem
+                key={item.scan_id}
+                release={item}
+                locale={locale}
+                isLatest={item.scan_id === latestScanId}
+                active={item.scan_id === activeScanId}
+                onSelect={() => onSelectRelease(item.scan_id)}
+              />
+            ))}
+          </ActionList>
+        </div>
+      </ActionMenu.Overlay>
+    </ActionMenu>
   );
 }
 
@@ -250,10 +259,12 @@ function ReleaseMenuItem({
 }: ReleaseMenuItemProps) {
   const { t } = useTranslation("project_detail");
   const label = releaseLabel(release, locale);
-  const nonZero = SEVERITY_ORDER.filter((key) => release.severity_summary[key] > 0);
+  const nonZero = SEVERITY_ORDER.filter(
+    (key) => release.severity_summary[key] > 0,
+  );
 
   return (
-    <DropdownMenuItem
+    <ActionList.Item
       onSelect={onSelect}
       data-testid="release-switcher-item"
       data-scan-id={release.scan_id}
@@ -261,7 +272,10 @@ function ReleaseMenuItem({
       aria-label={t("release_switcher.item_aria", { label })}
     >
       <span
-        className={cn("h-2 w-2 shrink-0 rounded-full", riskDotClass(release.risk_score))}
+        className={cn(
+          "h-2 w-2 shrink-0 rounded-full",
+          riskDotClass(release.risk_score),
+        )}
         aria-hidden
       />
       <span className="flex min-w-0 flex-col">
@@ -283,7 +297,7 @@ function ReleaseMenuItem({
               className="inline-flex items-center gap-0.5 text-risk-critical-foreground"
               data-testid="release-switcher-item-gate-fail"
             >
-              <ShieldX className="h-3 w-3" aria-hidden />
+              <ShieldXIcon size={12} />
               {t("release_switcher.gate_fail")}
             </span>
           ) : null}
@@ -301,7 +315,7 @@ function ReleaseMenuItem({
           )}
         </span>
       </span>
-      <DropdownMenuActiveCheck active={active} />
-    </DropdownMenuItem>
+      {active ? <CheckIcon size={16} className="ml-auto shrink-0" /> : null}
+    </ActionList.Item>
   );
 }

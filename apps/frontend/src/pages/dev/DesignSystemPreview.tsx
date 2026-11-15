@@ -37,7 +37,7 @@ import {
 
 import { EmptyState } from "@/components/EmptyState";
 import { BrandCandidates } from "@/pages/dev/BrandCandidates";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Badge } from "@/components/primer/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -50,7 +50,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/primer/Skeleton";
 import { TableRowsSkeleton } from "@/components/ui/skeletons";
-import { useToast } from "@/components/ui/toast";
+import { useToast } from "@/components/primer/toast";
 import {
   Body,
   Caption,

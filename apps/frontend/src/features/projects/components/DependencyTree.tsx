@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
-import { ChevronDown, ChevronRight, Package } from "lucide-react";
+import {
+  ChevronDownIcon,
+  ChevronRightIcon,
+  PackageIcon,
+} from "@primer/octicons-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -47,19 +51,16 @@ function TreeRow({ node }: { node: TreeNode }) {
             }
           >
             {open ? (
-              <ChevronDown className="h-3.5 w-3.5" />
+              <ChevronDownIcon size={14} />
             ) : (
-              <ChevronRight className="h-3.5 w-3.5" />
+              <ChevronRightIcon size={14} />
             )}
           </button>
         ) : (
           <span className="inline-block h-4 w-4 shrink-0" aria-hidden />
         )}
 
-        <Package
-          className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
-          aria-hidden
-        />
+        <PackageIcon size={14} className="shrink-0 text-muted-foreground" />
         <span className="font-mono text-xs">
           {node.name}
           {node.version ? (

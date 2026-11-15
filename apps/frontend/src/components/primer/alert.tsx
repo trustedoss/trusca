@@ -6,19 +6,26 @@ import { forwardRef, type HTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
 
 /**
- * W11-F polish — the alert picks up a colour transition (150 ms ease-out-soft)
- * so dynamic variant swaps (e.g. queued → running → failed) cross-fade
- * instead of snap. The radius lands on `rounded-md` to align with the
- * W11-A hierarchy (modals at `rounded-xl`, alerts/cards at `rounded-md`).
+ * An inline message box with a title and description slots.
+ *
+ * Same call shape as the shadcn Alert it replaces. The tones come from the
+ * status tokens (they have dark values), so a tone reads the same in both
+ * themes; `destructive` is the error tone and stays the default for errors.
+ * Any icon passed as the first child is placed in the left gutter.
  */
 const alertVariants = cva(
-  "relative w-full rounded-md border px-4 py-3 text-sm transition-colors duration-fast ease-out-soft [&>svg+div]:translate-y-[-3px] [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4 [&>svg]:text-foreground [&>svg~*]:pl-7",
+  "relative w-full rounded-md border px-4 py-3 text-sm [&>svg+div]:translate-y-[-3px] [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4 [&>svg~*]:pl-7",
   {
     variants: {
       variant: {
-        default: "bg-background text-foreground",
+        default: "bg-background text-foreground [&>svg]:text-foreground",
         destructive:
-          "border-destructive/50 text-destructive dark:border-destructive [&>svg]:text-destructive",
+          "border-status-danger-border bg-status-danger-subtle text-status-danger-foreground [&>svg]:text-status-danger-foreground",
+        warning:
+          "border-status-warning-border bg-status-warning-subtle text-status-warning-foreground [&>svg]:text-status-warning-foreground",
+        info: "border-status-info-border bg-status-info-subtle text-status-info-foreground [&>svg]:text-status-info-foreground",
+        success:
+          "border-status-success-border bg-status-success-subtle text-status-success-foreground [&>svg]:text-status-success-foreground",
       },
     },
     defaultVariants: {

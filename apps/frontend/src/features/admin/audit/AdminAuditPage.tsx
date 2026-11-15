@@ -33,7 +33,7 @@ import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 
 import { PageHeader } from "@/components/PageHeader";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -47,7 +47,7 @@ import {
   type AuditTargetTable,
 } from "@/features/admin/audit/api/adminAuditApi";
 import { useAdminAudit } from "@/features/admin/audit/api/useAdminAudit";
-import { useToast } from "@/components/ui/toast";
+import { useToast } from "@/components/primer/toast";
 import {
   adminErrorExtension,
   adminErrorMessageKey,

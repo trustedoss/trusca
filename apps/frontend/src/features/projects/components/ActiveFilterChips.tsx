@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
-import { X } from "lucide-react";
+import {
+  XIcon,
+} from "@primer/octicons-react";
 import { useTranslation } from "react-i18next";
 
 import type { LicenseCategoryName } from "@/features/projects/api/projectDetailApi";
@@ -13,7 +15,7 @@ import { cn } from "@/lib/utils";
  * the user no longer sees a MultiSelect that exposes the filter — so we
  * surface each selected value as a removable chip just above the table.
  *
- * One chip per selected value; click the X to remove that single value (and
+ * One chip per selected value; click the XIcon to remove that single value (and
  * call back into the parent so it can re-mirror the now-shorter list into
  * URL params). Bag-style filters only; tri-state / scalar filters (Direct,
  * EPSS threshold) keep their dedicated affordance.
@@ -143,7 +145,7 @@ function Chip({ facet, value, label, ariaLabel, onClear }: ChipProps) {
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
         )}
       >
-        <X className="h-3 w-3" aria-hidden />
+        <XIcon size={12} />
       </button>
     </span>
   );

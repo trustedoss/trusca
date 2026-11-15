@@ -21,11 +21,11 @@ import { useTranslation } from "react-i18next";
 
 import { EmptyState } from "@/components/EmptyState";
 import { PageHeader } from "@/components/PageHeader";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Badge } from "@/components/primer/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/primer/Skeleton";
-import { useToast } from "@/components/ui/toast";
+import { useToast } from "@/components/primer/toast";
 import { CreateApiKeyDialog } from "@/features/integrations/CreateApiKeyDialog";
 import { RevealApiKeyDialog } from "@/features/integrations/RevealApiKeyDialog";
 import { RevokeApiKeyDialog } from "@/features/integrations/RevokeApiKeyDialog";

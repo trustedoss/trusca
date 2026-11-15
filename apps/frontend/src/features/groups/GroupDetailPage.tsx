@@ -15,12 +15,12 @@ import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { EmptyState } from "@/components/EmptyState";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Badge } from "@/components/primer/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/primer/card";
 import { Skeleton } from "@/components/primer/Skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/primer/tabs";
 import { useGroupDetail } from "@/features/groups/api/useGroupDetail";
 import { useGroups } from "@/features/groups/api/useGroups";
 import { GroupMembersPanel } from "@/features/groups/components/GroupMembersPanel";

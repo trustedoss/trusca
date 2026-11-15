@@ -19,7 +19,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/ui/button";
-import { useToast } from "@/components/ui/toast";
+import { useToast } from "@/components/primer/toast";
 import { problemMessage } from "@/lib/problemMessage";
 import { ProblemError } from "@/lib/problem";
 

@@ -16,13 +16,13 @@ import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 
 import { PageHeader } from "@/components/PageHeader";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Badge } from "@/components/primer/badge";
 import { Button } from "@/components/ui/button";
 import { TableRowsSkeleton } from "@/components/ui/skeletons";
 import { useAdminUsers } from "@/features/admin/api/useAdminUsers";
 import type { UserRole } from "@/features/admin/api/adminUsersApi";
-import { useToast } from "@/components/ui/toast";
+import { useToast } from "@/components/primer/toast";
 import { RoleBadge } from "@/features/admin/components/RoleBadge";
 import { exportAdminUsers } from "@/features/admin/api/adminUsersApi";
 import { AdminUserDrawer } from "@/features/admin/users/AdminUserDrawer";

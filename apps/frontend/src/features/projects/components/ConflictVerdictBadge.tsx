@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
-import { Ban, Check, CircleHelp, TriangleAlert } from "lucide-react";
+import {
+  AlertIcon,
+  BlockedIcon,
+  CheckIcon,
+  QuestionIcon,
+} from "@primer/octicons-react";
 import { useTranslation } from "react-i18next";
 
 import { Badge } from "@/components/primer/badge";
@@ -45,11 +50,11 @@ const TONE: Record<
   compatible: "success",
 };
 
-const ICON: Record<ConflictVerdictName, typeof Check> = {
-  incompatible: Ban,
-  conditional: TriangleAlert,
-  unknown: CircleHelp,
-  compatible: Check,
+const ICON: Record<ConflictVerdictName, typeof CheckIcon> = {
+  incompatible: BlockedIcon,
+  conditional: AlertIcon,
+  unknown: QuestionIcon,
+  compatible: CheckIcon,
 };
 
 export function ConflictVerdictBadge({

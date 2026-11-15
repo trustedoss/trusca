@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
-import { ArrowDown, ArrowUp, ChevronsUpDown } from "lucide-react";
+import {
+  ArrowDownIcon,
+  ArrowUpIcon,
+  UnfoldIcon,
+} from "@primer/octicons-react";
 import { useTranslation } from "react-i18next";
 
 import { cn } from "@/lib/utils";
@@ -130,7 +134,7 @@ export function SortableColumnHeader({
   }
 
   const Icon =
-    order === "asc" ? ArrowUp : order === "desc" ? ArrowDown : ChevronsUpDown;
+    order === "asc" ? ArrowUpIcon : order === "desc" ? ArrowDownIcon : UnfoldIcon;
 
   return (
     <button

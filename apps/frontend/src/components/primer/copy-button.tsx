@@ -18,12 +18,15 @@
  * The write itself lives in `lib/clipboard`, because the integrations page
  * needs the same behaviour behind its own labelled button.
  */
-import { Check, Copy } from "lucide-react";
+import {
+  CheckIcon,
+  CopyIcon,
+} from "@primer/octicons-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { Button } from "@/components/ui/button";
-import { useToast } from "@/components/ui/toast";
+import { Button } from "@/components/primer/Button";
+import { useToast } from "@/components/primer/toast";
 import { writeToClipboard } from "@/lib/clipboard";
 import { cn } from "@/lib/utils";
 
@@ -86,9 +89,9 @@ export function CopyButton({
       data-copied={copied ? "true" : undefined}
     >
       {copied ? (
-        <Check className="h-3.5 w-3.5" aria-hidden />
+        <CheckIcon size={14} />
       ) : (
-        <Copy className="h-3.5 w-3.5" aria-hidden />
+        <CopyIcon size={14} />
       )}
     </Button>
   );

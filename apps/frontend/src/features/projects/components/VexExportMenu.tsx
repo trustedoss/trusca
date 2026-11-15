@@ -2,7 +2,7 @@
 // Copyright 2026 TRUSCA contributors
 import { useTranslation } from "react-i18next";
 
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/primer/Button";
 import { useVexExport } from "@/features/projects/api/useVexExport";
 import type { VexFormat } from "@/features/projects/api/vexApi";
 import { problemMessage } from "@/lib/problemMessage";

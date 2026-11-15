@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
-import { X } from "lucide-react";
+import {
+  XIcon,
+} from "@primer/octicons-react";
 import { useTranslation } from "react-i18next";
 
 import {
@@ -12,9 +14,9 @@ import {
   type MoreFiltersMenuOption,
 } from "@/components/filters/MoreFiltersMenu";
 import { ExportCsvButton } from "@/components/ExportCsvButton";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { MultiSelect } from "@/components/ui/multi-select";
+import { Button } from "@/components/primer/Button";
+import { Input } from "@/components/primer/Input";
+import { MultiSelect } from "@/components/primer/multi-select";
 import type {
   LicenseCategoryName,
   TeamScopedRole,
@@ -677,7 +679,7 @@ export function VulnerabilitiesToolbar({
               }}
               className="ml-auto inline-flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground transition-colors duration-fast ease-out-soft hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
-              <X className="h-3 w-3" aria-hidden />
+              <XIcon size={12} />
             </button>
           </div>
           <MultiSelect
@@ -721,7 +723,7 @@ export function VulnerabilitiesToolbar({
               }}
               className="ml-auto inline-flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground transition-colors duration-fast ease-out-soft hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             >
-              <X className="h-3 w-3" aria-hidden />
+              <XIcon size={12} />
             </button>
           </div>
           <MultiSelect

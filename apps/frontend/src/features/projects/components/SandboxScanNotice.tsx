@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
-import { AlertTriangle, FileUp, FlaskConical } from "lucide-react";
+import {
+  AlertIcon,
+  BeakerIcon,
+  UploadIcon,
+} from "@primer/octicons-react";
 import { Trans, useTranslation } from "react-i18next";
 
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/primer/Button";
 import { bomLensUrl, DEMO_SANDBOX_SCAN_MAX_MB } from "@/lib/demoSandbox";
 
 /**
@@ -36,10 +40,7 @@ export function SandboxScanNotice({ onUploadSbom }: SandboxScanNoticeProps) {
       className="flex flex-col gap-2 border-b border-status-info-border bg-status-info-subtle px-6 py-3 text-sm text-foreground sm:flex-row sm:items-start sm:justify-between"
     >
       <div className="flex items-start gap-2.5">
-        <FlaskConical
-          className="mt-0.5 h-4 w-4 shrink-0 text-status-info"
-          aria-hidden
-        />
+        <BeakerIcon size={16} className="mt-0.5 shrink-0 text-status-info" />
         {/* G0-7 — the secondary lines below are `text-foreground`, not the
             muted grey they read as. The notice sits on the page ground
             (#fafafa) where the muted token clears AA by 0.03, and the tint
@@ -76,7 +77,7 @@ export function SandboxScanNotice({ onUploadSbom }: SandboxScanNoticeProps) {
             className="flex items-start gap-1.5 text-xs font-medium text-risk-high-foreground"
             data-testid="sandbox-shared-warning"
           >
-            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+            <AlertIcon size={14} className="mt-0.5 shrink-0" />
             <span>{t("sandbox.shared_warning")}</span>
           </p>
         </div>
@@ -89,7 +90,7 @@ export function SandboxScanNotice({ onUploadSbom }: SandboxScanNoticeProps) {
         className="shrink-0"
         data-testid="sandbox-upload-sbom"
       >
-        <FileUp className="mr-1.5 h-4 w-4" aria-hidden />
+        <UploadIcon size={16} className="mr-1.5" />
         {t("sandbox.upload_sbom")}
       </Button>
     </div>

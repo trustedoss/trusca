@@ -16,7 +16,7 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ToastProvider, useToast } from "@/components/ui/toast";
+import { ToastProvider, useToast } from "@/components/primer/toast";
 import { useAuthStore, type AuthUser } from "@/stores/authStore";
 
 function Trigger({

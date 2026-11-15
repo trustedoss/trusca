@@ -22,11 +22,11 @@ import { useTranslation } from "react-i18next";
 
 import { PageHeader } from "@/components/PageHeader";
 import { EmptyState } from "@/components/EmptyState";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Badge } from "@/components/primer/badge";
 import { Card } from "@/components/primer/card";
 import { Skeleton } from "@/components/primer/Skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/primer/tabs";
 import { useAbout, useNotice } from "@/features/about/api/useAbout";
 import { formatAbsoluteTime } from "@/lib/absoluteTime";
 import type { NoticeDocument } from "@/features/about/api/aboutApi";

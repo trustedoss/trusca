@@ -5,8 +5,8 @@ import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 
 import { Badge } from "@/components/primer/badge";
-import { Button } from "@/components/ui/button";
-import { CopyButton } from "@/components/ui/copy-button";
+import { Button } from "@/components/primer/Button";
+import { CopyButton } from "@/components/primer/copy-button";
 import type {
   ComponentDetailResponse,
   ObligationRef,

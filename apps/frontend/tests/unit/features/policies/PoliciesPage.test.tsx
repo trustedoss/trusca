@@ -16,7 +16,7 @@
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
-import { ToastProvider } from "@/components/ui/toast";
+import { ToastProvider } from "@/components/primer/toast";
 import {
   fireEvent,
   render,

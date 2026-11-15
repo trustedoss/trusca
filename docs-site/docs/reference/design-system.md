@@ -475,7 +475,7 @@ Risk tones are for severity only. Two non-severity tones sit beside them: `accen
 
 ### Toast
 
-`apps/frontend/src/components/ui/toast.tsx`
+`apps/frontend/src/components/primer/toast.tsx`
 
 A single `<ToastProvider>` (mounted in `AppProviders`) renders one stacked, bottom-right region; `useToast().toast(text, opts)` pushes from anywhere. Toasts queue and announce through an `aria-live` region. Success toasts auto-dismiss after 4 s; error toasts stay until the reader closes them and use `role="alert"`, and a repeated error with the same key replaces the earlier one. Every toast has a close button; closing one moves focus to the next toast or back to where it was. Errors render outside the polite live region so screen readers announce them once, and they are cleared when the signed-in user changes.
 

@@ -6,7 +6,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { ExportCsvButton } from "@/components/ExportCsvButton";
-import { ToastProvider } from "@/components/ui/toast";
+import { ToastProvider } from "@/components/primer/toast";
 import { ProblemError } from "@/lib/problem";
 
 function renderButton(

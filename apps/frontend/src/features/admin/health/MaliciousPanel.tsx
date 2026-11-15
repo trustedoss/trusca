@@ -31,7 +31,7 @@ import {
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Badge } from "@/components/primer/badge";
 import { Skeleton } from "@/components/primer/Skeleton";
 import { type MaliciousStatus } from "@/features/admin/health/api/adminMaliciousHealthApi";

@@ -17,7 +17,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ToastProvider } from "@/components/ui/toast";
+import { ToastProvider } from "@/components/primer/toast";
 import { ScanCancelButton } from "@/features/scans/ScanCancelButton";
 import { ProblemError } from "@/lib/problem";
 import type { ScanPublic, ScanStatus } from "@/lib/projectsApi";
