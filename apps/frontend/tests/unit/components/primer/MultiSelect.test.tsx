@@ -21,7 +21,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
-import { MultiSelect } from "@/components/ui/multi-select";
+import { MultiSelect } from "@/components/primer/multi-select";
 import i18n from "@/lib/i18n";
 
 const OPTIONS = [

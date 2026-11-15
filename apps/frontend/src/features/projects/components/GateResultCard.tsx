@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
-import { AlertTriangle, ShieldCheck, ShieldX } from "lucide-react";
+import {
+  AlertIcon,
+  ShieldCheckIcon,
+  ShieldXIcon,
+} from "@primer/octicons-react";
 import { useTranslation } from "react-i18next";
 
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Badge } from "@/components/primer/badge";
 import {
   Card,
@@ -27,8 +31,8 @@ import { cn } from "@/lib/utils";
  *
  * The verdict pairs a color with an icon and a localized label so color is
  * never the only signal (CLAUDE.md "디자인 시스템" + accessibility rule):
- *   - pass → emerald `success` badge + ShieldCheck
- *   - fail → red destructive badge + ShieldX
+ *   - pass → emerald `success` badge + ShieldCheckIcon
+ *   - fail → red destructive badge + ShieldXIcon
  *
  * When the project has never had a successful scan the backend returns
  * `gate: "pass"` with `scan_id: null`; we render that as a neutral
@@ -141,7 +145,7 @@ export function GateResultCard({ projectId, scanId }: GateResultCardProps) {
               className="gap-1.5"
               data-testid="gate-badge-pass"
             >
-              <ShieldCheck className="h-3.5 w-3.5" aria-hidden />
+              <ShieldCheckIcon size={14} />
               {t("overview.gate_card.pass", { defaultValue: "Pass" })}
             </Badge>
           ) : (
@@ -150,7 +154,7 @@ export function GateResultCard({ projectId, scanId }: GateResultCardProps) {
               className="gap-1.5"
               data-testid="gate-badge-fail"
             >
-              <ShieldX className="h-3.5 w-3.5" aria-hidden />
+              <ShieldXIcon size={14} />
               {t("overview.gate_card.fail", { defaultValue: "Fail" })}
             </Badge>
           )}
@@ -188,7 +192,7 @@ export function GateResultCard({ projectId, scanId }: GateResultCardProps) {
                 data-testid="gate-empty-scan"
                 data-outcome={emptyOutcome}
               >
-                <AlertTriangle className="h-4 w-4" aria-hidden />
+                <AlertIcon size={16} />
                 <AlertDescription className="text-sm">
                   {t(`overview.gate_card.empty_scan_${emptyOutcome}`)}
                 </AlertDescription>

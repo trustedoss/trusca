@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
-import { History } from "lucide-react";
+import {
+  HistoryIcon,
+} from "@primer/octicons-react";
 import { useTranslation } from "react-i18next";
 
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/primer/Button";
 import { cn } from "@/lib/utils";
 
 /**
@@ -47,10 +49,7 @@ export function SnapshotBanner({
       )}
     >
       <div className="flex items-center gap-2">
-        <History
-          className="h-4 w-4 shrink-0 text-risk-medium"
-          aria-hidden
-        />
+        <HistoryIcon size={16} className="shrink-0 text-risk-medium" />
         <span className="font-medium text-foreground">
           {t("snapshot.banner", { label })}
         </span>

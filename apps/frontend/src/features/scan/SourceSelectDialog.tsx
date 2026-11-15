@@ -5,7 +5,7 @@ import { useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,

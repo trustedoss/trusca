@@ -17,14 +17,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { PageHeader } from "@/components/PageHeader";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/primer/Skeleton";
 import { useCreateTeam } from "@/features/admin/api/useAdminTeamMutations";
 import { useAdminTeams } from "@/features/admin/api/useAdminTeams";
-import { useToast } from "@/components/ui/toast";
+import { useToast } from "@/components/primer/toast";
 import { AdminTeamDrawer } from "@/features/admin/teams/AdminTeamDrawer";
 import {
   adminErrorExtension,

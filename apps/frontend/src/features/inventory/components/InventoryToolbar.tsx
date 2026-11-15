@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { ExportCsvButton } from "@/components/ExportCsvButton";
 import { MoreFiltersMenu } from "@/components/filters/MoreFiltersMenu";
 import { Input } from "@/components/ui/input";
-import { MultiSelect } from "@/components/ui/multi-select";
+import { MultiSelect } from "@/components/primer/multi-select";
 import { useState } from "react";
 
 import type {

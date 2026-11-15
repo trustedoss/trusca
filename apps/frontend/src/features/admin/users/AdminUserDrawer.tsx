@@ -22,7 +22,7 @@ import { Loader2 } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Badge } from "@/components/primer/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

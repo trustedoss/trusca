@@ -34,10 +34,10 @@ import { PageHeader } from "@/components/PageHeader";
 
 import { MfaEnrolment } from "./MfaEnrolment";
 import { ProviderIcon } from "@/components/ProviderIcon";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/primer/Skeleton";
-import { useToast } from "@/components/ui/toast";
+import { useToast } from "@/components/primer/toast";
 import {
   OAUTH_UNLINK_BLOCKS_LOGIN_TYPE,
   type OAuthIdentity,

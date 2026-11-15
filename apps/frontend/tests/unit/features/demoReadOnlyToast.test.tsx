@@ -27,7 +27,7 @@ import {
 import { DEMO_READ_ONLY_PROBLEM_TYPE } from "@/lib/demoReadOnly";
 import i18n from "@/lib/i18n";
 import { ProblemError, type ProblemDetails } from "@/lib/problem";
-import { ToastProvider, useToast } from "@/components/ui/toast";
+import { ToastProvider, useToast } from "@/components/primer/toast";
 
 function demoError(): ProblemError {
   const problem: ProblemDetails = {

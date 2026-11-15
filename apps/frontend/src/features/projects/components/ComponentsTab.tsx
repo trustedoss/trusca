@@ -1,14 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
-import { Boxes } from "lucide-react";
+import {
+  PackageIcon,
+} from "@primer/octicons-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router-dom";
 import { Virtuoso } from "react-virtuoso";
 
 import { EmptyState } from "@/components/EmptyState";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription } from "@/components/primer/alert";
+import { Button } from "@/components/primer/Button";
 import {
   Card,
   CardContent,
@@ -17,12 +19,12 @@ import {
   CardTitle,
 } from "@/components/primer/card";
 import { Skeleton } from "@/components/primer/Skeleton";
-import { VIRTUOSO_TABLE_BODY } from "@/components/ui/virtuoso-table-body";
+import { VIRTUOSO_TABLE_BODY } from "@/components/primer/virtuoso-table-body";
 import {
   ariaSortFor,
   type SortState,
   SortableColumnHeader,
-} from "@/components/ui/sortable-column-header";
+} from "@/components/primer/sortable-column-header";
 import {
   type ColumnsPickerColumn,
   loadInitialVisibility,
@@ -676,7 +678,7 @@ export function ComponentsTab({
         <EmptyState
           className="m-6"
           data-testid="components-empty"
-          icon={<Boxes />}
+          icon={<PackageIcon />}
           data-outcome={overview.data?.component_outcome ?? undefined}
           title={
             hasNarrowingFilters

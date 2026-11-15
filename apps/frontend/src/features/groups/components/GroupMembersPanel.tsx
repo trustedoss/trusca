@@ -2,7 +2,7 @@
 // Copyright 2026 TRUSCA contributors
 import { useTranslation } from "react-i18next";
 
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Badge } from "@/components/primer/badge";
 import { Skeleton } from "@/components/primer/Skeleton";
 import { useGroupMembers } from "@/features/groups/api/useGroupMembers";

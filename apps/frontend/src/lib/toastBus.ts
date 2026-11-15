@@ -9,7 +9,7 @@
  * `useToast()` NOOP fallback for components rendered outside the provider,
  * e.g. bare unit-test trees).
  */
-import type { ToastOptions } from "@/components/ui/toast";
+import type { ToastOptions } from "@/components/primer/toast";
 
 export type ToastDispatcher = (text: string, options?: ToastOptions) => void;
 

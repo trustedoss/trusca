@@ -7,11 +7,11 @@ import { useSearchParams } from "react-router-dom";
 import { Virtuoso } from "react-virtuoso";
 
 import { EmptyState } from "@/components/EmptyState";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Badge } from "@/components/primer/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/primer/Skeleton";
-import { VIRTUOSO_TABLE_BODY } from "@/components/ui/virtuoso-table-body";
+import { VIRTUOSO_TABLE_BODY } from "@/components/primer/virtuoso-table-body";
 import type { LicenseCategoryName } from "@/features/projects/api/projectDetailApi";
 import {
   KNOWN_OBLIGATION_KINDS,

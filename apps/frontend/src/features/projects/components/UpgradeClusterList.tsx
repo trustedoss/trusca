@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
-import { ChevronRight, PackageCheck, PackageX } from "lucide-react";
+import {
+  ChevronRightIcon,
+  PackageIcon,
+} from "@primer/octicons-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -101,23 +104,11 @@ function UpgradeClusterCard({
         )}
         style={{ minHeight: "var(--table-row)" }}
       >
-        <ChevronRight
-          aria-hidden
-          className={cn(
-            "h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-fast ease-out-soft",
-            expanded && "rotate-90",
-          )}
-        />
+        <ChevronRightIcon className={cn( "h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-fast ease-out-soft", expanded && "rotate-90", )} />
         {isUpgradeable ? (
-          <PackageCheck
-            aria-hidden
-            className="h-4 w-4 shrink-0 text-status-success"
-          />
+          <PackageIcon size={16} className="shrink-0 text-status-success" />
         ) : (
-          <PackageX
-            aria-hidden
-            className="h-4 w-4 shrink-0 text-muted-foreground"
-          />
+          <PackageIcon size={16} className="shrink-0 text-muted-foreground" />
         )}
 
         <span className="flex min-w-0 flex-1 flex-col py-1.5">

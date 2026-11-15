@@ -19,8 +19,12 @@ export interface PrimerDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title: string;
+  /** Test id for the title heading. */
+  titleTestId?: string;
+  /** Extra content under the description, inside the header. */
+  headerExtra?: ReactNode;
   /** Read out with the title; shown under it when `showDescription`. */
-  description?: string;
+  description?: ReactNode;
   children?: ReactNode;
   width?: "small" | "medium" | "large" | "xlarge";
   position?: "center" | "left" | "right";
@@ -33,6 +37,8 @@ export function PrimerDialog({
   open,
   onOpenChange,
   title,
+  titleTestId,
+  headerExtra,
   description,
   children,
   width = "medium",
@@ -51,7 +57,11 @@ export function PrimerDialog({
       renderHeader={({ dialogLabelId, dialogDescriptionId }) => (
         <Dialog.Header className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <h2 id={dialogLabelId} className="text-base font-semibold">
+            <h2
+              id={dialogLabelId}
+              className="text-base font-semibold"
+              data-testid={titleTestId}
+            >
               {title}
             </h2>
             {description ? (
@@ -62,6 +72,7 @@ export function PrimerDialog({
                 {description}
               </p>
             ) : null}
+            {headerExtra}
           </div>
           <IconButton
             icon={XIcon}

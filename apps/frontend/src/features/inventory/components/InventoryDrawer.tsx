@@ -12,7 +12,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/primer/Skeleton";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertDescription } from "@/components/primer/alert";
 import { useComponentUsage } from "@/features/inventory/api/useInventory";
 import { COMPONENTS_SEARCH_PARAM } from "@/features/projects/components/tabSearchParam";
 import { problemMessage } from "@/lib/problemMessage";

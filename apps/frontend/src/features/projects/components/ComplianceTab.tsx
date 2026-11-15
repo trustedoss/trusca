@@ -67,13 +67,13 @@ import { useSearchParams } from "react-router-dom";
 import { Virtuoso } from "react-virtuoso";
 
 import { EmptyState } from "@/components/EmptyState";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Badge } from "@/components/primer/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { MultiSelect } from "@/components/ui/multi-select";
+import { MultiSelect } from "@/components/primer/multi-select";
 import { Skeleton } from "@/components/primer/Skeleton";
-import { VIRTUOSO_TABLE_BODY } from "@/components/ui/virtuoso-table-body";
+import { VIRTUOSO_TABLE_BODY } from "@/components/primer/virtuoso-table-body";
 import { Switch } from "@/components/ui/switch";
 import type {
   LicenseCategoryName,

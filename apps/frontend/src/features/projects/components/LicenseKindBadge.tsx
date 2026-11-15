@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
-import { FileSearch, Package, Stamp } from "lucide-react";
+import {
+  FileIcon,
+  PackageIcon,
+  VerifiedIcon,
+} from "@primer/octicons-react";
 import { useTranslation } from "react-i18next";
 
 import { Badge } from "@/components/primer/badge";
@@ -21,7 +25,7 @@ import { cn } from "@/lib/utils";
  *   - `concluded` — a human/ruleset override (reserved; rare in v2).
  *
  * Detected findings are the higher-signal, first-party evidence so they get
- * a distinct icon (`FileSearch` = "found in source") and a coloured tone,
+ * a distinct icon (`FileIcon` = "found in source") and a coloured tone,
  * while declared/dependency findings stay neutral. Color is never the only
  * signal — every badge pairs the tone with an icon AND a localized word.
  */
@@ -35,11 +39,11 @@ const TONE_BY_KIND: Record<LicenseFindingKind, Tone> = {
 
 const ICON_BY_KIND: Record<
   LicenseFindingKind,
-  typeof FileSearch
+  typeof FileIcon
 > = {
-  detected: FileSearch,
-  declared: Package,
-  concluded: Stamp,
+  detected: FileIcon,
+  declared: PackageIcon,
+  concluded: VerifiedIcon,
 };
 
 export interface LicenseKindBadgeProps {

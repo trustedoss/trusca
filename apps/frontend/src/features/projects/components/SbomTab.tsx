@@ -15,7 +15,7 @@
 import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Button } from "@/components/ui/button";
 import {
   Card,

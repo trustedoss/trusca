@@ -1,18 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
-import { ExternalLink } from "lucide-react";
+import { LinkExternalIcon } from "@primer/octicons-react";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router-dom";
 
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { Alert, AlertDescription } from "@/components/primer/alert";
+import { Button } from "@/components/primer/Button";
+import { PrimerDialog } from "@/components/primer/PrimerDialog";
 import { Skeleton } from "@/components/primer/Skeleton";
 import { useComponent } from "@/features/projects/api/useComponent";
 import { ComponentDetailBody } from "@/features/projects/components/ComponentDetailBody";
@@ -99,44 +93,41 @@ export function ComponentDrawer({
   }
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent
-        side="right"
-        // W11-C polish — drawer width unchanged. Section gap lifted from
-        // 4 → 6 so the header gets more breathing room from the detail body
-        // (Linear-style spacing hierarchy).
-        className="flex w-full max-w-xl flex-col gap-6 overflow-y-auto sm:max-w-xl"
-        data-testid="component-drawer"
-      >
-        <SheetHeader>
-          <SheetTitle data-testid="component-drawer-title">
-            {detail.data?.name ?? t("drawer.loading_title")}
-          </SheetTitle>
-          <SheetDescription>
-            {detail.data
-              ? t("drawer.subtitle", {
-                  version: detail.data.version,
-                })
-              : t("drawer.loading_subtitle")}
-          </SheetDescription>
-          {canOpenFullView ? (
-            <div className="pt-1">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={handleOpenFullView}
-                aria-label={t("drawer.open_full_view")}
-                data-testid="component-drawer-open-full"
-                className="h-7 gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground"
-              >
-                <ExternalLink className="h-3.5 w-3.5" aria-hidden />
-                {t("drawer.open_full_view")}
-              </Button>
-            </div>
-          ) : null}
-        </SheetHeader>
-
+    <PrimerDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={detail.data?.name ?? t("drawer.loading_title")}
+      titleTestId="component-drawer-title"
+      description={
+        detail.data
+          ? t("drawer.subtitle", {
+              version: detail.data.version,
+            })
+          : t("drawer.loading_subtitle")
+      }
+      headerExtra={
+        canOpenFullView ? (
+          <div className="pt-1">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={handleOpenFullView}
+              aria-label={t("drawer.open_full_view")}
+              data-testid="component-drawer-open-full"
+              className="h-7 gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground"
+            >
+              <LinkExternalIcon size={14} />
+              {t("drawer.open_full_view")}
+            </Button>
+          </div>
+        ) : null
+      }
+      position="right"
+      width="xlarge"
+      testId="component-drawer"
+    >
+      <div className="flex flex-col gap-6">
         {detail.isLoading ? (
           <div
             className="flex flex-col gap-3"
@@ -165,7 +156,7 @@ export function ComponentDrawer({
           />
         ) : null}
         {detail.data ? <ComponentDetailBody detail={detail.data} /> : null}
-      </SheetContent>
-    </Sheet>
+      </div>
+    </PrimerDialog>
   );
 }

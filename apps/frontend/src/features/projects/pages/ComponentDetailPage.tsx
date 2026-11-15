@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
+import {
+  ChevronLeftIcon,
+  PackageIcon,
+} from "@primer/octicons-react";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronLeft, PackageX } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation, useParams } from "react-router-dom";
 
 import { EmptyState } from "@/components/EmptyState";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription } from "@/components/primer/alert";
+import { Button } from "@/components/primer/Button";
 import { Skeleton } from "@/components/primer/Skeleton";
 import { useComponent } from "@/features/projects/api/useComponent";
 import { ComponentDetailBody } from "@/features/projects/components/ComponentDetailBody";
@@ -164,7 +167,7 @@ export function ComponentDetailPage() {
           {detail.isError ? (
             <EmptyState
               data-testid="component-detail-page-error"
-              icon={<PackageX />}
+              icon={<PackageIcon />}
               title={
                 detailIsHidden
                   ? t("components.detail_page.not_found")
@@ -303,7 +306,7 @@ function PageHeader({
           className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors duration-fast ease-out-soft hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           data-testid="component-detail-page-back-link"
         >
-          <ChevronLeft className="h-3.5 w-3.5" aria-hidden />
+          <ChevronLeftIcon size={14} />
           {t("components.detail_page.back_link")}
         </Link>
       </div>

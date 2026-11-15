@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
-import { Search } from "lucide-react";
+import {
+  SearchIcon,
+} from "@primer/octicons-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Badge } from "@/components/primer/badge";
-import { Input } from "@/components/ui/input";
+import { Input } from "@/components/primer/Input";
 import { Skeleton } from "@/components/primer/Skeleton";
 import {
   useDependencyGraph,
@@ -441,10 +443,7 @@ function GraphCanvas({
       data-edge-count={edges.length}
     >
       <div className="relative max-w-xs">
-        <Search
-          className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
-          aria-hidden
-        />
+        <SearchIcon size={16} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
         <Input
           value={search}
           onChange={(e) => setSearch(e.target.value)}

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
-import { AlertTriangle } from "lucide-react";
+import {
+  AlertIcon,
+} from "@primer/octicons-react";
 import { useTranslation } from "react-i18next";
 
 import { Badge } from "@/components/primer/badge";
@@ -42,7 +44,7 @@ export function ReviewFlagBadge({
       title={t(`licenses.review.description.${flag}`)}
       className={cn("gap-1", className)}
     >
-      <AlertTriangle className="h-3 w-3" aria-hidden />
+      <AlertIcon size={12} />
       <span>{t("licenses.review.badge_label")}</span>
       {showKind ? (
         <span className="text-[11px] font-normal opacity-80">

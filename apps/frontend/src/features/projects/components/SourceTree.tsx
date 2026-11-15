@@ -5,7 +5,7 @@ import { ChevronDown, ChevronRight, File, Folder } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Virtuoso } from "react-virtuoso";
 
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Badge } from "@/components/primer/badge";
 import { Skeleton } from "@/components/primer/Skeleton";
 import type { SourceTreeEntry } from "@/features/projects/api/sourceTreeApi";

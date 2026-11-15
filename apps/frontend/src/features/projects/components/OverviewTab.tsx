@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
-import { AlertTriangle, ExternalLink } from "lucide-react";
+import {
+  AlertIcon,
+  LinkExternalIcon,
+} from "@primer/octicons-react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Badge } from "@/components/primer/badge";
 import {
   Card,
@@ -225,11 +228,12 @@ export function OverviewTab({
       {data.component_outcome === "empty_no_manifests" ||
       data.component_outcome === "empty_with_manifests" ? (
         <Alert
-          className="border-status-warning-border bg-status-warning-subtle text-status-warning-foreground md:col-span-2"
+          variant="warning"
+          className="md:col-span-2"
           data-testid="overview-empty-sbom"
           data-outcome={data.component_outcome}
         >
-          <AlertTriangle className="h-4 w-4" aria-hidden />
+          <AlertIcon size={16} />
           <AlertDescription>
             <span className="font-semibold">
               {data.component_outcome === "empty_with_manifests"
@@ -251,11 +255,12 @@ export function OverviewTab({
           scan would teach people to ignore it. */}
       {data.license_lookup_gap ? (
         <Alert
-          className="border-status-warning-border bg-status-warning-subtle text-status-warning-foreground md:col-span-2"
+          variant="warning"
+          className="md:col-span-2"
           data-testid="overview-license-lookup-gap"
           data-reason={data.license_lookup_gap.reason}
         >
-          <AlertTriangle className="h-4 w-4" aria-hidden />
+          <AlertIcon size={16} />
           <AlertDescription>
             <span className="font-semibold">
               {t("overview.scan_gaps.license_lookup_title")}
@@ -271,11 +276,12 @@ export function OverviewTab({
       ) : null}
       {data.scancode_skipped_reason ? (
         <Alert
-          className="border-status-warning-border bg-status-warning-subtle text-status-warning-foreground md:col-span-2"
+          variant="warning"
+          className="md:col-span-2"
           data-testid="overview-scancode-skipped"
           data-reason={data.scancode_skipped_reason}
         >
-          <AlertTriangle className="h-4 w-4" aria-hidden />
+          <AlertIcon size={16} />
           <AlertDescription>
             <span className="font-semibold">
               {t("overview.scan_gaps.scancode_title")}
@@ -292,10 +298,11 @@ export function OverviewTab({
 
       {data.degraded_stages.length > 0 ? (
         <Alert
-          className="border-status-warning-border bg-status-warning-subtle text-status-warning-foreground md:col-span-2"
+          variant="warning"
+          className="md:col-span-2"
           data-testid="overview-degraded-stages"
         >
-          <AlertTriangle className="h-4 w-4" aria-hidden />
+          <AlertIcon size={16} />
           <AlertDescription>
             <span className="font-semibold">
               {t("overview.scan_gaps.stages_title")}
@@ -344,7 +351,7 @@ export function OverviewTab({
           data-testid="overview-malicious-chip"
           data-malicious-count={data.malicious_count}
         >
-          <AlertTriangle className="h-4 w-4" aria-hidden />
+          <AlertIcon size={16} />
           <AlertDescription className="flex flex-wrap items-baseline gap-2">
             <span className="font-semibold">
               {t("overview.malicious_chip.title", {
@@ -381,11 +388,12 @@ export function OverviewTab({
           exploitation. */}
       {data.eol_count > 0 ? (
         <Alert
-          className="border-orange-300 bg-orange-50 text-orange-900 md:col-span-2"
+          variant="warning"
+          className="md:col-span-2"
           data-testid="overview-eol-chip"
           data-eol-count={data.eol_count}
         >
-          <AlertTriangle className="h-4 w-4" aria-hidden />
+          <AlertIcon size={16} />
           <AlertDescription className="flex flex-wrap items-baseline gap-2">
             <span className="font-semibold">
               {t("overview.eol_chip.title", { count: data.eol_count })}
@@ -418,11 +426,12 @@ export function OverviewTab({
           notch below EOL's amber. Deep-links to Components `?outdated=true`. */}
       {data.outdated_count > 0 ? (
         <Alert
-          className="border-status-info-border bg-status-info-subtle text-status-info-foreground md:col-span-2"
+          variant="info"
+          className="md:col-span-2"
           data-testid="overview-outdated-chip"
           data-outdated-count={data.outdated_count}
         >
-          <AlertTriangle className="h-4 w-4" aria-hidden />
+          <AlertIcon size={16} />
           <AlertDescription className="flex flex-wrap items-baseline gap-2">
             <span className="font-semibold">
               {t("overview.outdated_chip.title", { count: data.outdated_count })}
@@ -494,7 +503,7 @@ export function OverviewTab({
                       data-testid="overview-info-git-url"
                     >
                       <span>{project.git_url}</span>
-                      <ExternalLink className="h-3 w-3 shrink-0" aria-hidden />
+                      <LinkExternalIcon size={12} className="shrink-0" />
                     </a>
                   ) : (
                     <span className="text-muted-foreground">

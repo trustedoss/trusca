@@ -27,12 +27,16 @@
  * the actual `RemediationTab` component is re-used inside the expanded body so
  * we never duplicate the gate logic.
  */
-import { ChevronDown, ChevronRight, Wrench } from "lucide-react";
+import {
+  ChevronDownIcon,
+  ChevronRightIcon,
+  ToolsIcon,
+} from "@primer/octicons-react";
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/primer/Button";
 import { RemediationTab } from "@/features/projects/components/RemediationTab";
 
 export interface VulnerabilitiesRemediationPanelProps {
@@ -89,10 +93,7 @@ export function VulnerabilitiesRemediationPanel({
     >
       <div className="flex items-center justify-between px-4 py-3">
         <div className="flex items-center gap-2">
-          <Wrench
-            className="h-4 w-4 text-muted-foreground"
-            aria-hidden="true"
-          />
+          <ToolsIcon size={16} className="text-muted-foreground" />
           <div>
             <h3 className="text-sm font-semibold">
               {t("vulnerabilities.remediation.heading")}
@@ -112,15 +113,9 @@ export function VulnerabilitiesRemediationPanel({
           aria-controls="vulnerabilities-remediation-body"
         >
           {expanded ? (
-            <ChevronDown
-              className="mr-1.5 h-3.5 w-3.5"
-              aria-hidden="true"
-            />
+            <ChevronDownIcon size={14} className="mr-1.5" />
           ) : (
-            <ChevronRight
-              className="mr-1.5 h-3.5 w-3.5"
-              aria-hidden="true"
-            />
+            <ChevronRightIcon size={14} className="mr-1.5" />
           )}
           {expanded
             ? t("vulnerabilities.remediation.collapse")

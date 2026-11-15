@@ -45,11 +45,11 @@ import { useNavigate } from "react-router-dom";
 
 import { EmptyState } from "@/components/EmptyState";
 import { PageHeader } from "@/components/PageHeader";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/primer/Skeleton";
 import { Switch } from "@/components/ui/switch";
-import { useToast } from "@/components/ui/toast";
+import { useToast } from "@/components/primer/toast";
 import { useClampPage, usePageParam, useUrlFlag } from "@/hooks/useUrlState";
 import type {
   NotificationItem,

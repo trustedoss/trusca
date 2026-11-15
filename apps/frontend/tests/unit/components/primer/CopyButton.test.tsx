@@ -10,9 +10,9 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { CopyButton } from "@/components/ui/copy-button";
+import { CopyButton } from "@/components/primer/copy-button";
 import { writeToClipboard } from "@/lib/clipboard";
-import { ToastProvider } from "@/components/ui/toast";
+import { ToastProvider } from "@/components/primer/toast";
 
 function renderButton(value: string, label = "CVE id") {
   return render(

@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
-import { ScanLine } from "lucide-react";
+import {
+  WorkflowIcon,
+} from "@primer/octicons-react";
 import type { KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 
 import { EmptyState } from "@/components/EmptyState";
 import RelativeTime from "@/components/RelativeTime";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/primer/Button";
 import type { ScanSummary } from "@/features/projects/api/projectDetailApi";
 import { cn } from "@/lib/utils";
 
@@ -79,7 +81,7 @@ export function RecentScansTable({
       <EmptyState
         data-testid="recent-scans-empty"
         className={className}
-        icon={<ScanLine />}
+        icon={<WorkflowIcon />}
         title={t("overview.recent_scans.empty")}
         description={t("overview.recent_scans.empty_hint")}
         action={
