@@ -552,7 +552,7 @@ function PageHeader({
     >
       <nav
         className="flex items-center gap-2 text-xs text-muted-foreground"
-        aria-label="Breadcrumb"
+        aria-label={t("project_detail:page.breadcrumb_aria")}
       >
         <Link
           to="/scans"

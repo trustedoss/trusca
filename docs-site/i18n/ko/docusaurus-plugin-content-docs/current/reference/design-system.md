@@ -18,7 +18,7 @@ sidebar_position: 10
 
 - `apps/frontend/src/index.css` — CSS custom property (`--background`, `--ring`, `--risk-critical`, …)
 - `apps/frontend/tailwind.config.ts` — CSS 변수에서 파생된 Tailwind 토큰
-- `apps/frontend/src/components/ui/` — 토큰에 연결된 shadcn/ui primitives
+- `apps/frontend/src/components/primer/`: Primer React 위에 만든, 토큰에 연결된 공용 컴포넌트
 
 ## 철학
 
@@ -362,7 +362,7 @@ Vercel 톤의 subtle elevation. 가벼운 그림자만 — glow 없음.
 
 OpenType `rlig` · `calt`가 `body`에 활성화되어 Inter가 제대로 렌더링.
 
-**raw 유틸리티 대신 타이포그래피 프리미티브를 쓰세요.** `apps/frontend/src/components/ui/typography.tsx`가 스케일을 이름 붙인 컴포넌트로 제공하므로, 같은 역할이 화면마다 어긋나지 않고(`text-lg`와 `text-base`가 섞이지 않고) 동일하게 보입니다.
+**raw 유틸리티 대신 타이포그래피 프리미티브를 쓰세요.** `apps/frontend/src/components/primer/typography.tsx`가 스케일을 이름 붙인 컴포넌트로 제공하므로, 같은 역할이 화면마다 어긋나지 않고(`text-lg`와 `text-base`가 섞이지 않고) 동일하게 보입니다.
 
 | 컴포넌트 | 요소 | 역할 |
 |---|---|---|
@@ -392,7 +392,7 @@ focus-visible:ring-offset-2
 
 ## 컴포넌트 규약
 
-포털은 [shadcn/ui](https://ui.shadcn.com/) primitives 위에 빌드됩니다. 각 primitive는 위 토큰에 연결되어 `apps/frontend/src/components/ui/`에 re-export.
+모든 화면은 `apps/frontend/src/components/primer/`의 공용 컴포넌트를 거쳐 `@primer/react` 위에 만듭니다. 공용 컴포넌트는 화면이 이미 쓰던 어휘(`Button`의 `variant`와 `size`, 대화상자의 `open`과 `onOpenChange`)를 그대로 두고 Primer에 대응시킵니다. 그래서 화면은 한 곳에서만 import하고 Primer의 스타일에 직접 손대지 않습니다. 색은 위 토큰에서만 가져오며, `src/primer.css`가 Primer의 변수를 토큰에 연결합니다.
 
 ### Page header
 
@@ -409,12 +409,13 @@ stacked 변형에는 선택적 `meta` 슬롯도 있습니다 — 부제 아래�
 
 ### Button
 
-`apps/frontend/src/components/ui/button.tsx`
+`apps/frontend/src/components/primer/Button.tsx`
 
-- 기본 variant: `bg-primary text-primary-foreground`, solid 네이비 채움.
-- `outline` variant: `border-input bg-background` — 보조 액션.
-- `ghost` variant: 배경 없음, hover tint 만 — nav 항목 · toolbar 액션.
-- `destructive`: `bg-destructive` — Critical-aligned 빨강, 되돌릴 수 없는 액션 전용 (delete · revoke · reject).
+- 기본 variant: Primer의 주 버튼, `--primary`의 네이비 채움.
+- `outline`: 테두리가 있는 기본 버튼, 보조 액션.
+- `ghost`: 투명 버튼, hover tint 만, nav 항목 · toolbar 액션.
+- `destructive`: 위험 버튼, Critical-aligned 빨강, 되돌릴 수 없는 액션 전용 (delete · revoke · reject).
+- 아이콘과 라벨은 한 줄에 놓입니다. `size="icon"`은 정사각 버튼이며 `aria-label`이 필요합니다.
 - Hover / focus transition: `transition-colors duration-fast ease-out` (150 ms).
 - 모든 variant에 focus ring 포함.
 
@@ -438,7 +439,7 @@ stacked 변형에는 선택적 `meta` 슬롯도 있습니다 — 부제 아래�
 - 1 k+ 행이면 virtual scrolling (`react-virtuoso`).
 - Severity 컬럼은 항상 색 + 텍스트 라벨/아이콘 — SeverityBadge 참고.
 
-### Drawer (`sheet.tsx`)
+### Drawer (`PrimerDialog`, `position="right"`)
 
 - 오른쪽 slide-in, **콘텐츠 밀도에 따라 폭 480 ~ 640 px**.
 - 드로어 패널에 `shadow-lg`.
@@ -446,8 +447,9 @@ stacked 변형에는 선택적 `meta` 슬롯도 있습니다 — 부제 아래�
 - 드로어 상태는 **URL 인코딩** (`?drawer=component:abc123`) — 리로드 후 살아남음.
 - 드로어는 **빠른 확인** 용 — 표 행의 전체 payload · CVE의 CVSS 분해 · 컴포넌트의 라이선스 체인. 페이지 nav는 **깊은 작업** 용 — 일괄 편집 · 다단계 승인 · 스캔 설정.
 
-### Dialog
+### Dialog (`PrimerDialog`)
 
+- 모든 모달과 드로어가 쓰는 하나의 래퍼입니다. Primer 자체의 닫기 버튼 라벨은 영어로 고정되어 있어, 번역된 닫기 버튼을 직접 제공합니다. API 키를 한 번만 보여 주는 대화상자처럼 반드시 직접 응답해야 하는 대화상자는 `dismissible={false}`로 두며, 이 경우 닫기 버튼이 없고 Escape와 배경 클릭은 동작하지 않습니다.
 - `bg-foreground/40` backdrop 위 중앙 정렬 모달.
 - `rounded-xl` (12 px) · `shadow-lg`.
 - **Destructive confirmation** (프로젝트 삭제 · API key revoke)과 **인라인 생성 플로우** (새 프로젝트 · 새 팀) 전용.
@@ -487,7 +489,7 @@ Risk 톤은 심각도에만 씁니다. 그 밖의 톤이 두 가지 있습니다
 
 ## 컴포넌트 기반
 
-새 컴포넌트는 `@primer/react` 패키지 위에 만듭니다. 디자인 토큰은 `@primer/primitives`, 아이콘은 `@primer/octicons-react`를 씁니다. 세 패키지는 정확한 버전으로 고정합니다. 기반만 마련된 상태이고 아직 이를 쓰는 화면이 없으므로, 화면을 옮기기 전에는 화면이 바뀌지 않습니다.
+새 컴포넌트는 `@primer/react` 패키지 위에 만듭니다. 디자인 토큰은 `@primer/primitives`, 아이콘은 `@primer/octicons-react`를 씁니다. 세 패키지는 정확한 버전으로 고정합니다. 모든 화면이 이를 사용하며 `components/ui`는 없어졌습니다.
 
 - **색 모드.** Primer는 `<html>`의 속성 세 개(`data-color-mode`, `data-light-theme`, `data-dark-theme`)로 테마를 읽습니다. 이 속성은 `dark` 클래스와 함께 `index.html`의 첫 페인트 스크립트와 `applyTheme`에서 씁니다. 그래서 두 체계가 어긋나지 않고 화면이 깜박이지 않습니다. `data-color-mode`에는 `auto`가 아니라 확정된 모드(`light` 또는 `dark`)가 들어갑니다. `themeGuard.test.ts`가 라이트, 다크, 시스템(OS 설정별)에서 클래스와 속성이 일치하는지 확인합니다.
 - **프로바이더.** `PrimerRoot`가 앱 전체를 컨텍스트 전용 `ThemeProvider`로 감쌉니다. 테마 상태가 React 상태가 아니라 모듈 변수이므로, 색 모드는 `MutationObserver`로 `<html>`의 `dark` 클래스를 따라갑니다.
@@ -496,6 +498,7 @@ Risk 톤은 심각도에만 씁니다. 그 밖의 톤이 두 가지 있습니다
 - **왼쪽 강조선 금지.** Primer는 탐색 목록, 필터 목록, 트리 뷰에서 현재 항목의 왼쪽 가장자리에 장식용 막대를 그립니다. 이 디자인은 굵은 왼쪽 막대를 쓰지 않으므로 `src/primer.css`가 숨깁니다. 테스트는 설치된 Primer 스타일시트에서 이런 막대를 그리는 규칙을 모두 찾아, 각각에 숨김 규칙이 있는지 확인합니다.
 - **상표 아이콘 금지.** `@primer/octicons-react`에는 로고와 제품 마스코트가 들어 있습니다. ESLint `no-restricted-imports` 규칙이 이를 막고, 규칙을 우회하는 하위 경로 import도 함께 막습니다. 예외는 `src/features/integrations/GitHubMark.tsx` 한 파일뿐입니다.
 - **색 경로.** `npm run token:lint`는 `src/primer.css` 밖에서 Primer의 `sx` 색 키와 `var(--fgColor-*)`, `var(--bgColor-*)`, `var(--borderColor-*)`를 직접 읽는 코드도 잡아냅니다. 이런 코드는 위험도·상태 토큰을 우회합니다.
+- **공용 부품.** `Button`, `Input`, `Textarea`, `Label`, `Notice`와 `alert`(메시지), `PrimerDialog`, `ComboboxPopover`(검색형 선택기), `multi-select`, `tabs`, `switch`, `progress`, `Skeleton`과 `skeletons`, `toast`, `CommandPalette`, `sortable-column-header`, `copy-button`, `badge`, `card`, `typography`. Primer에 대응하는 부품이 없으면 동작은 헤드리스 라이브러리에 맡기고(팔레트와 선택기 목록은 `cmdk`, 탭·진행 막대·필터 메뉴는 Radix, 긴 표는 `react-virtuoso`) 모양은 토큰에서 가져옵니다.
 - **예산과 고지.** `npm run bundle:budget`은 진입 청크 400 KB 외에 CSS gzip 합계도 60 KB로 제한합니다. `npm run build`는 모든 운영 의존성의 라이선스 전문을 담은 `dist/licenses/frontend-third-party.txt`도 만듭니다. 웹 빌드가 이 파일을 제공하고 이미지의 `/licenses/`에도 들어갑니다.
 
 ## 마이크로인터랙션 가이드
@@ -602,6 +605,7 @@ Severity가 표시되는 모든 곳에서 색은 다음 중 하나와 짝지움:
 | W12-C | 2026-06-11 | **Craft 격상 — 모션 (CSS-only).** 라우트 전환 진입 페이드(`<main>`을 pathname으로 key, 250 ms), 사이드바 접기 250 ms 정렬, 전역 `prefers-reduced-motion` 가드. 새 의존성 없음(tailwindcss-animate 만). 스켈레톤 문서를 실제 2000 ms `animate-pulse`로 정정. |
 | W12-D | 2026-06-12 | **Craft 격상 — 빈 상태 · 로딩 폴리시.** EmptyState에 레이어드 아이콘 메달리온 + 선택적 `illustration` 슬롯 추가, 신규 `TableRowsSkeleton`이 Scans · Admin Users 테이블에서 컬럼별 로딩 셀(전폭 바 대체)을 렌더링. |
 | W12-E/F | 2026-06-12 | **Craft 격상 — 가드레일 + 문서.** `/dev/design-preview`를 살아있는 컴포넌트 레퍼런스(타이포그래피 · 배지 · 빈 / 로딩 · 피드백)로 확장하고, 기여자 coding standards에 "프론트엔드 UI" 섹션 추가. 시각 회귀 베이스라인 확장(4 → ~15)은 CI / 운영자 후속 — darwin 개발 머신에서는 올바른 linux 베이스라인을 생성할 수 없음. |
+| Primer | 2026-11 | **Primer 컴포넌트 전환.** 모든 화면이 `components/primer`의 공용 컴포넌트를 거쳐 Primer React를 사용합니다. `components/ui`의 shadcn primitives와 lucide 아이콘은 없애고 Octicons로 바꿨습니다. 드로어와 대화상자는 하나의 `PrimerDialog`를 공유하고, select, 메뉴, 선택기는 Primer의 select, 액션 메뉴, 앵커 오버레이를 씁니다. 프로젝트 · 스캔 · 관리자 · 정책 화면의 원시 팔레트 색은 상태 · 위험 토큰으로 옮겨, 다크 모드가 그대로 따라갑니다. |
 | Accent | 2026-11 | **네이비 액센트와 청록 Low.** `--brand`, `--primary`, `--ring`을 네이비 `#1d4ed8`로 옮겼습니다(다크의 `--brand`·`--ring`은 `#60a5fa`). 틸은 로고(`--brand-on-ink`)에만 남습니다. `--risk-low`는 액센트와 색상이 겹치지 않도록 `#2563eb`에서 `#0891b2`로 옮겼고, foreground는 `#155e75` / `#22d3ee` 입니다. Low 색을 빌려 쓰던 심각도 외 호출부는 새 `accent`·`progress` 배지 톤, `--brand`, status 토큰으로 옮겼습니다. |
 
 이전 "enterprise-style 2015" 미감 (`#0f172a` navy · 순백 canvas · 일관 8 px radius · shadow 없음 · 브라우저 기본 easing)은 W11로 완전 은퇴.

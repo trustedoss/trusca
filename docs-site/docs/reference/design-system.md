@@ -18,7 +18,7 @@ This page is the single source of truth for visual decisions. The implementation
 
 - `apps/frontend/src/index.css` — CSS custom properties (`--background`, `--ring`, `--risk-critical`, …)
 - `apps/frontend/tailwind.config.ts` — Tailwind tokens derived from the CSS variables
-- `apps/frontend/src/components/ui/` — shadcn/ui primitives wired to the tokens
+- `apps/frontend/src/components/primer/`: the shared components, built on Primer React and wired to the tokens
 
 ## Philosophy
 
@@ -360,7 +360,7 @@ Short, ease-out — Linear polish. Three steps cover the majority of UI animatio
 
 OpenType features `rlig` and `calt` are enabled on `body` for proper Inter rendering.
 
-**Use the typography primitives, not raw utilities.** `apps/frontend/src/components/ui/typography.tsx` exposes the scale as named components so a given role is identical on every screen instead of drifting (`text-lg` here, `text-base` there):
+**Use the typography primitives, not raw utilities.** `apps/frontend/src/components/primer/typography.tsx` exposes the scale as named components so a given role is identical on every screen instead of drifting (`text-lg` here, `text-base` there):
 
 | Component | Element | Role |
 |---|---|---|
@@ -390,7 +390,7 @@ focus-visible:ring-offset-2
 
 ## Component conventions
 
-The portal builds on [shadcn/ui](https://ui.shadcn.com/) primitives. Each primitive is wired to the design tokens above and re-exported from `apps/frontend/src/components/ui/`.
+Every screen builds on `@primer/react` through the shared components in `apps/frontend/src/components/primer/`. A shared component keeps the vocabulary the screens already use (`Button` takes `variant` and `size`, a dialog takes `open` and `onOpenChange`) and maps it to Primer, so a screen imports from one place and never reaches into Primer's styles. Colour comes only from the tokens above; `src/primer.css` connects Primer's variables to them.
 
 ### Page header
 
@@ -407,12 +407,13 @@ Do not hand-roll a `<header><h1>` block — extend `PageHeader` if a new layout 
 
 ### Button
 
-`apps/frontend/src/components/ui/button.tsx`
+`apps/frontend/src/components/primer/Button.tsx`
 
-- Default variant uses `bg-primary text-primary-foreground`, a solid navy fill.
-- `outline` variant uses `border-input bg-background` — for secondary actions.
-- `ghost` variant uses no background, hover tint only — for nav items and toolbar actions.
-- `destructive` uses `bg-destructive` — Critical-aligned red, reserved for irreversible actions (delete, revoke, reject).
+- Default variant is Primer's primary button, a solid navy fill from `--primary`.
+- `outline` is the outlined default button, for secondary actions.
+- `ghost` is the invisible button, hover tint only, for nav items and toolbar actions.
+- `destructive` is the danger button, Critical-aligned red, reserved for irreversible actions (delete, revoke, reject).
+- An icon and its label sit on one row; `size="icon"` is a square button and needs an `aria-label`.
 - Hover and focus transitions use `transition-colors duration-fast ease-out` (150 ms).
 - All variants include the focus ring.
 
@@ -436,7 +437,7 @@ Do not hand-roll a `<header><h1>` block — extend `PageHeader` if a new layout 
 - For 1 k+ rows use virtual scrolling (`react-virtuoso`).
 - Severity columns always pair the colour with a text label or icon — see SeverityBadge.
 
-### Drawer (`sheet.tsx`)
+### Drawer (`PrimerDialog`, `position="right"`)
 
 - Right-side slide-in, **width 480 ~ 640 px** depending on content density.
 - `shadow-lg` for the drawer panel.
@@ -444,8 +445,9 @@ Do not hand-roll a `<header><h1>` block — extend `PageHeader` if a new layout 
 - Drawer state is **URL-encoded** (`?drawer=component:abc123`) so it survives reload.
 - Use the drawer for **quick checks** — a tabular row's full payload, a CVE's CVSS breakdown, a component's licence chain. Use page navigation for **deep work** — bulk edit, multi-step approval, scan configuration.
 
-### Dialog
+### Dialog (`PrimerDialog`)
 
+- One wrapper for every modal and drawer. It supplies a translated close button, because Primer's own close label is fixed English. A dialog that must be answered, such as an API key shown once, sets `dismissible={false}`: no close button, and Escape and the backdrop do nothing.
 - Modal centred over a `bg-foreground/40` backdrop.
 - `rounded-xl` (12 px), `shadow-lg`.
 - Reserved for **destructive confirmations** (delete project, revoke API key) and **inline create flows** (new project, new team).
@@ -485,7 +487,7 @@ A single `<ToastProvider>` (mounted in `AppProviders`) renders one stacked, bott
 
 ## Component foundation
 
-New components are built on the `@primer/react` package, with `@primer/primitives` for design tokens and `@primer/octicons-react` for icons. The three are pinned to exact versions. The foundation is in place and no screen uses it yet, so nothing on screen changes until a screen is moved over.
+New components are built on the `@primer/react` package, with `@primer/primitives` for design tokens and `@primer/octicons-react` for icons. The three are pinned to exact versions. Every screen uses them; `components/ui` is gone.
 
 - **Colour mode.** Primer reads its theme from three attributes on `<html>`: `data-color-mode`, `data-light-theme` and `data-dark-theme`. They are written next to the `dark` class, in the first-paint script in `index.html` and in `applyTheme`, so the two systems never disagree and there is no flash. `data-color-mode` always holds the resolved mode (`light` or `dark`), never `auto`. `themeGuard.test.ts` checks that class and attributes agree for light, dark and system on each OS preference.
 - **Provider.** `PrimerRoot` wraps the app in a context-only `ThemeProvider`; its colour mode follows the `dark` class on `<html>` through a `MutationObserver`, because the theme state is a module variable and not React state.
@@ -494,6 +496,7 @@ New components are built on the `@primer/react` package, with `@primer/primitive
 - **No left accent bars.** Primer draws a decorative bar down the left edge of the current item in navigation lists, filtered lists and tree views. This design does not use thick left bars, so `src/primer.css` hides them. A test reads the installed Primer stylesheets, finds every rule that draws such a bar, and requires a hiding rule for each.
 - **No trademark icons.** `@primer/octicons-react` includes logos and product mascots. An ESLint `no-restricted-imports` rule blocks them, together with the deep import paths that would bypass the rule. A single file, `src/features/integrations/GitHubMark.tsx`, is named as the exception.
 - **Colour paths.** `npm run token:lint` also flags Primer's `sx` colour keys and direct reads of `var(--fgColor-*)`, `var(--bgColor-*)` and `var(--borderColor-*)` outside `src/primer.css`. These bypass the risk and status tokens.
+- **Shared parts.** `Button`, `Input`, `Textarea`, `Label`, `Notice` and `alert` (messages), `PrimerDialog`, `ComboboxPopover` (searchable picker), `multi-select`, `tabs`, `switch`, `progress`, `Skeleton` and `skeletons`, `toast`, `CommandPalette`, `sortable-column-header`, `copy-button`, `badge`, `card`, `typography`. Where Primer has no equivalent, the part keeps a headless library for behaviour (`cmdk` for the palette and picker lists, Radix for tabs, progress and the filter menus, `react-virtuoso` for long tables) and takes its look from the tokens.
 - **Budgets and notices.** `npm run bundle:budget` limits the total gzip size of the CSS to 60 KB in addition to the 400 KB entry chunk. `npm run build` also writes `dist/licenses/frontend-third-party.txt`, the licence text of every production dependency, which the web build serves and the image carries at `/licenses/`.
 
 ## Micro-interaction guide
@@ -600,6 +603,7 @@ All interactive elements are reachable by `Tab` and operable by `Enter` / `Space
 | W12-C | 2026-06-11 | **Craft elevation — motion (CSS-only).** Route-change entrance fade (`<main>` keyed on pathname, 250 ms), sidebar collapse aligned to 250 ms, and a global `prefers-reduced-motion` guard. No new dependency (tailwindcss-animate only). Skeleton doc corrected to the real 2000 ms `animate-pulse`. |
 | W12-D | 2026-06-12 | **Craft elevation — empty / loading polish.** EmptyState gains a layered icon medallion + optional `illustration` slot; new `TableRowsSkeleton` renders per-column loading cells (replacing single full-width bars) on the Scans and Admin Users tables. |
 | W12-E/F | 2026-06-12 | **Craft elevation — guardrails + docs.** Grew `/dev/design-preview` into a living component reference (typography, badges, empty / loading, feedback) and added a "Frontend UI" section to the contributor coding standards. Visual-regression baseline expansion (4 → ~15) is a CI / operator follow-up — correct linux baselines cannot be generated from a darwin dev box. |
+| Primer | 2026-11 | **Primer component move.** Every screen now uses Primer React through the shared components in `components/primer`; the shadcn primitives under `components/ui` and the lucide icons are removed in favour of Octicons. Drawers and dialogs share one `PrimerDialog`; selects, menus and the picker use Primer's select, action menu and anchored overlay. Raw palette tints in the project, scan, admin and policy views moved to status and risk tokens, so dark mode follows them. |
 | Accent | 2026-11 | **Navy accent and cyan Low.** `--brand`, `--primary` and `--ring` move to navy `#1d4ed8` (dark `--brand`/`--ring` `#60a5fa`); teal stays only in the logo (`--brand-on-ink`). `--risk-low` moves from `#2563eb` to `#0891b2` so Low no longer shares the accent's hue; its foregrounds become `#155e75` / `#22d3ee`. Non-severity call sites that borrowed the Low colour move to the new `accent` and `progress` badge tones, `--brand`, or the status tokens. |
 
 The previous "enterprise-style 2015" aesthetic (`#0f172a` navy, pure white canvas, uniform 8 px radius, no shadow, default browser easing) is fully retired by W11.

@@ -15,11 +15,12 @@
 import {
   PlusIcon,
 } from "@primer/octicons-react";
-import { Spinner, Select } from "@primer/react";
+import { Select } from "@primer/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { PageHeader } from "@/components/PageHeader";
+import { Spinner } from "@/components/primer/Spinner";
 import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Button } from "@/components/primer/Button";
 import { Input } from "@/components/primer/Input";

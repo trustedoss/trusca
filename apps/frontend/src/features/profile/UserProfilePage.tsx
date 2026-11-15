@@ -30,7 +30,6 @@ import {
   PersonIcon,
   TrashIcon,
 } from "@primer/octicons-react";
-import { Spinner } from "@primer/react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -38,6 +37,7 @@ import { PageHeader } from "@/components/PageHeader";
 
 import { MfaEnrolment } from "./MfaEnrolment";
 import { ProviderIcon } from "@/components/ProviderIcon";
+import { Spinner } from "@/components/primer/Spinner";
 import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Button } from "@/components/primer/Button";
 import { Skeleton } from "@/components/primer/Skeleton";

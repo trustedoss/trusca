@@ -26,10 +26,10 @@
 import {
   XCircleIcon,
 } from "@primer/octicons-react";
-import { Spinner } from "@primer/react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { Spinner } from "@/components/primer/Spinner";
 import { Button } from "@/components/primer/Button";
 import { useToast } from "@/components/primer/toast";
 import { useCancelScan } from "@/features/scans/useCancelScan";

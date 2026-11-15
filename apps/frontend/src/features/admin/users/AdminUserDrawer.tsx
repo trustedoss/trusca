@@ -18,10 +18,11 @@
  * Errors translate via `adminErrorMessageKey` so domain invariants
  * (last_super_admin_protected, cannot_modify_self) surface in the toast.
  */
-import { Spinner, Select } from "@primer/react";
+import { Select } from "@primer/react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { Spinner } from "@/components/primer/Spinner";
 import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Badge } from "@/components/primer/badge";
 import { Button } from "@/components/primer/Button";

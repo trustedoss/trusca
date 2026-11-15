@@ -12,10 +12,10 @@
  * cancelled / succeeded / failed) surface as a toast keyed by the
  * `scan_already_cancelled` Problem extension.
  */
-import { Spinner } from "@primer/react";
 import { type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { Spinner } from "@/components/primer/Spinner";
 import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Badge } from "@/components/primer/badge";
 import { Button } from "@/components/primer/Button";
