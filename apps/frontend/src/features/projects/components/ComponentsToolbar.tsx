@@ -237,7 +237,7 @@ export function ComponentsToolbar({
       )}
       data-testid="components-toolbar"
     >
-      <div className="flex-1">
+      <div className="min-w-[12rem] flex-1">
         <label
           htmlFor="components-search"
           className="block text-xs font-medium text-muted-foreground"

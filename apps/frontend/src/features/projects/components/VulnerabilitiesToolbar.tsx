@@ -3,6 +3,7 @@
 import {
   XIcon,
 } from "@primer/octicons-react";
+import { Select } from "@primer/react";
 import { useTranslation } from "react-i18next";
 
 import {
@@ -413,7 +414,7 @@ export function VulnerabilitiesToolbar({
 
       {groupBy === "flat" ? (
         <>
-      <div className="flex-1">
+      <div className="min-w-[12rem] flex-1">
         <label
           htmlFor="vulnerabilities-search"
           className="block text-xs font-medium text-muted-foreground"
@@ -441,13 +442,13 @@ export function VulnerabilitiesToolbar({
         >
           {t("vulnerabilities.toolbar.sort_label")}
         </label>
-        <select
+        <Select block
           id="vulnerabilities-sort-select"
           value={sort}
           onChange={(event) =>
             onSortKeyChange(event.target.value as VulnerabilitySortKey)
           }
-          className="mt-1 h-9 w-56 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          className="mt-1 w-56"
           data-testid="vulnerabilities-sort-select"
         >
           {SORT_OPTIONS.map((opt) => (
@@ -455,7 +456,7 @@ export function VulnerabilitiesToolbar({
               {t(SORT_OPTION_LABEL_KEY[opt])}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
 
       <div className="flex flex-col">
@@ -487,7 +488,7 @@ export function VulnerabilitiesToolbar({
         >
           {t("vulnerabilities.toolbar.reachable_label")}
         </label>
-        <select
+        <Select block
           id="vulnerabilities-reachable-filter"
           value={reachable ?? ""}
           onChange={(event) =>
@@ -497,7 +498,7 @@ export function VulnerabilitiesToolbar({
                 : (event.target.value as ReachabilityFilter),
             )
           }
-          className="mt-1 h-9 w-40 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          className="mt-1 w-40"
           data-testid="vulnerabilities-reachable-filter"
         >
           <option value="">
@@ -508,7 +509,7 @@ export function VulnerabilitiesToolbar({
               {t(`vulnerabilities.toolbar.reachable_option.${opt}`)}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
 
       {/* ER28b - ownership filter. Two tokens and no user picker: a developer
@@ -522,7 +523,7 @@ export function VulnerabilitiesToolbar({
         >
           {t("vulnerabilities.filter.assignee_label")}
         </label>
-        <select
+        <Select block
           id="vulnerabilities-assignee-filter"
           value={assignee ?? ""}
           onChange={(event) =>
@@ -532,7 +533,7 @@ export function VulnerabilitiesToolbar({
                 : (event.target.value as AssigneeFilter),
             )
           }
-          className="mt-1 h-9 w-36 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          className="mt-1 w-36"
           data-testid="vulnerabilities-assignee-filter"
         >
           <option value="">{t("vulnerabilities.filter.assignee_all")}</option>
@@ -543,7 +544,7 @@ export function VulnerabilitiesToolbar({
           <option value="inactive">
             {t("vulnerabilities.filter.assignee_inactive")}
           </option>
-        </select>
+        </Select>
       </div>
 
       {/* X1 — SLA status filter. Same inline single-select pattern as the
@@ -558,7 +559,7 @@ export function VulnerabilitiesToolbar({
         >
           {t("vulnerabilities.toolbar.sla_label")}
         </label>
-        <select
+        <Select block
           id="vulnerabilities-sla-filter"
           value={sla ?? ""}
           onChange={(event) =>
@@ -568,7 +569,7 @@ export function VulnerabilitiesToolbar({
                 : (event.target.value as SlaFilter),
             )
           }
-          className="mt-1 h-9 w-36 rounded-md border border-input bg-background px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          className="mt-1 w-36"
           data-testid="vulnerabilities-sla-filter"
         >
           <option value="">{t("vulnerabilities.toolbar.sla_any")}</option>
@@ -577,7 +578,7 @@ export function VulnerabilitiesToolbar({
               {t(`vulnerabilities.sla.state.${opt}`)}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
 
       <div className="flex flex-col">
