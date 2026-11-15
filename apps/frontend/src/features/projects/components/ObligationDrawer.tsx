@@ -5,13 +5,7 @@ import { useSearchParams } from "react-router-dom";
 
 import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Badge } from "@/components/primer/badge";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { PrimerDialog } from "@/components/primer/PrimerDialog";
 import { Skeleton } from "@/components/primer/Skeleton";
 import type {
   AffectedComponentByObligation,
@@ -71,36 +65,36 @@ export function ObligationDrawer({
 }: ObligationDrawerProps) {
   const { t } = useTranslation("project_detail");
   const detail = useObligation(
-    open ? projectId ?? undefined : undefined,
+    open ? (projectId ?? undefined) : undefined,
     open ? obligationId : null,
   );
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent
-        side="right"
-        className="flex w-full max-w-2xl flex-col gap-4 overflow-y-auto sm:max-w-2xl"
-        data-testid="obligation-drawer"
-      >
-        <SheetHeader>
-          <SheetTitle data-testid="obligation-drawer-title">
-            {detail.data
-              ? t("obligations.drawer.title", {
-                  kind: t(`obligations.kind.${detail.data.kind}`, {
-                    defaultValue: detail.data.kind,
-                  }),
-                })
-              : t("obligations.drawer.loading_title")}
-          </SheetTitle>
-          <SheetDescription>
-            {detail.data
-              ? t("obligations.drawer.subtitle", {
-                  license: detail.data.license_name,
-                })
-              : t("obligations.drawer.loading_subtitle")}
-          </SheetDescription>
-        </SheetHeader>
-
+    <PrimerDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={
+        detail.data
+          ? t("obligations.drawer.title", {
+              kind: t(`obligations.kind.${detail.data.kind}`, {
+                defaultValue: detail.data.kind,
+              }),
+            })
+          : t("obligations.drawer.loading_title")
+      }
+      titleTestId="obligation-drawer-title"
+      description={
+        detail.data
+          ? t("obligations.drawer.subtitle", {
+              license: detail.data.license_name,
+            })
+          : t("obligations.drawer.loading_subtitle")
+      }
+      position="right"
+      width="xlarge"
+      testId="obligation-drawer"
+    >
+      <div className="flex flex-col gap-4">
         {detail.isLoading ? (
           <div
             className="flex flex-col gap-3"
@@ -139,8 +133,8 @@ export function ObligationDrawer({
             />
           </div>
         ) : null}
-      </SheetContent>
-    </Sheet>
+      </div>
+    </PrimerDialog>
   );
 }
 
@@ -173,7 +167,9 @@ function DrawerMetaSection({ detail }: MetaProps) {
         <span data-testid="obligation-drawer-license-name">
           {detail.license_spdx_id ?? t("licenses.row.no_spdx_id")}
         </span>
-        <span className="ml-2 text-muted-foreground">{detail.license_name}</span>
+        <span className="ml-2 text-muted-foreground">
+          {detail.license_name}
+        </span>
       </div>
 
       {isSafeUrl(detail.license_reference_url) ? (

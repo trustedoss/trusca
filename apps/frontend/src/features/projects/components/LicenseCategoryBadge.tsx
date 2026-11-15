@@ -28,7 +28,7 @@ const TONE_BY_CATEGORY: Record<LicenseCategoryName, Tone> = {
 const DOT_BY_CATEGORY: Record<LicenseCategoryName, string> = {
   forbidden: "bg-risk-critical",
   conditional: "bg-risk-medium",
-  allowed: "bg-emerald-500",
+  allowed: "bg-status-success",
   unknown: "bg-risk-info",
 };
 

@@ -25,10 +25,10 @@ import { useTranslation } from "react-i18next";
 import { z } from "zod";
 
 import { Alert, AlertDescription } from "@/components/primer/alert";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/primer/Button";
+import { Input } from "@/components/primer/Input";
+import { Label } from "@/components/primer/Label";
+import { Textarea } from "@/components/primer/Textarea";
 import { problemMessage } from "@/lib/problemMessage";
 import { DISTRIBUTION_MODELS } from "@/lib/projectConstants";
 import {
@@ -540,7 +540,7 @@ export function SettingsTab({ projectId, project }: SettingsTabProps) {
           </Button>
           {actionToast ? (
             <span
-              className="text-xs text-emerald-700"
+              className="text-xs text-status-success-foreground"
               data-testid="settings-toast"
               aria-live="polite"
             >
@@ -579,7 +579,7 @@ export function SettingsTab({ projectId, project }: SettingsTabProps) {
           <div className="space-y-3" data-testid="project-git-credential-configured">
             <div className="flex flex-wrap items-center gap-2">
               <span
-                className="inline-flex items-center gap-2 rounded-md border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700"
+                className="inline-flex items-center gap-2 rounded-md border border-status-success-border bg-status-success-subtle px-2.5 py-1 text-xs font-medium text-status-success-foreground"
                 data-testid="project-git-credential-badge"
               >
                 <span aria-hidden className="font-mono tracking-widest">

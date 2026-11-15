@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { Virtuoso } from "react-virtuoso";
 
 import { Alert, AlertDescription } from "@/components/primer/alert";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/primer/Button";
 import { Skeleton } from "@/components/primer/Skeleton";
 import {
   getSourceFileRaw,

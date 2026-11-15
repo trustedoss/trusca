@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
+import {
+  ChevronDownIcon,
+  ChevronRightIcon,
+  FileDirectoryIcon,
+  FileIcon,
+} from "@primer/octicons-react";
 import { useEffect, useState } from "react";
-import { ChevronDown, ChevronRight, File, Folder } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Virtuoso } from "react-virtuoso";
 
@@ -247,16 +252,16 @@ function SourceTreeRow({
         <span className="flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground">
           {entry.is_dir ? (
             expanded ? (
-              <ChevronDown className="h-3.5 w-3.5" aria-hidden />
+              <ChevronDownIcon size={14} />
             ) : (
-              <ChevronRight className="h-3.5 w-3.5" aria-hidden />
+              <ChevronRightIcon size={14} />
             )
           ) : null}
         </span>
         {entry.is_dir ? (
-          <Folder className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
+          <FileDirectoryIcon size={14} className="shrink-0 text-muted-foreground" />
         ) : (
-          <File className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
+          <FileIcon size={14} className="shrink-0 text-muted-foreground" />
         )}
         <span className="truncate" title={entry.name}>
           {entry.name}

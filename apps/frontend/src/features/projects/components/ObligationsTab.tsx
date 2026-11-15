@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
-import { CheckCircle2 } from "lucide-react";
+import {
+  CheckCircleIcon,
+} from "@primer/octicons-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
@@ -9,7 +11,7 @@ import { Virtuoso } from "react-virtuoso";
 import { EmptyState } from "@/components/EmptyState";
 import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Badge } from "@/components/primer/badge";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/primer/Button";
 import { Skeleton } from "@/components/primer/Skeleton";
 import { VIRTUOSO_TABLE_BODY } from "@/components/primer/virtuoso-table-body";
 import type { LicenseCategoryName } from "@/features/projects/api/projectDetailApi";
@@ -299,7 +301,7 @@ export function ObligationsTab({
         <EmptyState
           data-testid="obligations-empty"
           className="m-6"
-          icon={<CheckCircle2 />}
+          icon={<CheckCircleIcon />}
           title={
             hasNarrowingFilters
               ? t("obligations.empty.filtered_title")

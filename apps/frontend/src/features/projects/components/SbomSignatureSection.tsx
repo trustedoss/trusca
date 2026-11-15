@@ -32,7 +32,7 @@ import { useCallback, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Alert, AlertDescription } from "@/components/primer/alert";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/primer/Button";
 import { useSbomSignature } from "@/features/projects/api/useSbomSignature";
 import type { SbomSignatureArtifact } from "@/lib/projectsApi";
 import { ProblemError } from "@/lib/problem";

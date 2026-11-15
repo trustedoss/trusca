@@ -6,14 +6,8 @@ import { useSearchParams } from "react-router-dom";
 
 import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Badge } from "@/components/primer/badge";
-import { Button } from "@/components/ui/button";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { Button } from "@/components/primer/Button";
+import { PrimerDialog } from "@/components/primer/PrimerDialog";
 import { Skeleton } from "@/components/primer/Skeleton";
 import type {
   AffectedComponentByLicense,
@@ -97,25 +91,23 @@ export function LicenseDrawer({
   const detail = useLicenseFinding(open ? findingId : null);
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent
-        side="right"
-        className="flex w-full max-w-2xl flex-col gap-4 overflow-y-auto sm:max-w-2xl"
-        data-testid="license-drawer"
-      >
-        <SheetHeader>
-          <SheetTitle data-testid="license-drawer-title">
-            {detail.data?.name ?? t("licenses.drawer.loading_title")}
-          </SheetTitle>
-          <SheetDescription>
-            {detail.data
-              ? t("licenses.drawer.subtitle", {
-                  kind: t(`licenses.kind.${detail.data.finding_kind}`),
-                })
-              : t("licenses.drawer.loading_subtitle")}
-          </SheetDescription>
-        </SheetHeader>
-
+    <PrimerDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={detail.data?.name ?? t("licenses.drawer.loading_title")}
+      titleTestId="license-drawer-title"
+      description={
+        detail.data
+          ? t("licenses.drawer.subtitle", {
+              kind: t(`licenses.kind.${detail.data.finding_kind}`),
+            })
+          : t("licenses.drawer.loading_subtitle")
+      }
+      position="right"
+      width="xlarge"
+      testId="license-drawer"
+    >
+      <div className="flex flex-col gap-4">
         {detail.isLoading ? (
           <div
             className="flex flex-col gap-3"
@@ -151,8 +143,8 @@ export function LicenseDrawer({
             />
           </div>
         ) : null}
-      </SheetContent>
-    </Sheet>
+      </div>
+    </PrimerDialog>
   );
 }
 
@@ -173,10 +165,7 @@ function DrawerMetaSection({ detail }: MetaProps) {
     ? pick(detail.summary, detail.summary_ko)
     : null;
   return (
-    <section
-      className="flex flex-col gap-2"
-      data-testid="license-drawer-meta"
-    >
+    <section className="flex flex-col gap-2" data-testid="license-drawer-meta">
       <div className="flex flex-wrap items-center gap-2">
         <LicenseCategoryBadge category={detail.category} />
         <span data-testid="license-drawer-kind">
@@ -200,7 +189,10 @@ function DrawerMetaSection({ detail }: MetaProps) {
       </div>
 
       {summary ? (
-        <div className="flex flex-col gap-1" data-testid="license-drawer-summary">
+        <div
+          className="flex flex-col gap-1"
+          data-testid="license-drawer-summary"
+        >
           <p className="text-sm text-foreground">{summary.text}</p>
           {summary.original !== null ? (
             <details className="text-xs">

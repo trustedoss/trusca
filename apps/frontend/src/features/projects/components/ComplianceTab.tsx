@@ -60,7 +60,9 @@
  *
  * Read-only domain — no analyst workflow, no transitions, no audit log.
  */
-import { FileCheck } from "lucide-react";
+import {
+  FileBadgeIcon,
+} from "@primer/octicons-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
@@ -69,12 +71,12 @@ import { Virtuoso } from "react-virtuoso";
 import { EmptyState } from "@/components/EmptyState";
 import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Badge } from "@/components/primer/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Button } from "@/components/primer/Button";
+import { Input } from "@/components/primer/Input";
 import { MultiSelect } from "@/components/primer/multi-select";
 import { Skeleton } from "@/components/primer/Skeleton";
 import { VIRTUOSO_TABLE_BODY } from "@/components/primer/virtuoso-table-body";
-import { Switch } from "@/components/ui/switch";
+import { Switch } from "@/components/primer/switch";
 import type {
   LicenseCategoryName,
   TeamScopedRole,
@@ -560,7 +562,7 @@ export function ComplianceTab({
         <EmptyState
           data-testid="compliance-empty"
           className="m-6"
-          icon={<FileCheck />}
+          icon={<FileBadgeIcon />}
           title={
             hasNarrowingFilters
               ? t("compliance.empty.filtered_title")

@@ -33,7 +33,9 @@
  *   - Color is never the only signal: the type badge pairs a token-tinted
  *     background with a localised label (Notice / SBOM / Vuln PDF / VEX).
  */
-import { Download } from "lucide-react";
+import {
+  DownloadIcon,
+} from "@primer/octicons-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
@@ -41,7 +43,7 @@ import { useSearchParams } from "react-router-dom";
 import { EmptyState as SharedEmptyState } from "@/components/EmptyState";
 import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Badge } from "@/components/primer/badge";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/primer/Button";
 import {
   Card,
   CardContent,
@@ -538,7 +540,7 @@ function VulnPdfCard({ projectId }: { projectId: string }) {
                   defaultValue: "Generating…",
                 })
               : t("vulnerabilities.toolbar.download_pdf", {
-                  defaultValue: "Download PDF",
+                  defaultValue: "DownloadIcon PDF",
                 })}
           </Button>
           <Button
@@ -556,7 +558,7 @@ function VulnPdfCard({ projectId }: { projectId: string }) {
                   defaultValue: "Generating…",
                 })
               : t("vulnerabilities.toolbar.download_xlsx", {
-                  defaultValue: "Download Excel",
+                  defaultValue: "DownloadIcon Excel",
                 })}
           </Button>
         </div>
@@ -672,7 +674,7 @@ function ReportsHistoryEmpty() {
   return (
     <SharedEmptyState
       data-testid="reports-history-empty"
-      icon={<Download />}
+      icon={<DownloadIcon />}
       title={t("reports.history.empty.title")}
       description={t("reports.history.empty.body")}
     />

@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Button } from "@/components/primer/Button";
+import { Input } from "@/components/primer/Input";
 import { MultiSelect } from "@/components/primer/multi-select";
 import type { LicenseCategoryName } from "@/features/projects/api/projectDetailApi";
 import {
