@@ -574,7 +574,7 @@ export function ProjectDetailPage() {
           {isHistorical ? null : <GovernanceBand projectId={projectId} />}
 
           <Tabs value={activeTab} onValueChange={setTab}>
-            {/* W4-C — 8-tab strip. The IA overhaul collapsed Licenses +
+            {/* W4-C - 8-tab strip. The IA overhaul collapsed Licenses +
             Obligations into Compliance, SBOM into Reports, and Remediation
             into Vulnerabilities. Legacy `?tab=` tokens still land on the
             right surface via `redirectLegacyTab`. */}
@@ -603,7 +603,7 @@ export function ProjectDetailPage() {
               >
                 {t("tabs.vulnerabilities")}
               </TabsTrigger>
-              {/* P2 #3 — Source (raw artifact) is the cognitive predecessor of
+              {/* P2 #3 - Source (raw artifact) is the cognitive predecessor of
               the classified outputs (Compliance, Reports), so it sits
               between Vulnerabilities and Compliance. */}
               <TabsTrigger
@@ -963,7 +963,7 @@ function ProjectDetailHeader({
                 : blockingScan !== null
                   ? t("page.scan_already_active", {
                       defaultValue:
-                        "A scan is already running for this project — open the in-progress drawer to view it.",
+                        "A scan is already running for this project, open the in-progress drawer to view it.",
                     })
                   : undefined
             }

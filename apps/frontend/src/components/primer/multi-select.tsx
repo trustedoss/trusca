@@ -4,7 +4,7 @@ import { ActionList, ActionMenu } from "@primer/react";
 import { useTranslation } from "react-i18next";
 
 /**
- * MultiSelect — app-i18n checkbox-list dropdown.
+ * MultiSelect - app-i18n checkbox-list dropdown.
  *
  * Replaces the project-detail filter toolbars' native `<select multiple>`
  * elements. The browser renders a native multi-select's collapsed widget in
@@ -13,7 +13,7 @@ import { useTranslation } from "react-i18next";
  * fixes both: the trigger label comes from `common:multiselect.count_selected`
  * (app i18n) and the options are real checkbox rows in an opaque popover.
  *
- * Built on the existing Radix DropdownMenu primitive (already a dependency —
+ * Built on the existing Radix DropdownMenu primitive (already a dependency -
  * no new package) so we inherit keyboard navigation, focus management, and
  * aria-menu semantics. The dropdown content uses `bg-popover` (mapped in
  * tailwind.config) so it renders fully opaque over the list below.
