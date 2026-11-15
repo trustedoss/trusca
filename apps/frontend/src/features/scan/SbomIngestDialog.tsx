@@ -1,20 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
-import { AlertTriangle, FileUp } from "lucide-react";
+import { AlertIcon, UploadIcon } from "@primer/octicons-react";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Alert, AlertDescription } from "@/components/primer/alert";
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+import { Button } from "@/components/primer/Button";
+import { PrimerDialog } from "@/components/primer/PrimerDialog";
+import { Input } from "@/components/primer/Input";
 import { useIngestSbom } from "@/hooks/useIngestSbom";
 import { ProblemError } from "@/lib/problem";
 import type { ProjectPublic, ScanPublic } from "@/lib/projectsApi";
@@ -118,27 +111,47 @@ export function SbomIngestDialog({
     : null;
 
   return (
-    <Dialog
+    <PrimerDialog
       open={open}
       onOpenChange={(next) => {
-        if (!next) reset();
-        onOpenChange(next);
+        // A transfer in flight keeps the dialog open; the footer buttons are
+        // disabled for the same reason.
+        if (isBusy) return;
+        ((next) => {
+          if (!next) reset();
+          onOpenChange(next);
+        })(next);
       }}
+      title={t("sbom_ingest.title")}
+      description={t("sbom_ingest.subtitle", { project: project.name })}
+      width="large"
+      testId="sbom-ingest-dialog"
+      footer={
+        <>
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => {
+              reset();
+              onOpenChange(false);
+            }}
+            disabled={isBusy}
+            data-testid="sbom-ingest-cancel"
+          >
+            {t("sbom_ingest.cancel")}
+          </Button>
+          <Button
+            type="button"
+            onClick={handleSubmit}
+            disabled={!selectedFile || isBusy}
+            data-testid="sbom-ingest-submit"
+          >
+            {isBusy ? t("sbom_ingest.uploading") : t("sbom_ingest.submit")}
+          </Button>
+        </>
+      }
     >
-      <DialogContent
-        className="max-w-xl"
-        data-testid="sbom-ingest-dialog"
-        onInteractOutside={(e) => {
-          if (isBusy) e.preventDefault();
-        }}
-      >
-        <DialogHeader>
-          <DialogTitle>{t("sbom_ingest.title")}</DialogTitle>
-          <DialogDescription>
-            {t("sbom_ingest.subtitle", { project: project.name })}
-          </DialogDescription>
-        </DialogHeader>
-
+      <div className="flex flex-col gap-4">
         <div className="space-y-2" data-testid="sbom-ingest-pick">
           <label
             htmlFor="sbom-ingest-input"
@@ -165,7 +178,7 @@ export function SbomIngestDialog({
               disabled={isBusy}
               data-testid="sbom-ingest-choose"
             >
-              <FileUp className="mr-1.5 h-4 w-4" aria-hidden />
+              <UploadIcon size={16} className="mr-1.5" />
               {t("sbom_ingest.choose_file")}
             </Button>
             <span
@@ -221,7 +234,7 @@ export function SbomIngestDialog({
           className="flex items-start gap-1.5 rounded-md border border-risk-high/40 bg-risk-high/10 px-3 py-2 text-xs font-medium text-risk-high-foreground"
           data-testid="sbom-ingest-shared-warning"
         >
-          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+          <AlertIcon size={14} className="mt-0.5 shrink-0" />
           <span>{t("sbom_ingest.shared_warning")}</span>
         </p>
 
@@ -232,30 +245,7 @@ export function SbomIngestDialog({
             </AlertDescription>
           </Alert>
         ) : null}
-
-        <DialogFooter>
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={() => {
-              reset();
-              onOpenChange(false);
-            }}
-            disabled={isBusy}
-            data-testid="sbom-ingest-cancel"
-          >
-            {t("sbom_ingest.cancel")}
-          </Button>
-          <Button
-            type="button"
-            onClick={handleSubmit}
-            disabled={!selectedFile || isBusy}
-            data-testid="sbom-ingest-submit"
-          >
-            {isBusy ? t("sbom_ingest.uploading") : t("sbom_ingest.submit")}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      </div>
+    </PrimerDialog>
   );
 }

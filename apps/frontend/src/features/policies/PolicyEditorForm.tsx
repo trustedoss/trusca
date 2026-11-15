@@ -23,11 +23,11 @@
  */
 import { useTranslation } from "react-i18next";
 
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Button } from "@/components/primer/Button";
+import { Input } from "@/components/primer/Input";
+import { Label } from "@/components/primer/Label";
 import { Switch } from "@/components/primer/switch";
-import { Textarea } from "@/components/ui/textarea";
+import { Textarea } from "@/components/primer/Textarea";
 import { cn } from "@/lib/utils";
 import type {
   CompoundOperator,
@@ -56,8 +56,8 @@ interface Props {
 /** Category dot — color paired with a label so color is never the only signal. */
 function CategoryDot({ category }: { category: PolicyCategory }) {
   const dot: Record<PolicyCategory, string> = {
-    allowed: "bg-emerald-500",
-    conditional: "bg-amber-500",
+    allowed: "bg-status-success",
+    conditional: "bg-risk-medium",
     forbidden: "bg-destructive",
   };
   return (

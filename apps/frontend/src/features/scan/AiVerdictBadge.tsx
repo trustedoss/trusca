@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
-import { Check, CircleHelp, OctagonAlert, TriangleAlert } from "lucide-react";
+import {
+  AlertIcon,
+  CheckIcon,
+  QuestionIcon,
+  StopIcon,
+} from "@primer/octicons-react";
 import { useTranslation } from "react-i18next";
 
 import { Badge } from "@/components/primer/badge";
@@ -44,11 +49,11 @@ const TONE: Record<AiVerdict, "critical" | "medium" | "info" | "success"> = {
   ok: "success",
 };
 
-const ICON: Record<AiVerdict, typeof Check> = {
-  caution: OctagonAlert,
-  review: CircleHelp,
-  conditional: TriangleAlert,
-  ok: Check,
+const ICON: Record<AiVerdict, typeof CheckIcon> = {
+  caution: StopIcon,
+  review: QuestionIcon,
+  conditional: AlertIcon,
+  ok: CheckIcon,
 };
 
 export function AiVerdictBadge({

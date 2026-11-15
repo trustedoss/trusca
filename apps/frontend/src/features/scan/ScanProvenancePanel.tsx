@@ -17,7 +17,9 @@
  * timestamp is the generator's claim, and a manifest's presence means the file
  * was in the tree, not that the scanner understood it.
  */
-import { FileSearch } from "lucide-react";
+import {
+  FileIcon,
+} from "@primer/octicons-react";
 import { useTranslation } from "react-i18next";
 
 import { Badge } from "@/components/primer/badge";
@@ -48,7 +50,7 @@ export function ScanProvenancePanel({ provenance }: ScanProvenancePanelProps) {
       aria-labelledby="scan-provenance-heading"
     >
       <div className="mb-3 flex items-center gap-2">
-        <FileSearch className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+        <FileIcon size={16} className="text-muted-foreground" />
         <h2
           id="scan-provenance-heading"
           className="text-sm font-semibold tracking-tight"

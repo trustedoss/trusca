@@ -19,9 +19,9 @@
  * No hardcoded English strings (every string via `t()`) and no hex literals
  * (Tailwind tokens / CSS vars only) — CLAUDE.md design system + i18n rules.
  */
+import { FileIcon } from "@primer/octicons-react";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { FileText } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 
@@ -29,15 +29,9 @@ import { EmptyState } from "@/components/EmptyState";
 import { PageHeader } from "@/components/PageHeader";
 import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Badge } from "@/components/primer/badge";
-import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { Button } from "@/components/primer/Button";
+import { Label } from "@/components/primer/Label";
+import { PrimerDialog } from "@/components/primer/PrimerDialog";
 import { Skeleton } from "@/components/primer/Skeleton";
 import { useToast } from "@/components/primer/toast";
 import { GatePolicyPanel } from "@/features/policies/GatePolicyPanel";
@@ -103,7 +97,11 @@ export function PoliciesPage() {
 
   // --- super_admin: admin teams for the picker (rich names) ---
   const adminTeamsQuery = useQuery({
-    queryKey: ["admin", "teams", { page: 1, page_size: 200, scope: "policies" }],
+    queryKey: [
+      "admin",
+      "teams",
+      { page: 1, page_size: 200, scope: "policies" },
+    ],
     queryFn: () => listAdminTeams({ page: 1, page_size: 200 }),
     enabled: isSuperAdmin,
     staleTime: 30_000,
@@ -232,7 +230,9 @@ export function PoliciesPage() {
         {policiesQuery.isError ? (
           <div className="px-6 py-4">
             <Alert variant="destructive" data-testid="policies-error">
-              <AlertDescription>{t("policies.errors.unknown")}</AlertDescription>
+              <AlertDescription>
+                {t("policies.errors.unknown")}
+              </AlertDescription>
             </Alert>
           </div>
         ) : null}
@@ -292,8 +292,8 @@ export function PoliciesPage() {
                         <span className="font-medium">
                           {scope === "org"
                             ? t("policies.scope.org")
-                            : teamNameById.get(policy.team_id ?? "") ??
-                              (policy.team_id ?? "").slice(0, 8)}
+                            : (teamNameById.get(policy.team_id ?? "") ??
+                              (policy.team_id ?? "").slice(0, 8))}
                         </span>
                       </td>
                       <td className="px-3 text-muted-foreground">
@@ -349,7 +349,7 @@ export function PoliciesPage() {
                       empty list does not read as "nothing is checked". */}
                   <EmptyState
                     data-testid="policies-empty"
-                    icon={<FileText />}
+                    icon={<FileIcon />}
                     title={t("policies.empty")}
                     description={
                       isTeamAdminOrAbove
@@ -364,23 +364,18 @@ export function PoliciesPage() {
         </table>
       </div>
 
-      <Sheet
+      <PrimerDialog
         open={drawerTarget !== null}
         onOpenChange={(open) => {
           if (!open) closeDrawer();
         }}
+        title={drawerTitle}
+        description={t("policies.editor.description")}
+        position="right"
+        width="large"
+        testId="policy-drawer"
       >
-        <SheetContent
-          side="right"
-          className="flex w-full flex-col sm:max-w-lg"
-          data-testid="policy-drawer"
-        >
-          <SheetHeader>
-            <SheetTitle>{drawerTitle}</SheetTitle>
-            <SheetDescription>
-              {t("policies.editor.description")}
-            </SheetDescription>
-          </SheetHeader>
+        <div className="flex flex-col">
           <div className="mt-4 flex-1 overflow-hidden">
             {drawerTarget ? (
               <div className="flex h-full flex-col gap-6 overflow-y-auto pr-1">
@@ -404,9 +399,8 @@ export function PoliciesPage() {
               </div>
             ) : null}
           </div>
-        </SheetContent>
-      </Sheet>
-
+        </div>
+      </PrimerDialog>
     </div>
   );
 }

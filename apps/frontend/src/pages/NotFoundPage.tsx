@@ -22,12 +22,14 @@
  * would find nothing here. It says the short tab-title phrase rather than
  * repeating the sentence below it.
  */
-import { FileQuestion } from "lucide-react";
+import {
+  FileIcon,
+} from "@primer/octicons-react";
 import { useTranslation } from "react-i18next";
 import { Link, useLocation } from "react-router-dom";
 
 import { EmptyState } from "@/components/EmptyState";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/primer/Button";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 export function NotFoundPage() {
@@ -44,7 +46,7 @@ export function NotFoundPage() {
       <h1 className="sr-only">{t("not_found.tab_title")}</h1>
       <EmptyState
         data-testid="not-found-page"
-        icon={<FileQuestion />}
+        icon={<FileIcon />}
         title={t("not_found.title")}
         description={t("not_found.description")}
         action={

@@ -27,19 +27,19 @@
  *     so every shared primitive can be eyeballed (and screenshot-diffed) in
  *     one place.
  */
-import {
-  AlertTriangle,
-  CheckCircle2,
-  FolderOpen,
-  GitBranch,
-  MoreHorizontal,
-} from "lucide-react";
 
+import {
+  AlertIcon,
+  CheckCircleIcon,
+  FileDirectoryIcon,
+  GitBranchIcon,
+  KebabHorizontalIcon,
+} from "@primer/octicons-react";
 import { EmptyState } from "@/components/EmptyState";
 import { BrandCandidates } from "@/pages/dev/BrandCandidates";
 import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Badge } from "@/components/primer/badge";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/primer/Button";
 import {
   Card,
   CardContent,
@@ -47,9 +47,9 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/primer/card";
-import { Input } from "@/components/ui/input";
+import { Input } from "@/components/primer/Input";
 import { Skeleton } from "@/components/primer/Skeleton";
-import { TableRowsSkeleton } from "@/components/ui/skeletons";
+import { TableRowsSkeleton } from "@/components/primer/skeletons";
 import { useToast } from "@/components/primer/toast";
 import {
   Body,
@@ -164,7 +164,7 @@ export function DesignSystemPreview() {
             <Button size="default">Default</Button>
             <Button size="lg">Large</Button>
             <Button size="icon" aria-label="Open menu">
-              <MoreHorizontal className="h-4 w-4" />
+              <KebabHorizontalIcon size={16} />
             </Button>
           </div>
         </Section>
@@ -180,11 +180,11 @@ export function DesignSystemPreview() {
               </CardHeader>
               <CardContent className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <GitBranch className="h-4 w-4" />
+                  <GitBranchIcon size={16} />
                   <span className="font-mono text-xs">main</span>
                 </div>
                 <Badge tone="critical">
-                  <AlertTriangle className="h-3 w-3" />2 Critical
+                  <AlertIcon size={12} />2 Critical
                 </Badge>
               </CardContent>
             </Card>
@@ -197,11 +197,11 @@ export function DesignSystemPreview() {
               </CardHeader>
               <CardContent className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <GitBranch className="h-4 w-4" />
+                  <GitBranchIcon size={16} />
                   <span className="font-mono text-xs">develop</span>
                 </div>
                 <Badge tone="success">
-                  <CheckCircle2 className="h-3 w-3" />
+                  <CheckCircleIcon size={12} />
                   Clean
                 </Badge>
               </CardContent>
@@ -322,7 +322,7 @@ export function DesignSystemPreview() {
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="rounded-md border border-border bg-card">
               <EmptyState
-                icon={<FolderOpen />}
+                icon={<FileDirectoryIcon />}
                 title="No projects yet"
                 description="Register your first repository to start scanning."
                 action={<Button size="sm">Register project</Button>}

@@ -19,20 +19,14 @@
  *   obtain a fresh ETag, then passes it to transitionApproval(). This satisfies
  *   the CLAUDE.md optimistic-concurrency pattern.
  */
-import { Loader2 } from "lucide-react";
+import { Spinner } from "@primer/react";
 import { type ReactNode, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Badge } from "@/components/primer/badge";
-import { Button } from "@/components/ui/button";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { Button } from "@/components/primer/Button";
+import { PrimerDialog } from "@/components/primer/PrimerDialog";
 import { Skeleton } from "@/components/primer/Skeleton";
 import { useApprovalDetail, useTransitionApproval } from "@/features/approvals/useApprovals";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -65,11 +59,11 @@ interface StatusBadgeProps {
 function StatusBadge({ status, t }: StatusBadgeProps) {
   const colorMap: Record<ApprovalStatus, string> = {
     pending:
-      "border-yellow-300 bg-yellow-50 text-yellow-700",
+      "border-status-warning-border bg-status-warning-subtle text-status-warning-foreground",
     under_review:
       "border-status-info-border bg-status-info-subtle text-status-info-foreground",
     approved:
-      "border-green-300 bg-green-50 text-green-700",
+      "border-status-success-border bg-status-success-subtle text-status-success-foreground",
     rejected:
       "border-status-danger-border bg-status-danger-subtle text-status-danger-foreground",
   };
@@ -147,7 +141,7 @@ function ConfirmStrip({
           data-testid="approvals-confirm-ok"
         >
           {isPending ? (
-            <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+            <Spinner size="small" />
           ) : null}
           {t("approvals.action.confirm")}
         </Button>
@@ -236,22 +230,20 @@ export function ApprovalsDrawer({
     ) : null;
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent
-        side="right"
-        className="flex w-full max-w-lg flex-col gap-4 overflow-y-auto sm:max-w-lg"
-        data-testid="approvals-drawer"
-      >
-        <SheetHeader>
-          <SheetTitle>
-            {approval
+    <PrimerDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title={
+        approval
               ? approval.id.slice(0, 8)
-              : t("approvals.drawer.component_label")}
-          </SheetTitle>
-          <SheetDescription className="font-mono text-xs">
-            {approval?.component_id ?? ""}
-          </SheetDescription>
-        </SheetHeader>
+              : t("approvals.drawer.component_label")
+      }
+      description={<span className="font-mono text-xs">{approval?.component_id ?? ""}</span>}
+      position="right"
+      width="large"
+      testId="approvals-drawer"
+    >
+      <div className="flex flex-col gap-4">
 
         {detail.isLoading ? (
           <div className="space-y-2" data-testid="approvals-drawer-loading">
@@ -359,7 +351,7 @@ export function ApprovalsDrawer({
             ) : null}
           </>
         ) : null}
-      </SheetContent>
-    </Sheet>
+      </div>
+    </PrimerDialog>
   );
 }

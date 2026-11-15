@@ -14,7 +14,9 @@
  * eight characters of the UUID with a `font-mono` style — same convention
  * AdminScansPage uses for the scan id column.
  */
-import { Activity } from "lucide-react";
+import {
+  PulseIcon,
+} from "@primer/octicons-react";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
@@ -23,8 +25,8 @@ import { EmptyState } from "@/components/EmptyState";
 import { PageHeader } from "@/components/PageHeader";
 import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Badge } from "@/components/primer/badge";
-import { Button } from "@/components/ui/button";
-import { TableRowsSkeleton } from "@/components/ui/skeletons";
+import { Button } from "@/components/primer/Button";
+import { TableRowsSkeleton } from "@/components/primer/skeletons";
 import { ScanCancelButton } from "@/features/scans/ScanCancelButton";
 import { useScans } from "@/features/scans/useScans";
 import { useClampPage, usePageParam, useUrlEnum } from "@/hooks/useUrlState";
@@ -278,7 +280,7 @@ export function ScansPage() {
                       scan starts from a project rather than here. */}
                   <EmptyState
                     data-testid="scans-empty"
-                    icon={<Activity />}
+                    icon={<PulseIcon />}
                     title={tab === "all" ? t("page.empty_all") : t("page.empty")}
                     description={
                       tab === "all" ? t("page.empty_all_hint") : undefined

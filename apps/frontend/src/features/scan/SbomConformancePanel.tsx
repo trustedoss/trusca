@@ -45,8 +45,11 @@
  * documentation-preparation aid, never a compliance determination. `null`
  * crosswalk (nothing maps, e.g. unknown format) renders no section at all.
  */
+import {
+  ChevronDownIcon,
+  ChevronRightIcon,
+} from "@primer/octicons-react";
 import { useState } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import { Badge } from "@/components/primer/badge";
@@ -87,7 +90,7 @@ const RESULT_TONE: Record<SbomConformanceResult, Tone> = {
 };
 
 const RESULT_DOT: Record<SbomConformanceResult, string> = {
-  pass: "bg-emerald-500",
+  pass: "bg-status-success",
   warn: "bg-risk-medium",
   fail: "bg-risk-critical",
 };
@@ -99,7 +102,7 @@ const CHECK_TONE: Record<SbomCheckStatus, Tone> = {
 };
 
 const CHECK_DOT: Record<SbomCheckStatus, string> = {
-  pass: "bg-emerald-500",
+  pass: "bg-status-success",
   warn: "bg-risk-medium",
   fail: "bg-risk-critical",
 };
@@ -876,9 +879,9 @@ function CrosswalkFrameworkRow({
         data-testid={`crosswalk-framework-${framework.id}-toggle`}
       >
         {open ? (
-          <ChevronDown aria-hidden className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          <ChevronDownIcon size={14} className="shrink-0 text-muted-foreground" />
         ) : (
-          <ChevronRight aria-hidden className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          <ChevronRightIcon size={14} className="shrink-0 text-muted-foreground" />
         )}
         <span className="text-sm font-medium">{short}</span>
         <span className="font-mono text-xs text-foreground">
