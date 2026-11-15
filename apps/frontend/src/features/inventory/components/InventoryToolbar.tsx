@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
+import { Select } from "@primer/react";
 import { useTranslation } from "react-i18next";
 
 import { ExportCsvButton } from "@/components/ExportCsvButton";
 import { MoreFiltersMenu } from "@/components/filters/MoreFiltersMenu";
-import { Input } from "@/components/ui/input";
+import { Input } from "@/components/primer/Input";
 import { MultiSelect } from "@/components/primer/multi-select";
 import { useState } from "react";
 
@@ -220,31 +221,29 @@ export function InventoryToolbar({
           <label htmlFor="inventory-sort" className="text-xs text-muted-foreground">
             {t("toolbar.sort_label")}
           </label>
-          <select
+          <Select
             id="inventory-sort"
             value={sort}
             onChange={(event) =>
               onSortChange(event.target.value as InventorySortKey)
             }
             data-testid="inventory-sort"
-            className="mt-1 h-9 rounded-md border bg-background px-2 text-sm"
           >
             <option value="project_count">{t("toolbar.sort.project_count")}</option>
             <option value="name">{t("toolbar.sort.name")}</option>
             <option value="severity">{t("toolbar.sort.severity")}</option>
             <option value="license">{t("toolbar.sort.license")}</option>
-          </select>
+          </Select>
         </div>
-        <select
+        <Select
           aria-label={t("toolbar.order_label")}
           value={order}
           onChange={(event) => onOrderChange(event.target.value as SortOrder)}
           data-testid="inventory-order"
-          className="h-9 rounded-md border bg-background px-2 text-sm"
         >
           <option value="desc">{t("toolbar.order.desc")}</option>
           <option value="asc">{t("toolbar.order.asc")}</option>
-        </select>
+        </Select>
       </div>
 
       {/* B5: the rows as they are filtered right now. */}

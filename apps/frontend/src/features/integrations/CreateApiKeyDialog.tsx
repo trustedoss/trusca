@@ -13,19 +13,13 @@
  * place the backend ever surfaces the raw key.
  */
 import { useState } from "react";
+import { Select } from "@primer/react";
 import { useTranslation } from "react-i18next";
 
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Button } from "@/components/primer/Button";
+import { PrimerDialog } from "@/components/primer/PrimerDialog";
+import { Input } from "@/components/primer/Input";
+import { Label } from "@/components/primer/Label";
 import { useApiKeyScopes } from "@/features/integrations/useApiKeyScopes";
 import {
   API_KEY_PERMISSION_BREADTHS,
@@ -65,8 +59,7 @@ export function CreateApiKeyDialog({
   // Read-only unless the person issuing says otherwise. Most keys are handed
   // to something that reads results, and the ones that need to start a scan
   // are worth choosing deliberately.
-  const [breadth, setBreadth] =
-    useState<APIKeyPermissionBreadth>("read_only");
+  const [breadth, setBreadth] = useState<APIKeyPermissionBreadth>("read_only");
   const [error, setError] = useState<string | null>(null);
 
   function reset() {
@@ -116,189 +109,182 @@ export function CreateApiKeyDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent data-testid="integrations-create-dialog">
-        <DialogHeader>
-          <DialogTitle>{t("api_keys.create_dialog.title")}</DialogTitle>
-          <DialogDescription>
-            {t("api_keys.create_dialog.description")}
-          </DialogDescription>
-        </DialogHeader>
+    <PrimerDialog
+      open={open}
+      onOpenChange={handleOpenChange}
+      title={t("api_keys.create_dialog.title")}
+      description={t("api_keys.create_dialog.description")}
+      width="medium"
+      testId="integrations-create-dialog"
+    >
+      <form
+        onSubmit={handleSubmit}
+        className="space-y-4"
+        data-testid="integrations-create-form"
+        noValidate
+      >
+        <div className="space-y-1.5">
+          <Label htmlFor="apikey-name">
+            {t("api_keys.create_dialog.name_label")}
+          </Label>
+          <Input
+            id="apikey-name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder={t("api_keys.create_dialog.name_placeholder")}
+            data-testid="integrations-create-name"
+            disabled={submitting}
+            autoFocus
+            required
+          />
+        </div>
 
-        <form
-          onSubmit={handleSubmit}
-          className="space-y-4"
-          data-testid="integrations-create-form"
-          noValidate
-        >
+        <div className="space-y-1.5">
+          <Label htmlFor="apikey-scope">
+            {t("api_keys.create_dialog.scope_label")}
+          </Label>
+          <Select block
+            id="apikey-scope"
+            value={scope}
+            onChange={(e) => setScope(e.target.value as APIKeyScope)}
+            data-testid="integrations-create-scope"
+            disabled={submitting}
+          >
+            {allowedScopes.map((value) => (
+              <option key={value} value={value}>
+                {t(`api_keys.scope.${value}`)}
+              </option>
+            ))}
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            {scope === "org"
+              ? t("api_keys.create_dialog.scope_help_org")
+              : scope === "team"
+                ? t("api_keys.create_dialog.scope_help_team")
+                : t("api_keys.create_dialog.scope_help_project")}
+          </p>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="apikey-breadth">
+            {t("api_keys.create_dialog.breadth_label")}
+          </Label>
+          <Select block
+            id="apikey-breadth"
+            value={breadth}
+            onChange={(e) =>
+              setBreadth(e.target.value as APIKeyPermissionBreadth)
+            }
+            data-testid="integrations-create-breadth"
+            disabled={submitting}
+          >
+            {API_KEY_PERMISSION_BREADTHS.map((value) => (
+              <option key={value} value={value}>
+                {t(`api_keys.create_dialog.breadth_option.${value}`)}
+              </option>
+            ))}
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            {t("api_keys.create_dialog.breadth_help")}
+          </p>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="apikey-expires">
+            {t("api_keys.create_dialog.expires_label")}
+          </Label>
+          <Select block
+            id="apikey-expires"
+            value={expiresInDays}
+            onChange={(e) => setExpiresInDays(e.target.value)}
+            data-testid="integrations-create-expires"
+            disabled={submitting}
+          >
+            <option value="">
+              {t("api_keys.create_dialog.expires_never")}
+            </option>
+            <option value="30">
+              {t("api_keys.create_dialog.expires_preset_30")}
+            </option>
+            <option value="90">
+              {t("api_keys.create_dialog.expires_preset_90")}
+            </option>
+            <option value="180">
+              {t("api_keys.create_dialog.expires_preset_180")}
+            </option>
+            <option value="365">
+              {t("api_keys.create_dialog.expires_preset_365")}
+            </option>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            {t("api_keys.create_dialog.expires_help")}
+          </p>
+        </div>
+
+        {scope === "team" ? (
           <div className="space-y-1.5">
-            <Label htmlFor="apikey-name">
-              {t("api_keys.create_dialog.name_label")}
+            <Label htmlFor="apikey-team-id">
+              {t("api_keys.create_dialog.team_id_label")}
             </Label>
             <Input
-              id="apikey-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder={t("api_keys.create_dialog.name_placeholder")}
-              data-testid="integrations-create-name"
+              id="apikey-team-id"
+              value={teamId}
+              onChange={(e) => setTeamId(e.target.value)}
+              placeholder={t("api_keys.create_dialog.team_id_placeholder")}
+              data-testid="integrations-create-team-id"
               disabled={submitting}
-              autoFocus
-              required
             />
           </div>
+        ) : null}
 
+        {scope === "project" ? (
           <div className="space-y-1.5">
-            <Label htmlFor="apikey-scope">
-              {t("api_keys.create_dialog.scope_label")}
+            <Label htmlFor="apikey-project-id">
+              {t("api_keys.create_dialog.project_id_label")}
             </Label>
-            <select
-              id="apikey-scope"
-              value={scope}
-              onChange={(e) => setScope(e.target.value as APIKeyScope)}
-              data-testid="integrations-create-scope"
+            <Input
+              id="apikey-project-id"
+              value={projectId}
+              onChange={(e) => setProjectId(e.target.value)}
+              placeholder={t("api_keys.create_dialog.project_id_placeholder")}
+              data-testid="integrations-create-project-id"
               disabled={submitting}
-              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors duration-fast ease-out-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {allowedScopes.map((value) => (
-                <option key={value} value={value}>
-                  {t(`api_keys.scope.${value}`)}
-                </option>
-              ))}
-            </select>
-            <p className="text-xs text-muted-foreground">
-              {scope === "org"
-                ? t("api_keys.create_dialog.scope_help_org")
-                : scope === "team"
-                  ? t("api_keys.create_dialog.scope_help_team")
-                  : t("api_keys.create_dialog.scope_help_project")}
-            </p>
+            />
           </div>
+        ) : null}
 
-          <div className="space-y-1.5">
-            <Label htmlFor="apikey-breadth">
-              {t("api_keys.create_dialog.breadth_label")}
-            </Label>
-            <select
-              id="apikey-breadth"
-              value={breadth}
-              onChange={(e) =>
-                setBreadth(e.target.value as APIKeyPermissionBreadth)
-              }
-              data-testid="integrations-create-breadth"
-              disabled={submitting}
-              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors duration-fast ease-out-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {API_KEY_PERMISSION_BREADTHS.map((value) => (
-                <option key={value} value={value}>
-                  {t(`api_keys.create_dialog.breadth_option.${value}`)}
-                </option>
-              ))}
-            </select>
-            <p className="text-xs text-muted-foreground">
-              {t("api_keys.create_dialog.breadth_help")}
-            </p>
-          </div>
+        {error ? (
+          <p
+            className="text-xs text-destructive"
+            role="alert"
+            aria-live="polite"
+            data-testid="integrations-create-error"
+          >
+            {error}
+          </p>
+        ) : null}
 
-          <div className="space-y-1.5">
-            <Label htmlFor="apikey-expires">
-              {t("api_keys.create_dialog.expires_label")}
-            </Label>
-            <select
-              id="apikey-expires"
-              value={expiresInDays}
-              onChange={(e) => setExpiresInDays(e.target.value)}
-              data-testid="integrations-create-expires"
-              disabled={submitting}
-              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors duration-fast ease-out-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <option value="">
-                {t("api_keys.create_dialog.expires_never")}
-              </option>
-              <option value="30">
-                {t("api_keys.create_dialog.expires_preset_30")}
-              </option>
-              <option value="90">
-                {t("api_keys.create_dialog.expires_preset_90")}
-              </option>
-              <option value="180">
-                {t("api_keys.create_dialog.expires_preset_180")}
-              </option>
-              <option value="365">
-                {t("api_keys.create_dialog.expires_preset_365")}
-              </option>
-            </select>
-            <p className="text-xs text-muted-foreground">
-              {t("api_keys.create_dialog.expires_help")}
-            </p>
-          </div>
-
-          {scope === "team" ? (
-            <div className="space-y-1.5">
-              <Label htmlFor="apikey-team-id">
-                {t("api_keys.create_dialog.team_id_label")}
-              </Label>
-              <Input
-                id="apikey-team-id"
-                value={teamId}
-                onChange={(e) => setTeamId(e.target.value)}
-                placeholder={t("api_keys.create_dialog.team_id_placeholder")}
-                data-testid="integrations-create-team-id"
-                disabled={submitting}
-              />
-            </div>
-          ) : null}
-
-          {scope === "project" ? (
-            <div className="space-y-1.5">
-              <Label htmlFor="apikey-project-id">
-                {t("api_keys.create_dialog.project_id_label")}
-              </Label>
-              <Input
-                id="apikey-project-id"
-                value={projectId}
-                onChange={(e) => setProjectId(e.target.value)}
-                placeholder={t(
-                  "api_keys.create_dialog.project_id_placeholder",
-                )}
-                data-testid="integrations-create-project-id"
-                disabled={submitting}
-              />
-            </div>
-          ) : null}
-
-          {error ? (
-            <p
-              className="text-xs text-destructive"
-              role="alert"
-              aria-live="polite"
-              data-testid="integrations-create-error"
-            >
-              {error}
-            </p>
-          ) : null}
-
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => handleOpenChange(false)}
-              disabled={submitting}
-              data-testid="integrations-create-cancel"
-            >
-              {t("api_keys.create_dialog.cancel")}
-            </Button>
-            <Button
-              type="submit"
-              disabled={submitting}
-              data-testid="integrations-create-submit"
-            >
-              {submitting
-                ? t("api_keys.create_dialog.submitting")
-                : t("api_keys.create_dialog.submit")}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+        <div className="flex justify-end gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => handleOpenChange(false)}
+            disabled={submitting}
+            data-testid="integrations-create-cancel"
+          >
+            {t("api_keys.create_dialog.cancel")}
+          </Button>
+          <Button
+            type="submit"
+            disabled={submitting}
+            data-testid="integrations-create-submit"
+          >
+            {submitting
+              ? t("api_keys.create_dialog.submitting")
+              : t("api_keys.create_dialog.submit")}
+          </Button>
+        </div>
+      </form>
+    </PrimerDialog>
   );
 }

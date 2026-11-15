@@ -26,6 +26,11 @@ interface ComboboxPopoverProps {
   onSearchChange: (value: string) => void;
   searchPlaceholder: string;
   searchTestId?: string;
+  searchAriaLabel?: string;
+  /** Extra attributes for the trigger, such as data-* hooks. */
+  triggerProps?: Record<string, string>;
+  /** Fixed trigger width class; the trigger fills its row when omitted. */
+  triggerClassName?: string;
   listTestId?: string;
   children: ReactNode;
 }
@@ -40,6 +45,9 @@ export function ComboboxPopover({
   onSearchChange,
   searchPlaceholder,
   searchTestId,
+  searchAriaLabel,
+  triggerProps,
+  triggerClassName,
   listTestId,
   children,
 }: ComboboxPopoverProps) {
@@ -49,6 +57,9 @@ export function ComboboxPopover({
       onOpen={() => onOpenChange(true)}
       onClose={() => onOpenChange(false)}
       width="medium"
+      // cmdk owns the arrow keys inside the list; the overlay's own focus
+      // zone would take them first.
+      focusZoneSettings={{ disabled: true }}
       renderAnchor={(anchorProps) => (
         <Button
           {...anchorProps}
@@ -56,7 +67,9 @@ export function ComboboxPopover({
           type="button"
           role="combobox"
           aria-expanded={open}
-          block
+          block={!triggerClassName}
+          className={triggerClassName}
+          {...triggerProps}
           trailingVisual={ChevronDownIcon}
           data-testid={triggerTestId}
           alignContent="start"
@@ -73,6 +86,7 @@ export function ComboboxPopover({
             onValueChange={onSearchChange}
             placeholder={searchPlaceholder}
             data-testid={searchTestId}
+            aria-label={searchAriaLabel}
             className={cn(
               "flex h-10 w-full bg-transparent py-2 text-sm outline-none placeholder:text-muted-foreground",
             )}

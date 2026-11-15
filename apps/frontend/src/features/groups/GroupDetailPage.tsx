@@ -1,15 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
-import { useQuery } from "@tanstack/react-query";
 import {
-  ChevronRight,
-  ClipboardCheck,
-  FolderTree,
-  FolderX,
-  Plus,
-  ScanLine,
-  UserPlus,
-} from "lucide-react";
+  ChecklistIcon,
+  ChevronRightIcon,
+  FileDirectoryIcon,
+  PersonAddIcon,
+  PlusIcon,
+  WorkflowIcon,
+} from "@primer/octicons-react";
+import { useQuery } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -17,7 +16,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { EmptyState } from "@/components/EmptyState";
 import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Badge } from "@/components/primer/badge";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/primer/Button";
 import { Card, CardContent } from "@/components/primer/card";
 import { Skeleton } from "@/components/primer/Skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/primer/tabs";
@@ -87,7 +86,7 @@ export function GroupDetailPage() {
       <div className="flex min-h-screen flex-col items-center justify-center px-6 py-10">
         <EmptyState
           data-testid="group-detail-not-found"
-          icon={<FolderX />}
+          icon={<FileDirectoryIcon />}
           title={t("detail.not_found.title")}
           description={t("detail.not_found.description")}
           action={
@@ -141,7 +140,7 @@ export function GroupDetailPage() {
               </Link>
               {group.ancestors.map((ancestor) => (
                 <span key={ancestor.id} className="flex items-center gap-1">
-                  <ChevronRight className="h-3 w-3" aria-hidden />
+                  <ChevronRightIcon size={12} />
                   <Link
                     to={`/groups/${ancestor.id}`}
                     data-testid="group-detail-breadcrumb-segment"
@@ -175,7 +174,7 @@ export function GroupDetailPage() {
                 title={demoReadOnly ? t("common:demo.write_disabled") : undefined}
                 data-testid="group-detail-new-project"
               >
-                <Plus className="h-4 w-4" aria-hidden />
+                <PlusIcon size={16} />
                 {t("detail.new_project")}
               </Button>
             </div>
@@ -183,19 +182,19 @@ export function GroupDetailPage() {
             <GroupStatsPanel windowDays={group.stats.window_days}>
               <StatTile
                 testId="group-detail-stat-subtree-scan-count"
-                icon={<ScanLine className="h-4 w-4" aria-hidden />}
+                icon={<WorkflowIcon size={16} />}
                 label={t("detail.stats.scans")}
                 value={group.stats.subtree_scan_count}
               />
               <StatTile
                 testId="group-detail-stat-subtree-approvals-processed"
-                icon={<ClipboardCheck className="h-4 w-4" aria-hidden />}
+                icon={<ChecklistIcon size={16} />}
                 label={t("detail.stats.approvals")}
                 value={group.stats.subtree_approvals_processed_count}
               />
               <StatTile
                 testId="group-detail-stat-subtree-new-members"
-                icon={<UserPlus className="h-4 w-4" aria-hidden />}
+                icon={<PersonAddIcon size={16} />}
                 label={t("detail.stats.new_members")}
                 value={group.stats.subtree_new_member_count}
               />
@@ -303,7 +302,7 @@ function GroupSubgroupsPanel({ parentId }: { parentId: string }) {
       ) : items.length === 0 ? (
         <EmptyState
           data-testid="group-detail-subgroups-empty"
-          icon={<FolderTree />}
+          icon={<FileDirectoryIcon />}
           title={t("detail.subgroups.empty")}
         />
       ) : (
@@ -386,7 +385,7 @@ function GroupProjectsPanel({ groupId }: { groupId: string }) {
       ) : items.length === 0 ? (
         <EmptyState
           data-testid="group-detail-projects-empty"
-          icon={<FolderTree />}
+          icon={<FileDirectoryIcon />}
           title={t("detail.projects.empty")}
         />
       ) : (

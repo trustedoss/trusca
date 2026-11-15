@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
-import { Boxes } from "lucide-react";
+import {
+  PackageIcon,
+} from "@primer/octicons-react";
 import {
   forwardRef,
   useCallback,
@@ -309,7 +311,7 @@ export function InventoryPage() {
           <EmptyState
             data-testid="inventory-empty"
             className="m-6"
-            icon={<Boxes />}
+            icon={<PackageIcon />}
             title={t("empty.title")}
             /* Concurrency-scaling plan Q2 (2026-08-22): the search page used
                to reach back through a project's whole scan history, so a

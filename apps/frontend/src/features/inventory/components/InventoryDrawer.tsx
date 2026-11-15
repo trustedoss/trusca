@@ -4,13 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 
 import { Badge } from "@/components/primer/badge";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { PrimerDialog } from "@/components/primer/PrimerDialog";
 import { Skeleton } from "@/components/primer/Skeleton";
 import { Alert, AlertDescription } from "@/components/primer/alert";
 import { useComponentUsage } from "@/features/inventory/api/useInventory";
@@ -31,26 +25,31 @@ export interface InventoryDrawerProps {
  * into that project's Components tab pre-filtered to the package, so the next
  * step is one click rather than a manual search.
  */
-export function InventoryDrawer({ componentId, onClose }: InventoryDrawerProps) {
+export function InventoryDrawer({
+  componentId,
+  onClose,
+}: InventoryDrawerProps) {
   const { t } = useTranslation("inventory");
   const usage = useComponentUsage(componentId);
   const open = componentId != null && componentId.length > 0;
   const items = usage.data?.items ?? [];
 
   return (
-    <Sheet open={open} onOpenChange={(next) => (next ? undefined : onClose())}>
-      <SheetContent
-        side="right"
-        className="w-full sm:max-w-xl"
-        data-testid="inventory-drawer"
-      >
-        <SheetHeader>
-          <SheetTitle>{t("drawer.title")}</SheetTitle>
-          <SheetDescription>{t("drawer.subtitle")}</SheetDescription>
-        </SheetHeader>
-
+    <PrimerDialog
+      open={open}
+      onOpenChange={(next) => (next ? undefined : onClose())}
+      title={t("drawer.title")}
+      description={t("drawer.subtitle")}
+      position="right"
+      width="xlarge"
+      testId="inventory-drawer"
+    >
+      <div className="flex flex-col gap-4">
         {usage.isLoading ? (
-          <div className="mt-4 flex flex-col gap-2" data-testid="inventory-drawer-loading">
+          <div
+            className="mt-4 flex flex-col gap-2"
+            data-testid="inventory-drawer-loading"
+          >
             {Array.from({ length: 4 }).map((_, index) => (
               <Skeleton key={index} className="h-10 w-full" />
             ))}
@@ -102,7 +101,7 @@ export function InventoryDrawer({ componentId, onClose }: InventoryDrawerProps) 
             ))}
           </ul>
         ) : null}
-      </SheetContent>
-    </Sheet>
+      </div>
+    </PrimerDialog>
   );
 }

@@ -1,19 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
-import { BookmarkPlus } from "lucide-react";
+import { BookmarkIcon } from "@primer/octicons-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+import { Button } from "@/components/primer/Button";
+import { PrimerDialog } from "@/components/primer/PrimerDialog";
+import { Input } from "@/components/primer/Input";
 import { Alert, AlertDescription } from "@/components/primer/alert";
 import type { SearchKind } from "@/features/search/api/searchResultsApi";
 import {
@@ -50,8 +43,7 @@ export function SaveSearchButton({
   const saved = useSavedSearches();
   const create = useCreateSavedSearch();
 
-  const atLimit =
-    saved.data != null && saved.data.total >= saved.data.limit;
+  const atLimit = saved.data != null && saved.data.total >= saved.data.limit;
 
   function handleSave() {
     create.mutate(
@@ -71,38 +63,25 @@ export function SaveSearchButton({
         size="sm"
         variant="outline"
         disabled={disabled || atLimit}
-        title={atLimit ? t("save.at_limit", { limit: saved.data?.limit }) : undefined}
+        title={
+          atLimit ? t("save.at_limit", { limit: saved.data?.limit }) : undefined
+        }
         onClick={() => setOpen(true)}
         data-testid="search-save-trigger"
       >
-        <BookmarkPlus className="mr-1.5 h-4 w-4" aria-hidden />
+        <BookmarkIcon size={16} className="mr-1.5" />
         {t("save.trigger")}
       </Button>
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent data-testid="search-save-dialog">
-          <DialogHeader>
-            <DialogTitle>{t("save.title")}</DialogTitle>
-            <DialogDescription>{t("save.subtitle")}</DialogDescription>
-          </DialogHeader>
-
-          <Input
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            placeholder={t("save.name_placeholder")}
-            maxLength={60}
-            data-testid="search-save-name"
-          />
-
-          {create.isError ? (
-            <Alert variant="destructive" data-testid="search-save-error">
-              <AlertDescription>
-                {problemMessage(create.error, t, { action: "save.failed" })}
-              </AlertDescription>
-            </Alert>
-          ) : null}
-
-          <DialogFooter>
+      <PrimerDialog
+        open={open}
+        onOpenChange={setOpen}
+        title={t("save.title")}
+        description={t("save.subtitle")}
+        width="medium"
+        testId="search-save-dialog"
+        footer={
+          <>
             <Button variant="outline" onClick={() => setOpen(false)}>
               {t("save.cancel")}
             </Button>
@@ -113,9 +92,25 @@ export function SaveSearchButton({
             >
               {t("save.confirm")}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </>
+        }
+      >
+        <Input
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          placeholder={t("save.name_placeholder")}
+          maxLength={60}
+          data-testid="search-save-name"
+        />
+
+        {create.isError ? (
+          <Alert variant="destructive" data-testid="search-save-error">
+            <AlertDescription>
+              {problemMessage(create.error, t, { action: "save.failed" })}
+            </AlertDescription>
+          </Alert>
+        ) : null}
+      </PrimerDialog>
     </>
   );
 }

@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
+import {
+  CheckIcon,
+  ColumnsIcon,
+} from "@primer/octicons-react";
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
-import { Check, Columns3 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -186,7 +189,7 @@ export function ColumnsPicker({
             className,
           )}
         >
-          <Columns3 className="h-3.5 w-3.5" aria-hidden />
+          <ColumnsIcon size={14} />
           <span>{t("filters.columns.trigger")}</span>
         </button>
       </DropdownMenuPrimitive.Trigger>
@@ -223,7 +226,7 @@ export function ColumnsPicker({
               >
                 <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border border-input">
                   {isVisible ? (
-                    <Check className="h-3.5 w-3.5" aria-hidden />
+                    <CheckIcon size={14} />
                   ) : null}
                 </span>
                 <span className="flex flex-1 items-center justify-between gap-2">

@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
-import { ChevronRight, FolderTree } from "lucide-react";
+import {
+  ChevronRightIcon,
+  FileDirectoryIcon,
+} from "@primer/octicons-react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
@@ -9,8 +12,8 @@ import { EmptyState } from "@/components/EmptyState";
 import { PageHeader } from "@/components/PageHeader";
 import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Badge } from "@/components/primer/badge";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Input } from "@/components/primer/Input";
+import { Label } from "@/components/primer/Label";
 import { Skeleton } from "@/components/primer/Skeleton";
 import { useGroups } from "@/features/groups/api/useGroups";
 import type { GroupListItem } from "@/features/groups/api/groupsApi";
@@ -158,7 +161,7 @@ export function GroupListPage() {
         </button>
         {path.map((level, index) => (
           <span key={level.id} className="flex items-center gap-1">
-            <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
+            <ChevronRightIcon size={14} className="text-muted-foreground" />
             <button
               type="button"
               onClick={() => handleDrilldownSegment(index)}
@@ -221,7 +224,7 @@ export function GroupListPage() {
         {isEmpty ? (
           <EmptyState
             data-testid="groups-empty"
-            icon={<FolderTree />}
+            icon={<FileDirectoryIcon />}
             title={isSearching ? t("list.empty.title_search") : t("list.empty.title_root")}
             description={
               isSearching
@@ -294,11 +297,7 @@ function GroupRow({
           <span className="flex items-center gap-1 font-medium hover:underline">
             {group.name}
             {hasChildren ? (
-              <ChevronRight
-                className="h-3.5 w-3.5 text-muted-foreground"
-                aria-hidden
-                data-testid="groups-row-has-children"
-              />
+              <ChevronRightIcon size={14} className="text-muted-foreground" data-testid="groups-row-has-children" />
             ) : null}
           </span>
           <span className="font-mono text-xs text-muted-foreground">

@@ -27,18 +27,17 @@
  * visible string flows through `t()` (CLAUDE.md i18n rule).
  */
 import {
-  AlertTriangle,
-  Bell,
-  BellOff,
-  CheckCircle2,
-  ClipboardCheck,
-  FileWarning,
-  KeyRound,
-  ShieldAlert,
-  ShieldX,
-  XCircle,
-  type LucideIcon,
-} from "lucide-react";
+  AlertIcon,
+  BellIcon,
+  BellSlashIcon,
+  CheckCircleIcon,
+  ChecklistIcon,
+  KeyIcon,
+  ShieldIcon,
+  ShieldXIcon,
+  XCircleIcon,
+  type Icon,
+} from "@primer/octicons-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
@@ -46,7 +45,7 @@ import { useNavigate } from "react-router-dom";
 import { EmptyState } from "@/components/EmptyState";
 import { PageHeader } from "@/components/PageHeader";
 import { Alert, AlertDescription } from "@/components/primer/alert";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/components/primer/Button";
 import { Skeleton } from "@/components/primer/Skeleton";
 import { Switch } from "@/components/primer/switch";
 import { useToast } from "@/components/primer/toast";
@@ -69,32 +68,32 @@ import { cn } from "@/lib/utils";
 
 const PAGE_SIZE = 20;
 
-const KIND_ICONS: Record<NotificationKind, LucideIcon> = {
-  scan_completed: CheckCircle2,
-  scan_failed: XCircle,
-  cve_detected: ShieldAlert,
-  license_violation: ShieldX,
-  approval_pending: ClipboardCheck,
-  policy_gate_failed: FileWarning,
+const KIND_ICONS: Record<NotificationKind, Icon> = {
+  scan_completed: CheckCircleIcon,
+  scan_failed: XCircleIcon,
+  cve_detected: ShieldIcon,
+  license_violation: ShieldXIcon,
+  approval_pending: ChecklistIcon,
+  policy_gate_failed: AlertIcon,
   // H-5 — the requester gets an in-app row when their approval is disposed
   // (migration 0030). Same icon family as approval_pending; the tone below +
   // the translated label distinguish it.
-  approval_state_changed: ClipboardCheck,
+  approval_state_changed: ChecklistIcon,
   // X1 — the daily SLA sweep; a due date passed, nothing new was found.
-  vuln_sla_breach: AlertTriangle,
+  vuln_sla_breach: AlertIcon,
   // MAL-2b (#26) — a package already in the project was named by a new
   // advisory. Not a vulnerability to schedule: the artifact is the attack.
-  malicious_detected: ShieldX,
+  malicious_detected: ShieldXIcon,
   // ER19-3 - something changed about how this person signs in. A key rather
   // than a shield: the shields here mean "a threat was found", and this means
   // "your own sign-in was altered", which needs a different first impression.
-  account_security: KeyRound,
+  account_security: KeyIcon,
 };
 
 const KIND_TONE: Record<NotificationKind, string> = {
   // Pair the icon color with the row content so color is never the only
   // signal — the kind label is also rendered next to the icon.
-  scan_completed: "text-emerald-600",
+  scan_completed: "text-status-success-foreground",
   scan_failed: "text-risk-critical",
   cve_detected: "text-risk-high",
   license_violation: "text-risk-high",
@@ -110,7 +109,7 @@ const KIND_TONE: Record<NotificationKind, string> = {
 };
 
 function NotificationKindIcon({ kind }: { kind: NotificationKind }) {
-  const Icon = KIND_ICONS[kind] ?? AlertTriangle;
+  const Icon = KIND_ICONS[kind] ?? AlertIcon;
   const tone = KIND_TONE[kind] ?? "text-muted-foreground";
   return <Icon className={cn("h-4 w-4 shrink-0", tone)} aria-hidden />;
 }
@@ -389,7 +388,7 @@ export function NotificationsPage() {
       <PageHeader
         title={
           <>
-            <Bell className="h-4 w-4" aria-hidden />
+            <BellIcon size={16} />
             {t("page.title")}
           </>
         }
@@ -461,7 +460,7 @@ export function NotificationsPage() {
             ) : items.length === 0 ? (
               <EmptyState
                 data-testid="notifications-empty"
-                icon={<BellOff />}
+                icon={<BellSlashIcon />}
                 title={unreadOnly ? t("inbox.empty_unread") : t("inbox.empty")}
               />
             ) : (

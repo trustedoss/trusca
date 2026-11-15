@@ -13,14 +13,17 @@
  * the only time they exist in a readable form, and the copy says so rather than
  * leaving somebody to discover it when they come looking.
  */
-import { KeyRound, Loader2 } from "lucide-react";
+import {
+  KeyIcon,
+} from "@primer/octicons-react";
+import { Spinner } from "@primer/react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Alert, AlertDescription } from "@/components/primer/alert";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Button } from "@/components/primer/Button";
+import { Input } from "@/components/primer/Input";
+import { Label } from "@/components/primer/Label";
 import { problemMessage } from "@/lib/problemMessage";
 
 import {
@@ -131,7 +134,7 @@ export function MfaEnrolment({ enabled }: { enabled: boolean }) {
   return (
     <section className="space-y-4" data-testid="profile-mfa">
       <div className="flex items-center gap-2">
-        <KeyRound className="h-4 w-4 text-muted-foreground" aria-hidden />
+        <KeyIcon size={16} className="text-muted-foreground" />
         <h2 className="text-sm font-semibold">{t("mfa.title")}</h2>
       </div>
 
@@ -149,7 +152,7 @@ export function MfaEnrolment({ enabled }: { enabled: boolean }) {
             disabled={busy}
             data-testid="profile-mfa-start"
           >
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
+            {busy ? <Spinner size="small" /> : null}
             {t("mfa.start")}
           </Button>
         </div>
@@ -199,7 +202,7 @@ export function MfaEnrolment({ enabled }: { enabled: boolean }) {
               }
               data-testid="profile-mfa-step-up-submit"
             >
-              {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
+              {busy ? <Spinner size="small" /> : null}
               {t("mfa.step_up_submit")}
             </Button>
             <Button
