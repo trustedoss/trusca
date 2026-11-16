@@ -43,7 +43,7 @@ const PRIMER_CSS_PATH = path.join(SRC_ROOT, "primer.css");
  * through Tailwind keys (`w-sidebar`, `duration-fast`) whose names do not
  * contain the token slug.
  */
-const FAMILIES = [/^brand(-|$)/, /^status-/, /^topbar(-|$)/, /^risk-.*-foreground$/];
+const FAMILIES = [/^brand(-|$)/, /^status-/, /^topbar(-|$)/, /^bar(-|$)/, /^risk-.*-foreground$/];
 
 /** Tailwind utilities that can carry a colour token. */
 const UTILITIES = [

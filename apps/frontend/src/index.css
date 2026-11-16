@@ -332,8 +332,21 @@
     --topbar: #18181b;
     --topbar-foreground: #fafafa;
     --topbar-muted-foreground: #a1a1aa;
-    --topbar-border: #27272a;
-    --topbar-accent: #27272a;
+
+    /* -------------------------------------------------------------------
+     * Global bar (2026-11 redesign). The bar sits on the card plane with a
+     * bottom border in light, so the chrome and the page share one surface
+     * family instead of a near-black slab. Dark keeps the slate plane (see
+     * the dark block). `--topbar-*` stays as the ink family for the gateway
+     * brand panel only.
+     *
+     * Contrast on --bar: foreground 16.97:1, muted 7.73:1.
+     * ----------------------------------------------------------------- */
+    --bar: #ffffff;
+    --bar-foreground: #18181b;
+    --bar-muted-foreground: #52525b;
+    --bar-border: #e7e7e9;
+    --bar-accent: #f4f4f5;
 
     --layout-sidebar: 256px;
     --layout-topbar: 56px;
@@ -517,8 +530,13 @@
     --topbar: #17213a;
     --topbar-foreground: #f1f5f9;
     --topbar-muted-foreground: #94a3b8;
-    --topbar-border: #2d3b53;
-    --topbar-accent: #1c2740;
+
+    /* The bar keeps the slate plane in dark (see the note above). */
+    --bar: #17213a;
+    --bar-foreground: #f1f5f9;
+    --bar-muted-foreground: #94a3b8;
+    --bar-border: #2d3b53;
+    --bar-accent: #1c2740;
   }
 
   * {

@@ -65,7 +65,7 @@ const DOC_KO = path.join(
  * Same boundary `tokenConsumers.test.ts` draws, for the same reason: these
  * are the vocabularies a contributor picks from when naming a new surface.
  */
-const OWNED = [/^risk-/, /^status-/, /^brand(-|$)/, /^topbar(-|$)/];
+const OWNED = [/^risk-/, /^status-/, /^brand(-|$)/, /^topbar(-|$)/, /^bar(-|$)/];
 
 /** `240 4% 44%` and `0 72% 50.6%` alike — HSL as shadcn stores it. */
 const HSL_TRIPLE = /^([\d.]+)\s+([\d.]+)%\s+([\d.]+)%$/;

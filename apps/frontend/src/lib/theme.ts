@@ -109,7 +109,7 @@ export function resolvePreference(preference: ThemePreference): ResolvedTheme {
  * mobile. Leaving it fixed framed a dark app in a bar belonging to neither
  * theme.
  *
- * The value is read from `--topbar` rather than written here, so the browser
+ * The value is read from `--bar` rather than written here, so the browser
  * chrome continues the app's own chrome by construction — and so this file
  * holds no colour of its own. The first version hardcoded two hexes and the
  * token lint was right to stop it.
@@ -125,7 +125,7 @@ export function applyTheme(theme: ResolvedTheme): void {
   const meta = document.querySelector('meta[name="theme-color"]');
   if (!meta) return;
   // Read after the class change above, so this picks up the theme just set.
-  const bar = getComputedStyle(root).getPropertyValue("--topbar").trim();
+  const bar = getComputedStyle(root).getPropertyValue("--bar").trim();
   if (bar) meta.setAttribute("content", bar);
 }
 

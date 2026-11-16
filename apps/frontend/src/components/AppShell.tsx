@@ -513,7 +513,7 @@ function TeamSwitcher() {
   if (teams.length < 2) {
     return (
       <span
-        className="hidden max-w-[14rem] truncate rounded-md bg-topbar-accent px-2 py-1 text-xs text-topbar-muted-foreground sm:inline-block"
+        className="hidden max-w-[14rem] truncate rounded-md bg-bar-accent px-2 py-1 text-xs text-bar-muted-foreground sm:inline-block"
         data-testid="topbar-team"
         title={t("auth.active_team", { team: active.name })}
       >
@@ -569,8 +569,8 @@ function TeamSwitcher() {
  * a console looks like. It is also a shape a tool with no accounts and no
  * teams cannot copy, because it has nothing to put here.
  *
- * Ink surface in a light app, so it carries its own `topbar-*` foreground
- * scale (see index.css) rather than borrowing the page's.
+ * The bar carries its own `bar-*` scale (see index.css): the card plane in
+ * light, slate in dark.
  */
 function GlobalBar({
   onOpenMobileNav,
@@ -589,7 +589,7 @@ function GlobalBar({
 
   return (
     <header
-      className="topbar-ink flex shrink-0 items-center gap-3 border-b border-topbar-border bg-topbar px-4 text-topbar-foreground"
+      className="global-bar flex shrink-0 items-center gap-3 border-b border-bar-border bg-bar px-4 text-bar-foreground"
       style={{ height: "var(--layout-topbar)" }}
       data-testid="app-topbar"
     >
@@ -606,10 +606,15 @@ function GlobalBar({
 
       <NavLink
         to="/"
-        className="flex shrink-0 items-center gap-2 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-on-ink focus-visible:ring-offset-2 focus-visible:ring-offset-topbar"
+        className="flex shrink-0 items-center gap-2 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-bar"
         data-testid="topbar-brand"
       >
-        <BrandMark size={22} onInk />
+        <span className="dark:hidden">
+          <BrandMark size={22} />
+        </span>
+        <span className="hidden dark:inline-flex">
+          <BrandMark size={22} onInk />
+        </span>
         <span className="hidden text-sm font-semibold tracking-tight sm:inline">
           {t("app.name")}
         </span>
@@ -678,7 +683,7 @@ function ProfileMenu({
             <span
               aria-hidden
               data-testid="header-avatar"
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-topbar-accent text-xs font-medium text-topbar-foreground"
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-bar-accent text-xs font-medium text-bar-foreground"
             >
               {initials}
             </span>

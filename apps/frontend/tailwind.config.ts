@@ -138,8 +138,14 @@ const config: Config = {
           DEFAULT: "var(--topbar)",
           foreground: "var(--topbar-foreground)",
           "muted-foreground": "var(--topbar-muted-foreground)",
-          border: "var(--topbar-border)",
-          accent: "var(--topbar-accent)",
+        },
+        // Global bar (2026-11) - card plane in light, slate in dark.
+        bar: {
+          DEFAULT: "var(--bar)",
+          foreground: "var(--bar-foreground)",
+          "muted-foreground": "var(--bar-muted-foreground)",
+          border: "var(--bar-border)",
+          accent: "var(--bar-accent)",
         },
         // Status surfaces (G0-1) — operation / entity state. See index.css
         // for the token contract (solid = non-text ≥3:1, foreground = text

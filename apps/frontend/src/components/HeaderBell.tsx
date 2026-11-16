@@ -27,7 +27,7 @@ import { useUnreadCount } from "@/features/notifications/useNotifications";
 import { formatBadge } from "@/lib/badgeCount";
 
 export interface HeaderBellProps {
-  /** Rendered on the dark global bar — use the topbar foreground scale. */
+  /** Rendered on the global bar, so it uses the bar foreground scale. */
   onInk?: boolean;
   /** Disable the underlying query (tests use this to keep timers quiet). */
   enabled?: boolean;

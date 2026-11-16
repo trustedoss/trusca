@@ -197,7 +197,7 @@ const ADMIN_ROUTES: RouteEntry[] = [
 interface CommandMenuTriggerProps
   extends ButtonHTMLAttributes<HTMLButtonElement> {
   onOpen: () => void;
-  /** Rendered on the dark global bar — use the topbar surface scale. */
+  /** Rendered on the global bar, so it uses the bar surface scale. */
   onInk?: boolean;
 }
 
@@ -216,7 +216,7 @@ export const CommandMenuTrigger = forwardRef<
         "inline-flex h-8 items-center gap-2 rounded-md border px-3 text-xs transition-colors duration-fast ease-out-soft",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2",
         onInk
-          ? "border-topbar-border bg-topbar-accent text-topbar-muted-foreground hover:text-topbar-foreground focus-visible:ring-brand-on-ink focus-visible:ring-offset-topbar"
+          ? "border-bar-border bg-bar-accent text-bar-muted-foreground hover:text-bar-foreground focus-visible:ring-ring focus-visible:ring-offset-bar"
           : "bg-background text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:ring-ring",
         className,
       )}
@@ -228,7 +228,7 @@ export const CommandMenuTrigger = forwardRef<
         className={cn(
           "inline-flex h-5 select-none items-center gap-0.5 rounded border px-1.5 font-mono text-[10px] font-medium",
           onInk
-            ? "border-topbar-border bg-topbar text-topbar-muted-foreground"
+            ? "border-bar-border bg-bar text-bar-muted-foreground"
             : "bg-muted text-muted-foreground",
         )}
       >

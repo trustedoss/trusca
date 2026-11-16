@@ -108,27 +108,27 @@
   display: none;
 }
 
-/* The global bar is ink in both modes, so Primer controls inside it take the
- * bar's own foreground scale instead of the page's. Only the variables the
+/* The global bar has its own surface scale (card plane in light, slate in
+ * dark), so Primer controls inside it take the bar's own foreground scale instead of the page's. Only the variables the
  * invisible button and the default (outlined) button read are set, so every
  * other Primer control keeps its normal colours. */
-.topbar-ink {
-  --fgColor-default: var(--topbar-foreground);
-  --fgColor-muted: var(--topbar-muted-foreground);
-  --button-invisible-iconColor-rest: var(--topbar-foreground);
-  --button-invisible-iconColor-hover: var(--topbar-foreground);
-  --button-invisible-bgColor-hover: var(--topbar-accent);
-  --button-invisible-bgColor-active: var(--topbar-accent);
-  --button-default-fgColor-rest: var(--topbar-foreground);
-  --button-invisible-fgColor-rest: var(--topbar-foreground);
-  --button-default-bgColor-rest: var(--topbar-accent);
-  --button-default-bgColor-hover: var(--topbar-accent);
-  --button-default-bgColor-active: var(--topbar-accent);
-  --button-default-borderColor-rest: var(--topbar-border);
-  --button-default-borderColor-hover: var(--topbar-border);
-  --button-default-borderColor-active: var(--topbar-border);
-  --focus-outline-color: var(--brand-on-ink);
-  --focus-outlineColor: var(--brand-on-ink);
+.global-bar {
+  --fgColor-default: var(--bar-foreground);
+  --fgColor-muted: var(--bar-muted-foreground);
+  --button-invisible-iconColor-rest: var(--bar-foreground);
+  --button-invisible-iconColor-hover: var(--bar-foreground);
+  --button-invisible-bgColor-hover: var(--bar-accent);
+  --button-invisible-bgColor-active: var(--bar-accent);
+  --button-default-fgColor-rest: var(--bar-foreground);
+  --button-invisible-fgColor-rest: var(--bar-foreground);
+  --button-default-bgColor-rest: var(--bar-accent);
+  --button-default-bgColor-hover: var(--bar-accent);
+  --button-default-bgColor-active: var(--bar-accent);
+  --button-default-borderColor-rest: var(--bar-border);
+  --button-default-borderColor-hover: var(--bar-border);
+  --button-default-borderColor-active: var(--bar-border);
+  --focus-outline-color: hsl(var(--ring));
+  --focus-outlineColor: hsl(var(--ring));
 }
 
 /* Dialogs whose content brings its own padding: the ⌘K palette (the input row
