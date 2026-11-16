@@ -732,7 +732,7 @@ export function ComponentsTab({
         // `tests/e2e/tableColumnAlignment.spec.ts` holds this to the columns.
         <div className="flex flex-1 flex-col overflow-x-auto">
           <div
-            className="min-w-[1276px] flex flex-1 flex-col"
+            className="min-w-[1184px] flex flex-1 flex-col"
             // G0-5 backlog — see VulnerabilitiesTab for why the body's
             // `rowgroup` lands on Virtuoso's scroller rather than on a wrapper.
             role="table"
@@ -830,7 +830,7 @@ function ComponentsTableHeader({
           W9 #52 — optional cells are gated on `visibleColumns`; required
           cells (`name`, `version`) always render. */}
       <span
-        className="flex-1 min-w-[180px]"
+        className="min-w-[120px] flex-1"
         role="columnheader"
         aria-sort={ariaSortFor("name", currentSort)}
       >
@@ -851,12 +851,12 @@ function ComponentsTableHeader({
           {t("components.col.type")}
         </span>
       ) : null}
-      <span className="w-32 text-right" role="columnheader">
+      <span className="w-28 text-right" role="columnheader">
         {t("components.col.version")}
       </span>
       {visibleColumns.has("license") ? (
         <span
-          className="w-36"
+          className="w-32"
           role="columnheader"
           aria-sort={ariaSortFor("license", currentSort)}
           data-testid="components-header-cell-license"
@@ -992,7 +992,7 @@ function ComponentRow({
       style={{ height: "var(--table-row)" }}
     >
       <span
-        className="flex min-w-[180px] flex-1 items-center gap-2 overflow-hidden"
+        className="flex min-w-[120px] flex-1 items-center gap-2 overflow-hidden"
         role="cell"
       >
         {/* G0-5 — the keyboard path into the drawer, one control in the
@@ -1027,7 +1027,7 @@ function ComponentRow({
         </span>
       ) : null}
       <span
-        className="w-32 truncate text-right font-mono text-xs"
+        className="w-28 truncate text-right font-mono text-xs"
         role="cell"
         title={component.version}
       >
@@ -1041,7 +1041,7 @@ function ComponentRow({
       {visibleColumns.has("license") ? (
         <span
           className={cn(
-            "w-36 truncate font-mono text-xs",
+            "w-32 truncate font-mono text-xs",
             component.license ? "text-foreground" : "text-muted-foreground",
           )}
           role="cell"
