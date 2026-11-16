@@ -209,6 +209,7 @@ export function ScansPage() {
                             <Link
                               to={`/projects/${scan.project_id}`}
                               className="truncate font-medium text-foreground hover:underline"
+                              title={scan.project_name}
                               data-testid="scans-row-project-link"
                             >
                               {scan.project_name}
