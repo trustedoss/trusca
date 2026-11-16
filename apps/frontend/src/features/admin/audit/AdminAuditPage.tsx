@@ -484,17 +484,26 @@ export function AdminAuditPage() {
                         data-testid="admin-audit-created-at"
                       />
                     </td>
-                    <td className="truncate px-3 font-mono text-xs">
+                    <td
+                      className="truncate px-3 font-mono text-xs"
+                      title={entry.actor_email ?? entry.actor_user_id ?? undefined}
+                    >
                       {entry.actor_email ?? entry.actor_user_id ?? "—"}
                     </td>
                     <td className="px-3 font-mono text-xs">
                       {entry.target_table}
                     </td>
                     <td className="px-3 font-mono text-xs">{entry.action}</td>
-                    <td className="truncate px-3 font-mono text-[11px] text-muted-foreground">
+                    <td
+                      className="truncate px-3 font-mono text-[11px] text-muted-foreground"
+                      title={entry.target_id ?? undefined}
+                    >
                       {entry.target_id ?? "—"}
                     </td>
-                    <td className="truncate px-3 font-mono text-[11px] text-muted-foreground">
+                    <td
+                      className="truncate px-3 font-mono text-[11px] text-muted-foreground"
+                      title={entry.request_id ?? undefined}
+                    >
                       {entry.request_id ?? "—"}
                     </td>
                   </tr>

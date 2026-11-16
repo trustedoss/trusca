@@ -290,8 +290,13 @@ export function AdminScansPage() {
                     <td className="truncate px-6 font-mono text-xs">
                       {scan.id.slice(0, 8)}
                     </td>
-                    <td className="truncate px-3">{scan.project_name}</td>
-                    <td className="truncate px-3 text-xs text-muted-foreground">
+                    <td className="truncate px-3" title={scan.project_name}>
+                      {scan.project_name}
+                    </td>
+                    <td
+                      className="truncate px-3 text-xs text-muted-foreground"
+                      title={scan.team_name}
+                    >
                       {scan.team_name}
                     </td>
                     <td className="px-3">

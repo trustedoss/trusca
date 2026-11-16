@@ -314,11 +314,16 @@ export function AdminTeamsPage() {
                       }
                     }}
                   >
-                    <td className="truncate px-6">{team.name}</td>
-                    <td className="truncate px-3 font-mono text-xs">
+                    <td className="truncate px-6" title={team.name}>
+                      {team.name}
+                    </td>
+                    <td className="truncate px-3 font-mono text-xs" title={team.slug}>
                       {team.slug}
                     </td>
-                    <td className="truncate px-3 text-xs text-muted-foreground">
+                    <td
+                      className="truncate px-3 text-xs text-muted-foreground"
+                      title={team.description ?? undefined}
+                    >
                       {team.description ?? "—"}
                     </td>
                     <td className="px-3 text-right">{team.member_count}</td>

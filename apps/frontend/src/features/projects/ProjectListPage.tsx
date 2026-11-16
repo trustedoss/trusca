@@ -893,7 +893,7 @@ export function ProjectRow({
         ) : null}
         <Link
           to={`/projects/${project.id}`}
-          className="truncate font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          className="max-w-[24rem] shrink-0 truncate font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           title={project.name}
           data-testid="project-row-link"
           data-project-id={project.id}
@@ -907,7 +907,7 @@ export function ProjectRow({
           // truncated URL and a readable name, the name is the one the row
           // exists to show; the URL returns with the rest of the dense
           // columns above `lg`.
-          className="hidden truncate font-mono text-xs text-muted-foreground lg:inline"
+          className="hidden min-w-0 truncate font-mono text-xs text-muted-foreground lg:inline"
           title={project.git_url ?? ""}
         >
           {project.git_url ?? ""}

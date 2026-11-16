@@ -322,10 +322,12 @@ export function AdminUsersPage() {
                       }
                     }}
                   >
-                    <td className="truncate px-6 font-mono text-xs">
+                    <td className="truncate px-6 font-mono text-xs" title={u.email}>
                       {u.email}
                     </td>
-                    <td className="truncate px-3">{u.full_name ?? "—"}</td>
+                    <td className="truncate px-3" title={u.full_name ?? undefined}>
+                      {u.full_name ?? "\u2014"}
+                    </td>
                     <td className="px-3">
                       <RoleBadge role={deriveRole(u)} />
                     </td>
