@@ -26,6 +26,16 @@
     "filter_team_all": "All teams"
   },
   "list": {
+    "distribution_toggle": "Distribution charts",
+    "col": {
+      "project": "Project",
+      "vulnerabilities": "Vulnerabilities",
+      "releases": "Releases",
+      "scans": "Scans",
+      "last_scan": "Last scan",
+      "created_by": "Created by",
+      "status": "Status"
+    },
     "truncated": "Showing {{shown}} of {{total}} matching projects. Narrow your search to see the rest."
   },
   "row": {
