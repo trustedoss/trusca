@@ -1023,7 +1023,25 @@ export class PortalPage {
    * clear the filter via the Clear button. After mutating, waits for the URL
    * to mirror `?min_epss=…` (set) or to drop it (cleared).
    */
+  /**
+   * Reachability, SLA, EPSS and VEX-suppressed controls are mounted on demand
+   * from the vulnerabilities toolbar's "+ Add filter" menu. Mount one the way a
+   * user does, unless it is already on screen.
+   */
+  private async mountVulnerabilitiesFilter(
+    optionId: string,
+    testId: string,
+  ): Promise<void> {
+    if ((await this.page.getByTestId(testId).count()) > 0) return;
+    await this.page.getByTestId("vulnerabilities-more-filters-trigger").click();
+    await this.page
+      .getByTestId(`vulnerabilities-more-filters-trigger-option-${optionId}`)
+      .click();
+    await expect(this.page.getByTestId(testId)).toBeVisible();
+  }
+
   async filterVulnerabilitiesByMinEpss(min: number | null): Promise<void> {
+    await this.mountVulnerabilitiesFilter("epss", "vulnerabilities-min-epss");
     const input = this.page.getByTestId("vulnerabilities-min-epss");
     if (min == null) {
       await this.page.getByTestId("vulnerabilities-min-epss-clear").click();
@@ -1324,6 +1342,10 @@ export class PortalPage {
    * for the list / empty state to settle.
    */
   async enableVexSuppressedFilter(): Promise<void> {
+    await this.mountVulnerabilitiesFilter(
+      "vex_suppressed",
+      "vulnerabilities-vex-suppressed-filter",
+    );
     await this.page.getByTestId("vulnerabilities-vex-suppressed-filter").check();
     await expect
       .poll(() => new URL(this.page.url()).searchParams.get("vex_suppressed"))

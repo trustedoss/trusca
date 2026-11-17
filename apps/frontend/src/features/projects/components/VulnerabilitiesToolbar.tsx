@@ -44,7 +44,14 @@ import { cn } from "@/lib/utils";
  * suppressions) so a user discovers they can also filter by these without
  * having to click the chart first.
  */
-export type VulnerabilitiesExtraFilter = "severity" | "license_category";
+export type VulnerabilitiesExtraFilter =
+  | "severity"
+  | "license_category"
+  | "reachable"
+  | "assignee"
+  | "sla"
+  | "epss"
+  | "vex_suppressed";
 
 /**
  * W9-#53 — grouping mode of the Vulnerabilities list. `"flat"` is the paginated
@@ -299,6 +306,14 @@ export function VulnerabilitiesToolbar({
   // mounted its MultiSelect — so a chart deep-link populated value shows as
   // active and the user understands the filter is on.
   const availableExtraFilters: MoreFiltersMenuOption[] = [
+    { id: "reachable", label: t("vulnerabilities.toolbar.reachable_label") },
+    { id: "assignee", label: t("vulnerabilities.filter.assignee_label") },
+    { id: "sla", label: t("vulnerabilities.toolbar.sla_label") },
+    {
+      id: "epss",
+      label: t("vulnerabilities.filter.minEpss", { defaultValue: "EPSS ≥" }),
+    },
+    { id: "vex_suppressed", label: t("vulnerabilities.vex.filter_label") },
     {
       id: "severity",
       label: t("extra_filters.severity_label"),
@@ -319,7 +334,44 @@ export function VulnerabilitiesToolbar({
     activeFilterIds.add("license_category");
   }
 
+  // Reachability, owner, SLA, EPSS and VEX-suppressed are rarely combined, so
+  // they live behind "+ Add filter" and keep the toolbar on one line. A filter
+  // that holds a value stays visible even if it was never mounted by hand.
+  const show_reachable =
+    mountedExtraFilters.has("reachable") || reachable !== null;
+  const show_assignee =
+    mountedExtraFilters.has("assignee") || assignee !== null;
+  const show_sla = mountedExtraFilters.has("sla") || sla !== null;
+  const show_epss = mountedExtraFilters.has("epss") || minEpss !== null;
+  const show_vex_suppressed =
+    mountedExtraFilters.has("vex_suppressed") || vexSuppressedOnly;
+  if (show_reachable) activeFilterIds.add("reachable");
+  if (show_assignee) activeFilterIds.add("assignee");
+  if (show_sla) activeFilterIds.add("sla");
+  if (show_epss) activeFilterIds.add("epss");
+  if (show_vex_suppressed) activeFilterIds.add("vex_suppressed");
+
   function handleMoreFiltersSelect(filterId: string) {
+    if (
+      filterId === "reachable" ||
+      filterId === "assignee" ||
+      filterId === "sla" ||
+      filterId === "epss" ||
+      filterId === "vex_suppressed"
+    ) {
+      // Picking an active filter again clears it and removes the control.
+      if (activeFilterIds.has(filterId)) {
+        if (filterId === "reachable") onReachableChange(null);
+        if (filterId === "assignee") onAssigneeChange(null);
+        if (filterId === "sla") onSlaChange(null);
+        if (filterId === "epss") onMinEpssChange(null);
+        if (filterId === "vex_suppressed") onVexSuppressedOnlyChange(false);
+        onUnmountExtraFilter(filterId);
+      } else {
+        onMountExtraFilter(filterId);
+      }
+      return;
+    }
     if (filterId === "severity" || filterId === "license_category") {
       // Toggle: if the facet is already mounted *and* empty, drop it; else
       // mount it (idempotent if already mounted).
@@ -368,7 +420,7 @@ export function VulnerabilitiesToolbar({
         // "업그". Wrapping keeps the filters inline, which is the design
         // system's rule for this surface (no modal filter dialogs); it just
         // spends a second line when the first one runs out.
-        "flex flex-col gap-3 border-b bg-background px-6 py-3 lg:flex-row lg:flex-wrap lg:items-end lg:gap-4",
+        "flex flex-col gap-3 border-b bg-background px-6 py-3 lg:flex-row lg:flex-wrap lg:items-end lg:gap-3",
         className,
       )}
       data-testid="vulnerabilities-toolbar"
@@ -480,6 +532,7 @@ export function VulnerabilitiesToolbar({
         />
       </div>
 
+      {show_reachable ? (
       <div className="flex flex-col">
         <label
           htmlFor="vulnerabilities-reachable-filter"
@@ -511,11 +564,13 @@ export function VulnerabilitiesToolbar({
           ))}
         </Select>
       </div>
+      ) : null}
 
       {/* ER28b - ownership filter. Two tokens and no user picker: a developer
           can only assign to themselves, because nothing lets them enumerate
           their team. The labels reuse the badge's vocabulary so the filter and
           the column chip say the same words. */}
+      {show_assignee ? (
       <div className="flex flex-col">
         <label
           htmlFor="vulnerabilities-assignee-filter"
@@ -546,11 +601,13 @@ export function VulnerabilitiesToolbar({
           </option>
         </Select>
       </div>
+      ) : null}
 
       {/* X1 — SLA status filter. Same inline single-select pattern as the
           reachability filter above; the option labels reuse the badge's
           state vocabulary (`vulnerabilities.sla.state.*`) so the filter and
           the column chip always speak the same words. */}
+      {show_sla ? (
       <div className="flex flex-col">
         <label
           htmlFor="vulnerabilities-sla-filter"
@@ -580,7 +637,9 @@ export function VulnerabilitiesToolbar({
           ))}
         </Select>
       </div>
+      ) : null}
 
+      {show_epss ? (
       <div className="flex flex-col">
         <label
           htmlFor="vulnerabilities-min-epss"
@@ -633,7 +692,9 @@ export function VulnerabilitiesToolbar({
           })}
         </span>
       </div>
+      ) : null}
 
+      {show_vex_suppressed ? (
       <div className="flex flex-col">
         <span className="text-xs font-medium text-muted-foreground">
           {t("vulnerabilities.vex.filter_label")}
@@ -651,6 +712,7 @@ export function VulnerabilitiesToolbar({
           <span>{t("vulnerabilities.vex.filter_suppressed")}</span>
         </label>
       </div>
+      ) : null}
 
       {/* W9 #52 — optional severity facet, mounted on demand via the
           "+ Add filter" dropdown. The MultiSelect shape mirrors the Status
