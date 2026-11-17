@@ -100,10 +100,7 @@ test.describe.serial("@components end-of-life badge + filter", () => {
     const badges = sharedPage.getByTestId("eol-badge");
     await expect(badges).toHaveCount(1);
     await expect(badges.first()).toHaveAttribute("data-eol-state", "eol");
-    await expect(badges.first()).toHaveAttribute(
-      "data-eol-date",
-      "2020-01-01",
-    );
+    await expect(badges.first()).toHaveAttribute("data-eol-date", "2020-01-01");
   });
 
   test("E2) the EOL-only toggle narrows the list and mirrors ?eol=true", async () => {
@@ -121,7 +118,10 @@ test.describe.serial("@components end-of-life badge + filter", () => {
     await toggle.click();
     await expect(toggle).toHaveAttribute("data-active", "false");
     await expect(sharedPage).not.toHaveURL(/eol=true/);
-    await expect(summary).toHaveAttribute("data-total", String(COMPONENT_COUNT));
+    await expect(summary).toHaveAttribute(
+      "data-total",
+      String(COMPONENT_COUNT),
+    );
   });
 
   test("E3) drawer surfaces the EOL row (badge + date) and the untracked dash", async () => {

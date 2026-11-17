@@ -129,9 +129,7 @@ test.describe.serial("@components known-malicious badge + filter", () => {
     const block = sharedPage.getByTestId("component-drawer-malicious");
     await expect(block).toBeVisible();
     expect(await portal.getDrawerMaliciousState()).toBe("flagged");
-    await expect(
-      block.getByTestId("malicious-badge-advisory"),
-    ).toBeVisible();
+    await expect(block.getByTestId("malicious-badge-advisory")).toBeVisible();
 
     await sharedPage.keyboard.press("Escape");
   });
@@ -164,8 +162,9 @@ test.describe.serial("@components known-malicious badge + filter", () => {
     // rather than something to go hunt for.
     await expect(sharedPage).toHaveURL(/tab=components/);
     await expect(sharedPage).toHaveURL(/malicious=true/);
-    await expect(
-      sharedPage.getByTestId("components-summary"),
-    ).toHaveAttribute("data-total", "1");
+    await expect(sharedPage.getByTestId("components-summary")).toHaveAttribute(
+      "data-total",
+      "1",
+    );
   });
 });
