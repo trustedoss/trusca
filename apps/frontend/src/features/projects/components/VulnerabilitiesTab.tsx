@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
 import {
+  ChevronDownIcon,
+  ChevronRightIcon,
   PackageIcon,
   ShieldCheckIcon,
 } from "@primer/octicons-react";
@@ -314,6 +316,26 @@ export function VulnerabilitiesTab({
   // tabs unmounts the tab and resets this to the default flat list. "upgrade"
   // swaps the paginated findings table for whole-project upgrade clusters.
   const [groupBy, setGroupBy] = useState<VulnerabilitiesGroupByMode>("flat");
+  // The severity card is tall and the toolbar filters by severity too, so it
+  // starts collapsed; the choice is remembered per browser.
+  const [distributionOpen, setDistributionOpen] = useState<boolean>(() => {
+    try {
+      return window.localStorage.getItem("vulnerabilities-distribution-open") === "1";
+    } catch {
+      return false;
+    }
+  });
+  function toggleDistribution() {
+    setDistributionOpen((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem("vulnerabilities-distribution-open", next ? "1" : "0");
+      } catch {
+        /* private mode: the choice just isn't remembered */
+      }
+      return next;
+    });
+  }
 
   // ----- filter state, hydrated from URL on first render -------------------
   const [search, setSearch] = useState(() =>
@@ -731,6 +753,24 @@ export function VulnerabilitiesTab({
   return (
     <div data-testid="vulnerabilities-tab" className="flex flex-1 flex-col">
       {groupBy === "flat" && distributionHasAny ? (
+        <div className="border-b border-border/60 px-6 py-2">
+          <button
+            type="button"
+            onClick={toggleDistribution}
+            aria-expanded={distributionOpen}
+            data-testid="vulnerabilities-distribution-toggle"
+            className="inline-flex h-8 items-center gap-1 rounded-md text-sm font-medium text-muted-foreground hover:text-foreground"
+          >
+            {distributionOpen ? (
+              <ChevronDownIcon size={16} />
+            ) : (
+              <ChevronRightIcon size={16} />
+            )}
+            {t("components.distribution_toggle")}
+          </button>
+        </div>
+      ) : null}
+      {groupBy === "flat" && distributionHasAny && distributionOpen ? (
         <div
           // W11-C polish — distribution card lands on the canonical px-6 +
           // py-4 gutter shared by toolbar / rows below (Vercel deployments-1

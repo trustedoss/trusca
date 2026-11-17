@@ -316,6 +316,7 @@
     "summary": "{{loaded}} of {{total}} components loaded.",
     "summary_scope_filtered": "{{count}} dev/test components excluded by the runtime-scope filter",
     "vulns_link_aria": "View {{count}} CVEs for {{name}} in the Vulnerabilities tab",
+    "distribution_toggle": "Distribution charts",
     "col": {
       "name": "Component",
       "type": "Type",

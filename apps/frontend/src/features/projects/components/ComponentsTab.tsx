@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
 import {
+  ChevronDownIcon,
+  ChevronRightIcon,
   PackageIcon,
 } from "@primer/octicons-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -273,6 +275,27 @@ export function ComponentsTab({
     });
   };
 
+  // The two distribution cards are tall and the toolbar already filters by
+  // severity and license, so they start collapsed; the choice is remembered.
+  const [distributionOpen, setDistributionOpen] = useState<boolean>(() => {
+    try {
+      return window.localStorage.getItem("components-distribution-open") === "1";
+    } catch {
+      return false;
+    }
+  });
+  function toggleDistribution() {
+    setDistributionOpen((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem("components-distribution-open", next ? "1" : "0");
+      } catch {
+        /* private mode: the choice just isn't remembered */
+      }
+      return next;
+    });
+  }
+
   // W9 #52 — column visibility, hydrated from per-tab localStorage.
   const columnsCatalog = useMemo(
     () => getComponentColumnsCatalog((k) => t(k)),
@@ -537,6 +560,24 @@ export function ComponentsTab({
           the *full* project distribution — the row count below is what
           reflects the active filter. */}
       {severityDistribution || licenseDistribution ? (
+        <div className="border-b border-border/60 px-6 py-2">
+          <button
+            type="button"
+            onClick={toggleDistribution}
+            aria-expanded={distributionOpen}
+            data-testid="components-distribution-toggle"
+            className="inline-flex h-8 items-center gap-1 rounded-md text-sm font-medium text-muted-foreground hover:text-foreground"
+          >
+            {distributionOpen ? (
+              <ChevronDownIcon size={16} />
+            ) : (
+              <ChevronRightIcon size={16} />
+            )}
+            {t("components.distribution_toggle")}
+          </button>
+        </div>
+      ) : null}
+      {(severityDistribution || licenseDistribution) && distributionOpen ? (
         <div
           // W11-C polish — distribution band aligns to the px-6 + py-4 gutter
           // shared by toolbar / rows below (Vercel deployments-1 axis).

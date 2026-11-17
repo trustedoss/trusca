@@ -144,6 +144,23 @@ function renderTab(
   );
 }
 
+/**
+ * The reachability, SLA, EPSS and VEX-suppressed filters are mounted on demand
+ * from "+ Add filter". Mount one the way a user does, unless it is already up.
+ */
+async function mountFilter(optionId: string, testId: string) {
+  if (screen.queryByTestId(testId)) return screen.getByTestId(testId);
+  await userEvent.click(
+    screen.getByTestId("vulnerabilities-more-filters-trigger"),
+  );
+  await userEvent.click(
+    await screen.findByTestId(
+      `vulnerabilities-more-filters-trigger-option-${optionId}`,
+    ),
+  );
+  return screen.findByTestId(testId);
+}
+
 describe("VulnerabilitiesTab", () => {
   beforeEach(() => {
     mockedList.mockReset();
@@ -446,7 +463,7 @@ describe("VulnerabilitiesTab", () => {
     );
 
     await user.click(
-      screen.getByTestId("vulnerabilities-vex-suppressed-filter"),
+      await mountFilter("vex_suppressed", "vulnerabilities-vex-suppressed-filter"),
     );
 
     await waitFor(() =>
@@ -474,7 +491,7 @@ describe("VulnerabilitiesTab", () => {
     expect(exportButton).not.toHaveAttribute("aria-disabled");
 
     await user.click(
-      screen.getByTestId("vulnerabilities-vex-suppressed-filter"),
+      await mountFilter("vex_suppressed", "vulnerabilities-vex-suppressed-filter"),
     );
 
     await waitFor(() =>
@@ -590,7 +607,7 @@ describe("VulnerabilitiesTab", () => {
     mockedList.mockClear();
 
     await userEvent.type(
-      screen.getByTestId("vulnerabilities-min-epss"),
+      await mountFilter("epss", "vulnerabilities-min-epss"),
       "0.5",
     );
     await waitFor(() => {
@@ -784,7 +801,7 @@ describe("VulnerabilitiesTab", () => {
     mockedList.mockClear();
 
     await userEvent.selectOptions(
-      screen.getByTestId("vulnerabilities-reachable-filter"),
+      await mountFilter("reachable", "vulnerabilities-reachable-filter"),
       "true",
     );
     await waitFor(() => {
@@ -926,7 +943,7 @@ describe("VulnerabilitiesTab", () => {
     mockedList.mockClear();
 
     await userEvent.selectOptions(
-      screen.getByTestId("vulnerabilities-sla-filter"),
+      await mountFilter("sla", "vulnerabilities-sla-filter"),
       "overdue",
     );
     await waitFor(() => {
