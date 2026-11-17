@@ -52,20 +52,22 @@ function Tile({
 }) {
   const body = (
     <>
-      <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+      <span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">
         {label}
       </span>
-      <span className="flex items-baseline gap-2 text-lg font-semibold tabular-nums">
+      <span className="flex shrink-0 items-baseline gap-2 whitespace-nowrap text-sm font-semibold tabular-nums">
         {children}
       </span>
       {hint ? (
-        <span className="truncate text-xs text-muted-foreground">{hint}</span>
+        <span className="min-w-0 truncate text-xs text-muted-foreground" title={hint}>
+          {hint}
+        </span>
       ) : null}
     </>
   );
 
   const className = cn(
-    "flex min-w-0 flex-col gap-1 rounded-md border px-3 py-2",
+    "flex min-w-0 items-baseline gap-2 rounded-md border px-3 py-1.5",
     // Colour is the last signal, never the only one: each tile's number and
     // hint say the same thing in words.
     tone === "danger" && "border-status-danger-border bg-status-danger-subtle",
@@ -174,7 +176,7 @@ export function GovernanceBand({ projectId }: { projectId: string | null }) {
         data-testid="governance-band-loading"
       >
         {[0, 1, 2, 3, 4].map((index) => (
-          <Skeleton key={index} className="h-16" />
+          <Skeleton key={index} className="h-8" />
         ))}
       </div>
     );

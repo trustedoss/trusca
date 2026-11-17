@@ -325,9 +325,6 @@ export function ComponentsToolbar({
           installs it. "off" means no opinion — `?malicious=false` is never
           emitted from here. */}
       <div className="flex flex-col">
-        <span className="text-xs font-medium text-muted-foreground">
-          {t("components.toolbar.malicious_label")}
-        </span>
         <button
           type="button"
           aria-pressed={maliciousOnly}
@@ -335,7 +332,7 @@ export function ComponentsToolbar({
           data-active={maliciousOnly ? "true" : "false"}
           onClick={() => onMaliciousOnlyChange(!maliciousOnly)}
           className={cn(
-            "mt-1 inline-flex h-8 items-center rounded-md border border-input px-3 text-xs font-medium",
+            "inline-flex h-8 items-center rounded-md border border-input px-3 text-xs font-medium",
             "transition-colors duration-fast ease-out-soft",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
             maliciousOnly
@@ -351,9 +348,6 @@ export function ComponentsToolbar({
           3-state segment): "on" narrows to past-end-of-life components,
           "off" means no opinion — `?eol=false` is never emitted from here. */}
       <div className="flex flex-col">
-        <span className="text-xs font-medium text-muted-foreground">
-          {t("components.toolbar.eol_label")}
-        </span>
         <button
           type="button"
           aria-pressed={eolOnly}
@@ -361,7 +355,7 @@ export function ComponentsToolbar({
           data-active={eolOnly ? "true" : "false"}
           onClick={() => onEolOnlyChange(!eolOnly)}
           className={cn(
-            "mt-1 inline-flex h-8 items-center rounded-md border border-input px-3 text-xs font-medium",
+            "inline-flex h-8 items-center rounded-md border border-input px-3 text-xs font-medium",
             "transition-colors duration-fast ease-out-soft",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
             eolOnly
@@ -378,9 +372,6 @@ export function ComponentsToolbar({
           "off" means no opinion — `?outdated=false` is never emitted here. A
           lower-urgency signal than EOL (a newer patch exists, not end-of-life). */}
       <div className="flex flex-col">
-        <span className="text-xs font-medium text-muted-foreground">
-          {t("components.toolbar.currency_label")}
-        </span>
         <button
           type="button"
           aria-pressed={outdatedOnly}
@@ -388,7 +379,7 @@ export function ComponentsToolbar({
           data-active={outdatedOnly ? "true" : "false"}
           onClick={() => onOutdatedOnlyChange(!outdatedOnly)}
           className={cn(
-            "mt-1 inline-flex h-8 items-center rounded-md border border-input px-3 text-xs font-medium",
+            "inline-flex h-8 items-center rounded-md border border-input px-3 text-xs font-medium",
             "transition-colors duration-fast ease-out-soft",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
             outdatedOnly

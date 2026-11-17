@@ -38,6 +38,26 @@ let seed: SeedSummary;
 test.describe.serial("@components version-currency badge + filter", () => {
   test.beforeAll(async ({ browser }) => {
     sharedPage = await browser.newPage();
+    // The malicious, EOL and currency columns start hidden; a stored choice
+    // overrides that, so keep every column visible for these specs.
+    await sharedPage.addInitScript(() => {
+      window.localStorage.setItem(
+        "column-visibility:components",
+        JSON.stringify([
+          "name",
+          "type",
+          "version",
+          "license",
+          "policy",
+          "usage",
+          "malicious",
+          "eol",
+          "currency",
+          "severity",
+          "vulns",
+        ]),
+      );
+    });
     try {
       seed = seedE2eUser({
         projectNames: [PROJECT_NAME],

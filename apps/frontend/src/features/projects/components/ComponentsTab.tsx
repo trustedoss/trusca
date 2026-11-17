@@ -14,7 +14,6 @@ import { Button } from "@/components/primer/Button";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/primer/card";
@@ -92,6 +91,7 @@ const PAGE_SIZE = 100;
  * preferences survive reload independently of the Vulnerabilities tab.
  */
 const COMPONENT_COLUMNS_STORAGE_KEY = "column-visibility:components";
+const DEFAULT_HIDDEN_COLUMNS = ["malicious", "eol", "currency"];
 
 function getComponentColumnsCatalog(
   t: (key: string) => string,
@@ -278,9 +278,21 @@ export function ComponentsTab({
     () => getComponentColumnsCatalog((k) => t(k)),
     [t],
   );
-  const [visibleColumns, setVisibleColumns] = useState<Set<string>>(() =>
-    loadInitialVisibility(COMPONENT_COLUMNS_STORAGE_KEY, columnsCatalog),
-  );
+  // Malicious, EOL and currency are empty for most components, and each one
+  // is also a toolbar filter. They start hidden; the Columns menu brings them
+  // back, and a stored choice always wins over this default.
+  const [visibleColumns, setVisibleColumns] = useState<Set<string>>(() => {
+    let stored: string | null = null;
+    try {
+      stored = window.localStorage.getItem(COMPONENT_COLUMNS_STORAGE_KEY);
+    } catch {
+      stored = null;
+    }
+    const all = loadInitialVisibility(COMPONENT_COLUMNS_STORAGE_KEY, columnsCatalog);
+    if (stored) return all;
+    for (const id of DEFAULT_HIDDEN_COLUMNS) all.delete(id);
+    return all;
+  });
 
   // View toggle — `?view=graph` swaps the virtual table for the dependency
   // graph (BomLens parity H-1). Anything other than the literal "graph"
@@ -542,9 +554,6 @@ export function ComponentsTab({
                     {t("overview.severity_card.axis_components")}
                   </AxisPill>
                 </CardTitle>
-                <CardDescription>
-                  {t("overview.severity_card.subtitle")}
-                </CardDescription>
               </CardHeader>
               <CardContent>
                 <SeverityDistributionChart
@@ -566,9 +575,6 @@ export function ComponentsTab({
                     {t("overview.license_card.axis_components")}
                   </AxisPill>
                 </CardTitle>
-                <CardDescription>
-                  {t("overview.license_card.subtitle")}
-                </CardDescription>
               </CardHeader>
               <CardContent>
                 <LicenseDistributionChart
