@@ -6,7 +6,7 @@ import { forwardRef, type HTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
 
 /**
- * Badge — the shared chip. Built on design tokens (no component library
+ * Badge, the shared chip. Built on design tokens (no component library
  * primitive underneath); `tone` carries the meaning.
  *
  * Risk-tinted variants pair a status word (Critical / High / …) with the

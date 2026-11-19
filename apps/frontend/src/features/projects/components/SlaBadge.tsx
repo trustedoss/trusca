@@ -25,7 +25,7 @@ import { cn } from "@/lib/utils";
  *
  *   - "overdue"  — solid critical fill (strongest treatment on the page,
  *                  same escalation KevBadge uses for a breached deadline).
- *   - "imminent" — amber tint (the status-warning tone, AA-audited
+ *   - "imminent" - amber tint (the status-warning tone, AA-audited
  *                  Badge `medium` tone pair).
  *   - "ok"       — neutral low-emphasis tint (Badge `info` tone) so an
  *                  in-window finding stays quiet next to real signals.
@@ -67,7 +67,7 @@ const SLA_VISUALS: Record<
     badge: "bg-risk-critical text-white",
     dot: "bg-white",
   },
-  // Amber — the Badge `warning` tone (status-warning tint).
+  // Amber, the Badge `warning` tone (status-warning tint).
   imminent: { tone: "warning", dot: "bg-status-warning-foreground" },
   // Neutral low-emphasis — Badge `info` tone (risk-info tint + slate-600).
   ok: { tone: "info", dot: "bg-risk-info" },
