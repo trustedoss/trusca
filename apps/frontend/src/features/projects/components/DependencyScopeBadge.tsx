@@ -54,14 +54,14 @@ export function DependencyScopeBadge({
   if (scope === "optional") {
     return (
       <Badge
-        tone="medium"
+        tone="warning"
         data-testid="dependency-scope-badge"
         data-dependency-scope="optional"
         className={cn("gap-1.5", className)}
       >
         <span
           aria-hidden
-          className="inline-block h-1.5 w-1.5 rounded-full bg-risk-medium"
+          className="inline-block h-1.5 w-1.5 rounded-full bg-status-warning-foreground"
         />
         <span>{t("components.badge.dependency_scope.optional")}</span>
       </Badge>

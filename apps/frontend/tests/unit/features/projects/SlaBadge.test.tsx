@@ -48,7 +48,7 @@ describe("SlaBadge", () => {
     render(<SlaBadge status="imminent" dueDate="2026-07-05T00:00:00Z" />);
     const badge = screen.getByTestId("sla-badge");
     expect(badge).toHaveAttribute("data-sla-status", "imminent");
-    expect(badge.className).toMatch(/risk-medium|yellow/);
+    expect(badge.className).toMatch(/status-warning/);
     expect(badge.textContent).toContain("Due soon");
   });
 
@@ -57,7 +57,7 @@ describe("SlaBadge", () => {
     const badge = screen.getByTestId("sla-badge");
     expect(badge).toHaveAttribute("data-sla-status", "ok");
     expect(badge.className).toMatch(/risk-info|slate/);
-    expect(badge.className).not.toMatch(/risk-critical|risk-medium/);
+    expect(badge.className).not.toMatch(/risk-critical|status-warning/);
     expect(badge.textContent).toContain("On track");
   });
 

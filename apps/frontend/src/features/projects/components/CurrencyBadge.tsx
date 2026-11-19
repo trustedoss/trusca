@@ -64,7 +64,7 @@ export function CurrencyBadge({
 
   return (
     <Badge
-      tone="medium"
+      tone="warning"
       data-testid="currency-badge"
       data-currency-state={currencyState}
       data-currency-latest={currencyLatest ?? undefined}
@@ -73,7 +73,7 @@ export function CurrencyBadge({
     >
       <span
         aria-hidden
-        className="inline-block h-1.5 w-1.5 rounded-full bg-risk-medium"
+        className="inline-block h-1.5 w-1.5 rounded-full bg-status-warning-foreground"
       />
       <span>{t("components.currency.label")}</span>
       {showDate && currencyLatest ? (

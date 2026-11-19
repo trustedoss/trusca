@@ -6,7 +6,8 @@ import { forwardRef, type HTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
 
 /**
- * Badge — shadcn/ui standard primitive (PR #9).
+ * Badge — the shared chip. Built on design tokens (no component library
+ * primitive underneath); `tone` carries the meaning.
  *
  * Risk-tinted variants pair a status word (Critical / High / …) with the
  * design-system color token so color is never the only signal. The numeric
@@ -75,6 +76,11 @@ const badgeVariants = cva(
         progress:
           "border-transparent bg-status-info-subtle text-status-info-foreground",
         success: "border-transparent bg-status-success-subtle text-status-success-foreground",
+        // Something needs attention but is not a severity: a notice
+        // requirement, a deprecated licence, a due-soon SLA, a conformance
+        // warning. `medium` is the Medium severity and nothing else.
+        warning:
+          "border-transparent bg-status-warning-subtle text-status-warning-foreground",
       },
     },
     defaultVariants: {

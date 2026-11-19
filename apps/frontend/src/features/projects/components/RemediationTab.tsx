@@ -307,7 +307,7 @@ function WarningList({
           data-testid="remediation-warning"
           data-code={w.code}
         >
-          <Badge variant="outline" tone="medium" className="shrink-0">
+          <Badge variant="outline" tone="warning" className="shrink-0">
             {t("preview.warning_label")}
           </Badge>
           <span className="text-muted-foreground">

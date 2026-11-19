@@ -182,7 +182,7 @@ function DrawerMetaSection({ detail }: MetaProps) {
           </Badge>
         ) : null}
         {detail.is_deprecated_license_id ? (
-          <Badge tone="medium" data-testid="license-drawer-flag-deprecated">
+          <Badge tone="warning" data-testid="license-drawer-flag-deprecated">
             {t("licenses.drawer.flag.deprecated")}
           </Badge>
         ) : null}
@@ -273,7 +273,7 @@ function DrawerReviewFlagSection({ flag }: ReviewFlagSectionProps) {
   const { t } = useTranslation("project_detail");
   return (
     <section
-      className="flex flex-col gap-2 rounded-md border border-risk-medium/40 bg-risk-medium/10 p-3"
+      className="flex flex-col gap-2 rounded-md border border-status-warning-border bg-status-warning-subtle p-3"
       data-testid="license-drawer-review-flag"
       data-review-flag={flag}
     >

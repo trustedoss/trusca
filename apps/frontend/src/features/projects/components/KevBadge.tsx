@@ -28,7 +28,7 @@ import { cn } from "@/lib/utils";
  *
  *   - "overdue"  — solid critical fill (strongest treatment on the page) +
  *                  inline "Overdue by n days" on `showDueDate` surfaces.
- *   - "imminent" — amber (risk-medium) tint + inline "Due in n days" /
+ *   - "imminent" — amber (status-warning) tint + inline "Due in n days" /
  *                  "Due today".
  *   - "ok"       — unchanged from the pre-C3 badge: critical tint + muted
  *                  "Due {date}" inline text.
@@ -70,11 +70,11 @@ function dueVisuals(state: DueDateStatus["state"] | null): {
     return { badge: "bg-risk-critical text-white", dot: "bg-white" };
   }
   if (state === "imminent") {
-    // Amber — mirrors the Badge `medium` tone pair (risk-medium tint at the
-    // standard /10 step + its foreground token, the AA-audited combination).
+    // Amber — mirrors the Badge `warning` tone (status-warning tint + its
+    // foreground token, the AA-audited combination).
     return {
-      badge: "bg-risk-medium/10 text-risk-medium-foreground",
-      dot: "bg-risk-medium",
+      badge: "bg-status-warning-subtle text-status-warning-foreground",
+      dot: "bg-status-warning-foreground",
     };
   }
   // "ok" or no due date — pre-C3 appearance.

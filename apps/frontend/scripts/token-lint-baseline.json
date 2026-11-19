@@ -1,6 +1,4 @@
 {
   "src/components/primer/badge.tsx": 2,
-  "src/features/dashboard/ScanStatusPill.tsx": 3,
-  "src/features/scan/ToolLogLine.tsx": 2,
   "src/pages/dev/BrandCandidates.tsx": 5
 }

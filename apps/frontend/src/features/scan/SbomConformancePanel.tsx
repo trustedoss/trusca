@@ -81,29 +81,29 @@ import { G7_GUIDANCE } from "./lib/g7Guidance";
 /** Max number of `missing` entries rendered before collapsing to "+N more". */
 const MISSING_VISIBLE_LIMIT = 5;
 
-type Tone = "success" | "medium" | "critical";
+type Tone = "success" | "warning" | "critical";
 
 const RESULT_TONE: Record<SbomConformanceResult, Tone> = {
   pass: "success",
-  warn: "medium",
+  warn: "warning",
   fail: "critical",
 };
 
 const RESULT_DOT: Record<SbomConformanceResult, string> = {
   pass: "bg-status-success",
-  warn: "bg-risk-medium",
+  warn: "bg-status-warning-foreground",
   fail: "bg-risk-critical",
 };
 
 const CHECK_TONE: Record<SbomCheckStatus, Tone> = {
   pass: "success",
-  warn: "medium",
+  warn: "warning",
   fail: "critical",
 };
 
 const CHECK_DOT: Record<SbomCheckStatus, string> = {
   pass: "bg-status-success",
-  warn: "bg-risk-medium",
+  warn: "bg-status-warning-foreground",
   fail: "bg-risk-critical",
 };
 
@@ -364,7 +364,7 @@ function G7Section({ g7 }: { g7: SbomConformanceCheck[] }) {
         </span>
         {tally.advisory > 0 ? (
           <Badge
-            tone="medium"
+            tone="warning"
             data-testid="conformance-g7-advisory"
             data-count={tally.advisory}
           >
@@ -605,7 +605,7 @@ function G7CheckRow({ check }: { check: SbomConformanceCheck }) {
             data-testid={`check-${check.id}-missing`}
           >
             <li
-              className="text-[11px] font-medium uppercase tracking-wide text-risk-medium-foreground"
+              className="text-[11px] font-medium uppercase tracking-wide text-status-warning-foreground"
               aria-hidden
             >
               {t("conformance.g7.missing_label")}
@@ -613,7 +613,7 @@ function G7CheckRow({ check }: { check: SbomConformanceCheck }) {
             {missing.map((item) => (
               <li
                 key={item}
-                className="inline-flex max-w-full items-center truncate rounded-sm border border-risk-medium/40 bg-risk-medium/10 px-1.5 py-0.5 font-mono text-[11px] text-foreground"
+                className="inline-flex max-w-full items-center truncate rounded-sm border border-status-warning-border bg-status-warning-subtle px-1.5 py-0.5 font-mono text-[11px] text-foreground"
               >
                 {item}
               </li>
@@ -891,7 +891,7 @@ function CrosswalkFrameworkRow({
           })}
         </span>
         {framework.gap > 0 ? (
-          <Badge tone="medium" data-testid={`crosswalk-${framework.id}-gap`}>
+          <Badge tone="warning" data-testid={`crosswalk-${framework.id}-gap`}>
             {t("conformance.crosswalk.tally.gap", { count: framework.gap })}
           </Badge>
         ) : null}

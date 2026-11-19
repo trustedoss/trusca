@@ -38,7 +38,7 @@ export function ReviewFlagBadge({
   const { t } = useTranslation("project_detail");
   return (
     <Badge
-      tone="medium"
+      tone="warning"
       data-testid="license-review-flag-badge"
       data-review-flag={flag}
       title={t(`licenses.review.description.${flag}`)}

@@ -35,7 +35,7 @@ describe("CurrencyBadge", () => {
     const badge = screen.getByTestId("currency-badge");
     // Medium hue family for the dot; the chip never escalates to the
     // critical/high risk fills EOL / KEV use.
-    expect(badge.querySelector(".bg-risk-medium")).toBeInTheDocument();
+    expect(badge.querySelector(".bg-status-warning-foreground")).toBeInTheDocument();
     expect(badge.className).not.toMatch(/risk-critical|risk-high/);
   });
 
