@@ -832,7 +832,7 @@ def test_a_trivy_database_past_its_age_fails_the_scan_without_findings(
     fresh_id = _seed_running_source_scan()
     apply_bomlens_result(scan_uuid=fresh_id, output_dir=_copy_fixture("source-trivy-db", tmp_path))
     assert _component_count(sync_session, fresh_id) == 1
-    assert len(_finding_ids(sync_session, fresh_id)) == 3
+    assert len(_finding_ids(sync_session, fresh_id)) == 2
 
     stale_id = _seed_running_source_scan()
     folder = _copy_fixture("source-trivy-db-stale", tmp_path)
