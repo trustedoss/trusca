@@ -26,6 +26,16 @@
     "filter_team_all": "모든 팀"
   },
   "list": {
+    "distribution_toggle": "분포 차트",
+    "col": {
+      "project": "프로젝트",
+      "vulnerabilities": "취약점",
+      "releases": "릴리스",
+      "scans": "스캔",
+      "last_scan": "마지막 스캔",
+      "created_by": "등록자",
+      "status": "상태"
+    },
     "truncated": "조건에 맞는 프로젝트 {{total}}개 중 {{shown}}개를 표시했습니다. 검색어를 좁히면 나머지를 확인할 수 있습니다."
   },
   "row": {
