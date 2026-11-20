@@ -121,7 +121,9 @@ ENV PYTHONUNBUFFERED=1 \
 # flagged for CVE-2025-59375 and CVE-2026-77214.
 # 2026-10-24: libbrotli1 1.0.9-2+b6 -> 1.0.9-2+deb12u1, flagged for
 # CVE-2026-111497.
-ARG APT_SECURITY_REFRESH=2026-10-24
+# 2026-11-21: php8.2-* 8.2.35-1~deb12u1 -> 8.2.36-1~deb12u1, flagged for
+# CVE-2026-115560 and CVE-2026-127960.
+ARG APT_SECURITY_REFRESH=2026-11-21
 RUN echo "apt security refresh: ${APT_SECURITY_REFRESH}" \
     && apt-get update \
     && apt-get upgrade -y \
