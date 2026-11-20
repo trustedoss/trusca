@@ -34,16 +34,16 @@
           ".vscode",
           "mixed_1.0.0"
         ],
-        "--json-pp": "/tmp/bomlens-scancode.f0O1GO",
+        "--json-pp": "/tmp/bomlens-scancode.yXkHis",
         "--license": true,
         "--only-findings": false,
         "--strip-root": true
       },
       "notice": "Generated with ScanCode and provided on an \"AS IS\" BASIS, WITHOUT WARRANTIES\nOR CONDITIONS OF ANY KIND, either express or implied. No content created from\nScanCode should be considered or used as legal advice. Consult an Attorney\nfor any legal advice.\nScanCode is a free software code scanning tool from nexB Inc. and others.\nVisit https://github.com/nexB/scancode-toolkit/ for support and download.",
-      "start_timestamp": "2026-10-15T180250.797655",
-      "end_timestamp": "2026-10-15T180253.701849",
+      "start_timestamp": "2026-11-20T230854.082536",
+      "end_timestamp": "2026-11-20T230900.955462",
       "output_format_version": "4.1.0",
-      "duration": 2.904208183288574,
+      "duration": 6.872936248779297,
       "message": null,
       "errors": [],
       "warnings": [],
@@ -51,8 +51,8 @@
         "system_environment": {
           "operating_system": "linux",
           "cpu_architecture": "64",
-          "platform": "Linux-6.8.0-100-generic-aarch64-with-glibc2.41",
-          "platform_version": "#100-Ubuntu SMP PREEMPT_DYNAMIC Tue Jan 13 16:39:21 UTC 2026",
+          "platform": "Linux-6.8.0-117-generic-aarch64-with-glibc2.41",
+          "platform_version": "#117-Ubuntu SMP PREEMPT_DYNAMIC Thu May  7 17:26:37 UTC 2026",
           "python_version": "3.12.14 (main, Sep 19 2026, 01:11:14) [GCC 14.2.0]"
         },
         "spdx_license_list_version": "3.27",

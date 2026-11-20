@@ -59,7 +59,7 @@ def _with_steps(*steps: dict[str, Any]) -> contract.EngineResult:
 #: sha-b826d43 wrote 1.0.0-dev, sha-5a93586 1.0.0, the 1.13.5 release 1.3.0.
 #: The contract version of the pinned release; its captures are checked against
 #: the digests in config.py.
-NEWEST = "1.3.0"
+NEWEST = "1.4.0"
 
 CONTRACT_VERSIONS = {
     "image-ok": "1.0.0-dev",

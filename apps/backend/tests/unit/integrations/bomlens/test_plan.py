@@ -79,7 +79,7 @@ def test_the_captured_plans_come_from_the_pinned_image(case: str) -> None:
     pinned_ref, pinned_digest = BOMLENS_IMAGE_DEFAULT.split("@", 1)
     plan = load_plan(PLAN_DIR / case)
     assert (plan.engine_image, plan.engine_image_digest) == (pinned_ref, pinned_digest)
-    assert plan.contract_version == "1.3.0"
+    assert plan.contract_version == "1.4.0"
 
 
 def test_the_captured_unsupported_plan_has_no_stages() -> None:

@@ -1,12 +1,12 @@
 {
   "contract": {
     "name": "bomlens-engine",
-    "version": "1.3.0"
+    "version": "1.4.0"
   },
   "engine": {
-    "version": "1.13.5",
-    "image": "ghcr.io/sktelecom/bomlens:1.13.5",
-    "image_digest": "sha256:d05b2f4f2542ba1bc98fd07712fd4308f40205dd9ad28b7a8d15ae614b4b4128"
+    "version": "1.15.0",
+    "image": "ghcr.io/sktelecom/bomlens:1.15.0",
+    "image_digest": "sha256:563fb0be1b188bbd550f504fcd77b3f2f062637d25104c3f9ac99bcfd61f2a51"
   },
   "input": {
     "kind": "source",
@@ -16,8 +16,8 @@
   "run": {
     "status": "succeeded_degraded",
     "reason": "step_failed_or_degraded",
-    "started_at": "2026-10-15T18:00:44Z",
-    "ended_at": "2026-10-15T18:00:44Z",
+    "started_at": "2026-11-20T23:06:49Z",
+    "ended_at": "2026-11-20T23:06:50Z",
     "exit_code": 0
   },
   "steps": [
@@ -26,8 +26,8 @@
       "status": "skipped",
       "reason": "not_installed",
       "detail": "Android needs a locally built SDK image (bomlens-android-sdk34); it is not published",
-      "started_at": "2026-10-15T18:00:44Z",
-      "ended_at": "2026-10-15T18:00:44Z",
+      "started_at": "2026-11-20T23:06:49Z",
+      "ended_at": "2026-11-20T23:06:50Z",
       "stage": 2
     }
   ],
@@ -36,14 +36,15 @@
   },
   "engines": [],
   "data_sources": {
-    "trivy_db": null
+    "trivy_db": null,
+    "go_vulndb": null
   },
   "outputs": [
     {
       "role": "plan",
       "path": "bomlens-plan.json",
-      "sha256": "4b7a870709459dd3aacc3be3eebf164c1fa7ae5301403f5d2d1dc54efbb4fb2b",
-      "bytes": 4377
+      "sha256": "93e0b31fb11deb90aa9e2b51610ec966cdc47776d1ce87123b864017bdfda831",
+      "bytes": 4892
     }
   ]
 }
