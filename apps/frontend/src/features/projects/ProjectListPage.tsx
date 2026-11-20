@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
 import { useQuery } from "@tanstack/react-query";
-import { FileDirectoryIcon } from "@primer/octicons-react";
+import {
+  ChevronDownIcon,
+  ChevronRightIcon,
+  FileDirectoryIcon,
+} from "@primer/octicons-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router-dom";
@@ -218,6 +222,32 @@ export function ProjectListPage() {
   // Search keeps a local typing buffer; the debounced value is what flows
   // into both the filter AND the URL (so per-keystroke typing doesn't spam
   // history entries). Mirrors the ComponentsTab / VulnerabilitiesTab pattern.
+  // The two distribution cards are tall, so they start collapsed; the choice
+  // is remembered per browser. An active chart filter is shown as a chip
+  // either way.
+  const [distributionOpen, setDistributionOpen] = useState<boolean>(() => {
+    try {
+      return (
+        window.localStorage.getItem("project-list-distribution-open") === "1"
+      );
+    } catch {
+      return false;
+    }
+  });
+  function toggleDistribution() {
+    setDistributionOpen((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem(
+          "project-list-distribution-open",
+          next ? "1" : "0",
+        );
+      } catch {
+        /* private mode: the choice just isn't remembered */
+      }
+      return next;
+    });
+  }
   const distributionFilter = parseDistributionParam(
     searchParams.get("distribution"),
   );
@@ -572,6 +602,24 @@ export function ProjectListPage() {
           ``ProjectPublic.{severity_summary, license_category_summary}`` so the
           axis label ("by project") stays honest. */}
       {items && items.length > 0 ? (
+        <div className="border-b bg-background px-6 py-2">
+          <button
+            type="button"
+            onClick={toggleDistribution}
+            aria-expanded={distributionOpen}
+            data-testid="project-list-distribution-toggle"
+            className="inline-flex h-8 items-center gap-1 rounded-md text-sm font-medium text-muted-foreground hover:text-foreground"
+          >
+            {distributionOpen ? (
+              <ChevronDownIcon size={16} />
+            ) : (
+              <ChevronRightIcon size={16} />
+            )}
+            {t("list.distribution_toggle")}
+          </button>
+        </div>
+      ) : null}
+      {items && items.length > 0 && distributionOpen ? (
         // W11-B polish — distribution band uses the standard 24 px gutter
         // (px-6) so it lines up with the toolbar / rows below. Gap stays at
         // 16 px (gap-4) between the two cards.
@@ -758,6 +806,26 @@ export function ProjectListPage() {
             data-testid="project-list-virtual"
             data-total={filteredItems.length}
           >
+            <div
+              className="hidden items-center gap-3 border-b bg-muted/40 px-6 text-xs font-medium text-muted-foreground lg:flex"
+              style={{ height: "var(--table-row)" }}
+              data-testid="project-list-header"
+            >
+              <span className="flex-1">{t("list.col.project")}</span>
+              <span className={SEVERITY_COL}>{t("list.col.vulnerabilities")}</span>
+              <span className={`${COUNT_COL} text-right`}>
+                {t("list.col.releases")}
+              </span>
+              <span className={`${COUNT_COL} text-right`}>
+                {t("list.col.scans")}
+              </span>
+              <span className={`${WHEN_COL} text-right`}>
+                {t("list.col.last_scan")}
+              </span>
+              <span className={CREATED_COL}>{t("list.col.created_by")}</span>
+              <span className={STATUS_COL}>{t("list.col.status")}</span>
+              <span className={ACTION_COL} aria-hidden />
+            </div>
             <Virtuoso
               data={filteredItems}
               style={{ height: "calc(100vh - var(--layout-header) - 56px)" }}
@@ -830,6 +898,15 @@ export function ProjectListPage() {
     </div>
   );
 }
+
+// Column widths shared by the header row and every project row, so the
+// numbers sit under their labels. Dense columns only exist from `lg` up.
+const SEVERITY_COL = "w-40 shrink-0";
+const COUNT_COL = "w-16 shrink-0";
+const WHEN_COL = "w-24 shrink-0";
+const CREATED_COL = "w-36 shrink-0";
+const STATUS_COL = "w-24 shrink-0";
+const ACTION_COL = "w-16 shrink-0";
 
 export interface ProjectRowProps {
   project: ProjectPublic;
@@ -916,18 +993,22 @@ export function ProjectRow({
       <SeveritySummary summary={project.severity_summary} />
       <ScanMetadataSummary project={project} />
       <span
-        className="hidden w-44 truncate text-xs text-muted-foreground md:inline-block"
+        className={cn(
+          "hidden truncate text-xs text-muted-foreground lg:inline-block",
+          CREATED_COL,
+        )}
         data-testid="project-row-created-by"
         title={project.created_by_user_name ?? ""}
       >
         {project.created_by_user_name ?? "—"}
       </span>
-      <div data-testid="project-row-status">
+      <div className={STATUS_COL} data-testid="project-row-status">
         <ProjectStatusBadge status={project.latest_scan_status ?? "idle"} />
       </div>
       <Button
         variant="outline"
         size="sm"
+        className={ACTION_COL}
         onClick={onScan}
         disabled={writeDisabled}
         title={writeDisabled ? t("demo.write_disabled") : undefined}
@@ -962,7 +1043,8 @@ function SeveritySummary({
   summary: ProjectSeveritySummary | null;
 }) {
   const { t } = useTranslation("projects");
-  if (summary == null) return null;
+  const spacer = <div className={cn("hidden lg:block", SEVERITY_COL)} />;
+  if (summary == null) return spacer;
 
   const buckets: SeverityBucket[] = [
     {
@@ -991,7 +1073,7 @@ function SeveritySummary({
     },
   ];
   const present = buckets.filter((b) => b.count > 0);
-  if (present.length === 0) return null;
+  if (present.length === 0) return spacer;
 
   return (
     <div
@@ -1002,7 +1084,10 @@ function SeveritySummary({
       // row still overflowed. Same breakpoint and same mechanism as the
       // `created_by` cell below, and the same one at which the shell switches
       // to its drawer, so the row is dense above `lg` and legible below it.
-      className="hidden items-center gap-2 font-mono text-xs lg:flex"
+      className={cn(
+        "hidden items-center gap-2 font-mono text-xs lg:flex",
+        SEVERITY_COL,
+      )}
       data-testid="project-row-severity"
       aria-label={t("severity.summary_aria")}
     >
@@ -1049,7 +1134,11 @@ function ScanMetadataSummary({ project }: { project: ProjectPublic }) {
   // Never-scanned: skip the cluster entirely. Defensive on both fields —
   // a future shape where last_scan_at is null but scan_count > 0 would still
   // be worth surfacing ("we tried, lost the timestamp"), and vice versa.
-  if (lastScanAt == null && scanCount === 0) return null;
+  if (lastScanAt == null && scanCount === 0) {
+    return (
+      <div className="hidden w-[15.5rem] shrink-0 lg:block" />
+    );
+  }
 
   const locale = i18n.resolvedLanguage;
   const relative =
@@ -1068,29 +1157,29 @@ function ScanMetadataSummary({ project }: { project: ProjectPublic }) {
       // G0-5 — hidden below `lg`, for the reason spelled out on
       // `project-row-severity`: these clusters together left the project name
       // no width at all on a phone.
-      className="hidden items-center gap-2 font-mono text-xs text-muted-foreground lg:flex"
+      className="hidden w-[15.5rem] shrink-0 items-center gap-3 text-xs text-muted-foreground lg:flex"
       data-testid="project-row-scan-meta"
       data-release-count={releaseCount}
       data-scan-count={scanCount}
       aria-label={ariaLabel}
     >
-      <span>
-        <span aria-hidden>{t("row.releases_abbrev")}</span> {releaseCount}
+      <span className={`${COUNT_COL} text-right tabular-nums`}>
+        {releaseCount}
       </span>
-      <span aria-hidden>·</span>
-      <span>
-        <span aria-hidden>{t("row.scans_abbrev")}</span> {scanCount}
+      <span className={`${COUNT_COL} text-right tabular-nums`}>
+        {scanCount}
       </span>
-      <span aria-hidden>·</span>
-      {lastScanAt != null ? (
-        <RelativeTime
-          value={lastScanAt}
-          locale={locale}
-          data-testid="project-row-scan-meta-when"
-        />
-      ) : (
-        <span data-testid="project-row-scan-meta-when">{relative}</span>
-      )}
+      <span className={`${WHEN_COL} truncate text-right`}>
+        {lastScanAt != null ? (
+          <RelativeTime
+            value={lastScanAt}
+            locale={locale}
+            data-testid="project-row-scan-meta-when"
+          />
+        ) : (
+          <span data-testid="project-row-scan-meta-when">{relative}</span>
+        )}
+      </span>
     </div>
   );
 }

@@ -557,6 +557,14 @@ describe("ProjectListPage", () => {
       ]),
     );
     renderPage();
+    // The distribution cards start collapsed; open them the way a user does.
+    // The choice is remembered in localStorage, so only click when closed.
+    const distributionToggle = await screen.findByTestId(
+      "project-list-distribution-toggle",
+    );
+    if (distributionToggle.getAttribute("aria-expanded") !== "true") {
+      await userEvent.click(distributionToggle);
+    }
     await waitFor(() => {
       expect(
         screen.getByTestId("project-list-distribution-cards"),
@@ -620,6 +628,14 @@ describe("ProjectListPage", () => {
       ]),
     );
     renderPage();
+    // The distribution cards start collapsed; open them the way a user does.
+    // The choice is remembered in localStorage, so only click when closed.
+    const distributionToggle = await screen.findByTestId(
+      "project-list-distribution-toggle",
+    );
+    if (distributionToggle.getAttribute("aria-expanded") !== "true") {
+      await userEvent.click(distributionToggle);
+    }
     await waitFor(() => {
       expect(
         screen.getByTestId("project-list-distribution-cards"),
