@@ -33,7 +33,8 @@ vi.mock("@/lib/apiKeysApi", () => ({
 }));
 
 // The dialog picks a project by name; the picker lists projects through this.
-vi.mock("@/lib/projectsApi", () => ({
+vi.mock("@/lib/projectsApi", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/projectsApi")>()),
   listProjects: vi.fn(),
 }));
 
