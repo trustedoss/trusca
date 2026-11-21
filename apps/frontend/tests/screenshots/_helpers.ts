@@ -185,7 +185,14 @@ export async function captureScreenshot(
   }
   await prepareForShutter(page);
   const out = path.join(SCREENSHOT_DIR, `${slug}.png`);
-  await page.screenshot({ path: out, fullPage: false });
+  // `animations: "disabled"` runs finite animations to their end state first,
+  // so a drawer or dialog still sliding in is captured at rest rather than
+  // half-way (the approvals drawer and the API key dialog were).
+  await page.screenshot({
+    path: out,
+    fullPage: false,
+    animations: "disabled",
+  });
 }
 
 /**
