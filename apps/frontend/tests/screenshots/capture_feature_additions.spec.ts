@@ -70,6 +70,25 @@ test.describe.serial("@screenshots user-guide/components-and-licenses (version c
   test("user-components-outdated — Outdated only filter with the Currency badge", async ({
     page,
   }) => {
+    // The currency column starts hidden; a stored choice overrides that.
+    await page.addInitScript(() => {
+      window.localStorage.setItem(
+        "column-visibility:components",
+        JSON.stringify([
+          "name",
+          "type",
+          "version",
+          "license",
+          "policy",
+          "usage",
+          "malicious",
+          "eol",
+          "currency",
+          "severity",
+          "vulns",
+        ]),
+      );
+    });
     const portal = new PortalPage(page);
     await portal.gotoProjects();
     await portal.openProjectDetail(primaryProject());
