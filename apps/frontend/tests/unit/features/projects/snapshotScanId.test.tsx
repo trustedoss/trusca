@@ -7,6 +7,7 @@
  * mocked wire layer and assert the params the wire fn received — same style as
  * ComplianceTab.test.tsx.
  */
+import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import type React from "react";
@@ -106,11 +107,9 @@ describe("snapshot scan_id anchoring", () => {
 
   it("disables the VEX import control in read-only historical mode", async () => {
     renderTab({ scanId: "scan-historical-1", readOnly: true });
-    await waitFor(() => {
-      expect(screen.getByTestId("vex-import-open")).toBeInTheDocument();
-    });
-    const importBtn = screen.getByTestId("vex-import-open");
-    expect(importBtn).toBeDisabled();
+    await userEvent.setup().click(await screen.findByTestId("vex-menu-trigger"));
+    const importBtn = await screen.findByTestId("vex-import-open");
+    expect(importBtn).toHaveAttribute("aria-disabled", "true");
     expect(importBtn).toHaveAttribute("data-readonly-gated", "true");
   });
 });

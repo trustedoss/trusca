@@ -511,11 +511,9 @@ describe("ProjectDetailPage", () => {
       expect(screen.getByTestId("snapshot-banner")).toBeInTheDocument();
     });
     // VEX import button on the Vulnerabilities toolbar is read-only-gated.
-    await waitFor(() => {
-      expect(screen.getByTestId("vex-import-open")).toBeInTheDocument();
-    });
-    const importBtn = screen.getByTestId("vex-import-open");
-    expect(importBtn).toBeDisabled();
+    await userEvent.setup().click(await screen.findByTestId("vex-menu-trigger"));
+    const importBtn = await screen.findByTestId("vex-import-open");
+    expect(importBtn).toHaveAttribute("aria-disabled", "true");
     expect(importBtn).toHaveAttribute("data-readonly-gated", "true");
   });
 

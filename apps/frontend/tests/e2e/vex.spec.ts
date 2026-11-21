@@ -96,7 +96,8 @@ function writeOpenVexDoc(cveId: string, purl: string): string {
         vulnerability: { name: cveId },
         products: [{ "@id": purl }],
         status: "not_affected",
-        impact_statement: "Vulnerable code path is not reachable in this build.",
+        impact_statement:
+          "Vulnerable code path is not reachable in this build.",
       },
     ],
   };
@@ -127,8 +128,10 @@ test.describe("@vex project VEX consume UI", () => {
     await portal.selectVulnerabilitiesTab();
 
     // Export is always available (read); import is gated to group_admin↑.
+    await portal.openVexMenu();
     await expect(page.getByTestId("vex-export-openvex")).toBeVisible();
     await expect(page.getByTestId("vex-export-cyclonedx")).toBeVisible();
+    await page.keyboard.press("Escape");
     expect(await portal.isVexImportEnabled()).toBe(false);
   });
 

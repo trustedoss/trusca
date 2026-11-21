@@ -61,6 +61,13 @@ export interface VexImportDialogProps {
    */
   readOnly?: boolean;
   className?: string;
+  /**
+   * Drive the dialog from outside (the toolbar's VEX menu owns the trigger).
+   * Without `open`, the dialog keeps its own state and renders its own button.
+   */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  hideTrigger?: boolean;
 }
 
 export function VexImportDialog({
@@ -68,9 +75,18 @@ export function VexImportDialog({
   projectRole = "developer",
   readOnly = false,
   className,
+  open: openProp,
+  onOpenChange,
+  hideTrigger = false,
 }: VexImportDialogProps) {
   const { t } = useTranslation("project_detail");
-  const [open, setOpen] = useState(false);
+  const [openState, setOpenState] = useState(false);
+  const controlled = openProp !== undefined;
+  const open = controlled ? openProp : openState;
+  const setOpen = (next: boolean) => {
+    if (!controlled) setOpenState(next);
+    onOpenChange?.(next);
+  };
   const [file, setFile] = useState<File | null>(null);
   const [summary, setSummary] = useState<VexImportSummary | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -110,6 +126,8 @@ export function VexImportDialog({
 
   return (
     <div className={cn("flex flex-col", className)}>
+      {hideTrigger ? null : (
+        <>
       <span className="text-xs font-medium text-muted-foreground">
         {t("vulnerabilities.vex.import_label")}
       </span>
@@ -133,6 +151,8 @@ export function VexImportDialog({
       >
         {t("vulnerabilities.vex.import_button")}
       </Button>
+        </>
+      )}
 
       <PrimerDialog
         open={open}

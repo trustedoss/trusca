@@ -32,8 +32,7 @@ import type {
   VulnerabilitySortKey,
 } from "@/features/projects/api/vulnerabilitiesApi";
 import { SLA_STATUS_VALUES } from "@/features/projects/api/vulnerabilitiesApi";
-import { VexExportMenu } from "@/features/projects/components/VexExportMenu";
-import { VexImportDialog } from "@/features/projects/components/VexImportDialog";
+import { VexMenu } from "@/features/projects/components/VexMenu";
 import { ALL_VULNERABILITY_STATUSES } from "@/features/projects/lib/vulnerabilityTransitions";
 import { cn } from "@/lib/utils";
 
@@ -849,16 +848,17 @@ export function VulnerabilitiesToolbar({
         data-testid="vulnerabilities-export-csv"
       />
 
-      <VexExportMenu
-        projectId={projectId}
-        projectName={projectName}
-      />
-
-      <VexImportDialog
-        projectId={projectId}
-        projectRole={projectRole}
-        readOnly={readOnly}
-      />
+      <div className="flex flex-col">
+        <span className="invisible text-xs font-medium" aria-hidden>
+          &nbsp;
+        </span>
+        <VexMenu
+          projectId={projectId}
+          projectName={projectName}
+          projectRole={projectRole}
+          readOnly={readOnly}
+        />
+      </div>
       {/* PDF report trigger lives on the Reports tab now — the
           ``vuln-pdf`` generate card there owns the download. The toolbar
           prop API still threads ``vulnReport`` so the existing hook +

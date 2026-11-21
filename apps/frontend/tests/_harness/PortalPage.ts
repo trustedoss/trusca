@@ -1290,7 +1290,20 @@ export class PortalPage {
    * the native `disabled` property — locale-agnostic.
    */
   async isVexImportEnabled(): Promise<boolean> {
-    return this.page.getByTestId("vex-import-open").isEnabled();
+    await this.openVexMenu();
+    const disabled = await this.page
+      .getByTestId("vex-import-open")
+      .getAttribute("aria-disabled");
+    await this.page.keyboard.press("Escape");
+    return disabled !== "true";
+  }
+
+  /** Open the toolbar's VEX menu (export formats and import live inside it). */
+  async openVexMenu(): Promise<void> {
+    await this.page.getByTestId("vex-menu-trigger").click();
+    await this.page
+      .getByTestId("vex-import-open")
+      .waitFor({ state: "visible", timeout: 10_000 });
   }
 
   /**
@@ -1304,6 +1317,7 @@ export class PortalPage {
    * typically write a fixture to a temp dir first.
    */
   async importVexDocument(filePath: string): Promise<void> {
+    await this.openVexMenu();
     await this.page.getByTestId("vex-import-open").click();
     await this.page
       .getByTestId("vex-import-dialog")

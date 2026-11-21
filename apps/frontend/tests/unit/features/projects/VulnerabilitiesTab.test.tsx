@@ -524,12 +524,15 @@ describe("VulnerabilitiesTab", () => {
   it("exposes the VEX export buttons + (gated) import trigger in the toolbar", async () => {
     mockedList.mockResolvedValueOnce(listResponse([vuln("CVE-2024-1111")]));
     renderTab();
-    await waitFor(() =>
-      expect(screen.getByTestId("vex-export-openvex")).toBeInTheDocument(),
-    );
+    const trigger = await screen.findByTestId("vex-menu-trigger");
+    await userEvent.setup().click(trigger);
+    expect(await screen.findByTestId("vex-export-openvex")).toBeInTheDocument();
     expect(screen.getByTestId("vex-export-cyclonedx")).toBeInTheDocument();
     // Default project role is developer (overview unresolved) → import gated.
-    expect(screen.getByTestId("vex-import-open")).toBeDisabled();
+    expect(screen.getByTestId("vex-import-open")).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
   });
 
   // PDF Download moved to the Reports tab (user-test follow-up
