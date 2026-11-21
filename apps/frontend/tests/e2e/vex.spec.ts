@@ -127,8 +127,10 @@ test.describe("@vex project VEX consume UI", () => {
     await portal.selectVulnerabilitiesTab();
 
     // Export is always available (read); import is gated to group_admin↑.
+    await portal.openVexMenu();
     await expect(page.getByTestId("vex-export-openvex")).toBeVisible();
     await expect(page.getByTestId("vex-export-cyclonedx")).toBeVisible();
+    await page.keyboard.press("Escape");
     expect(await portal.isVexImportEnabled()).toBe(false);
   });
 
