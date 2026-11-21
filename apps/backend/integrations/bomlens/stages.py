@@ -68,8 +68,8 @@ VULNERABILITY_STEP: Final = "scan-security"
 DEEP_LICENSE_STEP: Final = "deep-license"
 
 #: BomLens step id -> TRUSCA degradable stage, or ``None`` for a step TRUSCA
-#: does not report as a stage of its own. Every BomLens step up to contract
-#: 1.4.0 is listed, so an unlisted id is one a later minor version added.
+#: does not report as a stage of its own. An unlisted id is one this table
+#: has not caught up with, for example a step that runs only for some inputs.
 STEP_STAGE: Final[dict[str, str | None]] = {
     "generate": "generate",
     # Contract 1.2.0 (BomLens #206): Debian package licences from Trivy in an
@@ -118,6 +118,13 @@ STEP_STAGE: Final[dict[str, str | None]] = {
     # Contract 1.4.0 (BomLens v1.15.0): the Go vulnerability database lookup.
     # TRUSCA does not set its option, so it reads ``skipped`` or ``disabled``.
     "go-vulndb": None,
+    # Steps that run only for some inputs, so the fixtures never contain them:
+    # declared components run when the source root has sbom-declared.cdx.json,
+    # model resolution when MODEL_RESOLVE is on, and the CocoaPods licence
+    # lookup is added after v1.15.0. TRUSCA reports none as a stage.
+    "declared-components": None,
+    "resolve-models": None,
+    "cocoapods-licenses": None,
     "model-security": None,
     "verify-weights": None,
     "enrich-aibom": None,
