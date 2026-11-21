@@ -53,9 +53,9 @@ from services.component_approval_service import (
     ApprovalTerminalState,
     create_approval,
     delete_approval,
+    fill_single_display_fields,
     get_approval,
     list_approvals,
-    fill_single_display_fields,
     transition_approval,
 )
 
