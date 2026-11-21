@@ -14,6 +14,7 @@ import { Virtuoso } from "react-virtuoso";
 import { EmptyState } from "@/components/EmptyState";
 import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Button } from "@/components/primer/Button";
+import { Checkbox } from "@/components/primer/Checkbox";
 import {
   Card,
   CardContent,
@@ -1300,21 +1301,14 @@ function VulnerabilitiesTableHeader({
       aria-rowindex={1}
     >
       <span className="w-4" role="columnheader">
-        <input
-          type="checkbox"
+        <Checkbox
           data-testid="vulnerabilities-select-all"
           aria-label={t("vulnerabilities.bulk.select_all_aria")}
           checked={allSelected}
-          ref={(el) => {
-            // Show the tri-state indeterminate visual when some (but not all)
-            // rows on the page are selected.
-            if (el) el.indeterminate = someSelected && !allSelected;
-          }}
+          // Mixed state when some (but not all) rows on the page are selected.
+          indeterminate={someSelected && !allSelected}
           onChange={(e) => onToggleAll(e.currentTarget.checked)}
           disabled={disabled}
-          // W11-C polish — checkbox picks up the focus-ring + accent token
-          // so multi-select reads as deliberate UI, not browser default.
-          className="h-3.5 w-3.5 rounded-sm border-border text-foreground accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
         />
       </span>
       {/* User-test follow-up — column order: CVE / Component / Severity /
@@ -1561,8 +1555,7 @@ function VulnerabilityRow({
         role="cell"
         data-testid="vulnerability-row-checkbox-cell"
       >
-        <input
-          type="checkbox"
+        <Checkbox
           data-testid="vulnerability-row-checkbox"
           aria-label={`select-${vulnerability.cve_id}`}
           checked={selected}
@@ -1573,10 +1566,6 @@ function VulnerabilityRow({
             // when the user is just toggling selection.
             e.stopPropagation();
           }}
-          // W11-C polish — checkbox picks up the focus-ring + accent so
-          // bulk-select reads as deliberate UI, matching the header
-          // select-all checkbox.
-          className="h-3.5 w-3.5 rounded-sm border-border text-foreground accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
         />
       </span>
       {/* Column order matches the header above:

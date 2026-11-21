@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 import { ExportCsvButton } from "@/components/ExportCsvButton";
 import { MoreFiltersMenu } from "@/components/filters/MoreFiltersMenu";
 import { Input } from "@/components/primer/Input";
+import { Checkbox } from "@/components/primer/Checkbox";
 import { MultiSelect } from "@/components/primer/multi-select";
 import { useState } from "react";
 
@@ -182,8 +183,7 @@ export function InventoryToolbar({
           </span>
           <div className="mt-1 flex items-center gap-3">
             <label className="flex items-center gap-1.5 text-sm">
-              <input
-                type="checkbox"
+              <Checkbox
                 checked={eol === true}
                 onChange={(event) =>
                   onEolChange(event.target.checked ? true : undefined)
@@ -193,8 +193,7 @@ export function InventoryToolbar({
               {t("toolbar.eol_only")}
             </label>
             <label className="flex items-center gap-1.5 text-sm">
-              <input
-                type="checkbox"
+              <Checkbox
                 checked={outdated === true}
                 onChange={(event) =>
                   onOutdatedChange(event.target.checked ? true : undefined)

@@ -16,6 +16,7 @@ import {
 } from "@/components/filters/MoreFiltersMenu";
 import { ExportCsvButton } from "@/components/ExportCsvButton";
 import { Button } from "@/components/primer/Button";
+import { Checkbox } from "@/components/primer/Checkbox";
 import { Input } from "@/components/primer/Input";
 import { MultiSelect } from "@/components/primer/multi-select";
 import type {
@@ -700,14 +701,12 @@ export function VulnerabilitiesToolbar({
           {t("vulnerabilities.vex.filter_label")}
         </span>
         <label className="mt-1 flex h-8 items-center gap-2 rounded-md border border-input bg-background px-2 text-sm">
-          <input
-            type="checkbox"
+          <Checkbox
             checked={vexSuppressedOnly}
             onChange={(event) =>
               onVexSuppressedOnlyChange(event.target.checked)
             }
             data-testid="vulnerabilities-vex-suppressed-filter"
-            className="h-4 w-4 rounded border-input focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           />
           <span>{t("vulnerabilities.vex.filter_suppressed")}</span>
         </label>

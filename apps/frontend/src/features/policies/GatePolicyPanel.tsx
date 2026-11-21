@@ -14,6 +14,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Alert, AlertDescription } from "@/components/primer/alert";
+import { Checkbox } from "@/components/primer/Checkbox";
 import { Button } from "@/components/primer/Button";
 import { Input } from "@/components/primer/Input";
 import { Label } from "@/components/primer/Label";
@@ -317,8 +318,7 @@ export function GatePolicyPanel({ teamId, canEdit }: GatePolicyPanelProps) {
           <div className="space-y-1 pt-1">
             {APPROVABLE_STATUSES.map((status) => (
               <label key={status} className="flex items-center gap-2 text-xs">
-                <input
-                  type="checkbox"
+                <Checkbox
                   className="size-3.5 accent-[var(--brand)]"
                   checked={draft.approval.includes(status)}
                   disabled={!canEdit || !draft.approvalOverridden}
