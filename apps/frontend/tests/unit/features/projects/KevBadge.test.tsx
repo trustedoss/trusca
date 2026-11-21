@@ -93,7 +93,7 @@ describe("KevBadge", () => {
     );
     const badge = screen.getByTestId("kev-badge");
     expect(badge).toHaveAttribute("data-due-state", "imminent");
-    expect(badge.className).toMatch(/risk-medium|yellow/);
+    expect(badge.className).toMatch(/status-warning/);
     expect(
       screen.getByTestId("kev-badge-due-date").textContent,
     ).toBe("Due in 5 days");
@@ -118,7 +118,7 @@ describe("KevBadge", () => {
     expect(badge).toHaveAttribute("data-due-state", "ok");
     // Pre-C3 tint retained, no escalation classes.
     expect(badge.className).toContain("bg-risk-critical/10");
-    expect(badge.className).not.toMatch(/risk-medium|yellow/);
+    expect(badge.className).not.toMatch(/status-warning/);
     expect(
       screen.getByTestId("kev-badge-due-date").textContent,
     ).toBe("Due 2026-08-15");

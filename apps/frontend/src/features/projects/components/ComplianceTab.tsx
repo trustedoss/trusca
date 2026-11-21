@@ -512,7 +512,7 @@ export function ComplianceTab({
             ) : null}
             {conflictSummary && conflictSummary.conditional > 0 ? (
               <span
-                className="font-medium text-risk-medium-foreground"
+                className="font-medium text-status-warning-foreground"
                 data-testid="compliance-conflict-count-conditional"
               >
                 {t("licenses.conflict.count.conditional", {
@@ -1192,7 +1192,7 @@ function ComplianceGridRow({
           data-testid="compliance-row-notice"
         >
           {row.notice_required ? (
-            <Badge tone="medium">{t("compliance.notice.required")}</Badge>
+            <Badge tone="warning">{t("compliance.notice.required")}</Badge>
           ) : (
             <span className="text-muted-foreground">
               {t("compliance.notice.not_required")}
