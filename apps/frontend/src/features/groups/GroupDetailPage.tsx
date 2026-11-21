@@ -15,6 +15,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { EmptyState } from "@/components/EmptyState";
 import { Alert, AlertDescription } from "@/components/primer/alert";
+import { Checkbox } from "@/components/primer/Checkbox";
 import { Badge } from "@/components/primer/badge";
 import { Button } from "@/components/primer/Button";
 import { Card, CardContent } from "@/components/primer/card";
@@ -360,8 +361,7 @@ function GroupProjectsPanel({ groupId }: { groupId: string }) {
     <div className="flex flex-col" data-testid="group-detail-projects-panel">
       <div className="flex items-center justify-between border-b bg-muted/20 px-6 py-2">
         <label className="flex items-center gap-1.5 text-sm">
-          <input
-            type="checkbox"
+          <Checkbox
             checked={includeArchived}
             onChange={(e) => setIncludeArchived(e.target.checked)}
             data-testid="group-detail-projects-include-archived"

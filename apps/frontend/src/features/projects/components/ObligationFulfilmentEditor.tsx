@@ -5,6 +5,7 @@ import { Select } from "@primer/react";
 import { useTranslation } from "react-i18next";
 
 import { Alert, AlertDescription } from "@/components/primer/alert";
+import { Checkbox } from "@/components/primer/Checkbox";
 import { Button } from "@/components/primer/Button";
 import { Input } from "@/components/primer/Input";
 import { Label } from "@/components/primer/Label";
@@ -190,8 +191,7 @@ export function ObligationFulfilmentEditor({
       </div>
 
       <label className="flex items-center gap-2 text-sm">
-        <input
-          type="checkbox"
+        <Checkbox
           className="h-4 w-4 rounded border-input focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           checked={assignedToMe}
           disabled={somebodyElseOwnsIt}
