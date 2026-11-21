@@ -1,12 +1,12 @@
 {
   "contract": {
     "name": "bomlens-engine-plan",
-    "version": "1.3.0"
+    "version": "1.4.0"
   },
   "engine": {
-    "version": "1.13.5",
-    "image": "ghcr.io/sktelecom/bomlens:1.13.5",
-    "image_digest": "sha256:d05b2f4f2542ba1bc98fd07712fd4308f40205dd9ad28b7a8d15ae614b4b4128"
+    "version": "1.15.0",
+    "image": "ghcr.io/sktelecom/bomlens:1.15.0",
+    "image_digest": "sha256:563fb0be1b188bbd550f504fcd77b3f2f062637d25104c3f9ac99bcfd61f2a51"
   },
   "input": {
     "kind": "source",
@@ -28,7 +28,7 @@
       {
         "kind": "engine",
         "name": "build-prep.sh",
-        "sha256": "936ee7e44eff6361ca84f0c3c676b0f2dc4917a6e222ad769611a316c2ea3d13"
+        "sha256": "6e8133c0231d481e569fdcd4e22c355a37a37aaed2677c71bf95f2cd592dd4a2"
       },
       {
         "kind": "engine",
@@ -38,7 +38,7 @@
       {
         "kind": "engine",
         "name": "make-plan.sh",
-        "sha256": "4cd5f4a166896757bf510740f6b68ad3405595c2e59282a67b3c61f3d4f23636"
+        "sha256": "fd0b1f470e489c9e7fb50a221a7e962c6e1f968392ba5e447773e45e0882a650"
       },
       {
         "kind": "file",
@@ -49,7 +49,7 @@
       {
         "kind": "image",
         "name": "bomlens",
-        "sha256": "d05b2f4f2542ba1bc98fd07712fd4308f40205dd9ad28b7a8d15ae614b4b4128"
+        "sha256": "563fb0be1b188bbd550f504fcd77b3f2f062637d25104c3f9ac99bcfd61f2a51"
       },
       {
         "kind": "image",
@@ -58,7 +58,17 @@
       },
       {
         "kind": "setting",
+        "name": "BOMLENS_AI_USAGE_TIMEOUT",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "kind": "setting",
         "name": "BOMLENS_ANDROID_FULL_GRAPH",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "kind": "setting",
+        "name": "BOMLENS_GRADLE_FULL_GRAPH",
         "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
       {
@@ -84,6 +94,11 @@
       {
         "kind": "setting",
         "name": "BOMLENS_NODE_FULL_GRAPH",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "kind": "setting",
+        "name": "BOMLENS_NO_AI_USAGE",
         "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
       {

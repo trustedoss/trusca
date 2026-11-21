@@ -1,12 +1,12 @@
 {
   "contract": {
     "name": "bomlens-engine-plan",
-    "version": "1.3.0"
+    "version": "1.4.0"
   },
   "engine": {
-    "version": "1.13.5",
-    "image": "ghcr.io/sktelecom/bomlens:1.13.5",
-    "image_digest": "sha256:d05b2f4f2542ba1bc98fd07712fd4308f40205dd9ad28b7a8d15ae614b4b4128"
+    "version": "1.15.0",
+    "image": "ghcr.io/sktelecom/bomlens:1.15.0",
+    "image_digest": "sha256:563fb0be1b188bbd550f504fcd77b3f2f062637d25104c3f9ac99bcfd61f2a51"
   },
   "input": {
     "kind": "source",
@@ -18,14 +18,14 @@
   "output_file": "app_1.0_bom.json",
   "input_fingerprint": {
     "algorithm": "bomlens-input-1",
-    "sha256": "f01fc3456a78b3cb42de7bb56c94fe031e25fd660bee8bbe017b569c61feacd2",
+    "sha256": "0433772b8b4a685d6eba1be0c462336a510f2af92b3bb705929fc1363a92a071",
     "reusable": true,
     "reasons": [],
     "components": [
       {
         "kind": "engine",
         "name": "build-prep.sh",
-        "sha256": "936ee7e44eff6361ca84f0c3c676b0f2dc4917a6e222ad769611a316c2ea3d13"
+        "sha256": "6e8133c0231d481e569fdcd4e22c355a37a37aaed2677c71bf95f2cd592dd4a2"
       },
       {
         "kind": "engine",
@@ -35,7 +35,7 @@
       {
         "kind": "engine",
         "name": "make-plan.sh",
-        "sha256": "4cd5f4a166896757bf510740f6b68ad3405595c2e59282a67b3c61f3d4f23636"
+        "sha256": "fd0b1f470e489c9e7fb50a221a7e962c6e1f968392ba5e447773e45e0882a650"
       },
       {
         "kind": "file",
@@ -46,16 +46,26 @@
       {
         "kind": "image",
         "name": "bomlens",
-        "sha256": "d05b2f4f2542ba1bc98fd07712fd4308f40205dd9ad28b7a8d15ae614b4b4128"
+        "sha256": "563fb0be1b188bbd550f504fcd77b3f2f062637d25104c3f9ac99bcfd61f2a51"
       },
       {
         "kind": "image",
         "name": "stage1",
-        "sha256": "9e9cbff28364a13767fc0fe8230e1c6788fcfd15d991c5271c70bed28fd04d4d"
+        "sha256": "0fb2e022c564589424f8e6704e3417eae573434e5bb43540cc86fceac8a61d84"
+      },
+      {
+        "kind": "setting",
+        "name": "BOMLENS_AI_USAGE_TIMEOUT",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
       {
         "kind": "setting",
         "name": "BOMLENS_ANDROID_FULL_GRAPH",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "kind": "setting",
+        "name": "BOMLENS_GRADLE_FULL_GRAPH",
         "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
       {
@@ -81,6 +91,11 @@
       {
         "kind": "setting",
         "name": "BOMLENS_NODE_FULL_GRAPH",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "kind": "setting",
+        "name": "BOMLENS_NO_AI_USAGE",
         "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
       {
@@ -139,8 +154,8 @@
     {
       "id": "generate",
       "stage": 1,
-      "image": "ghcr.io/cdxgen/cdxgen-alpine-node24:13.3.0",
-      "image_digest": "sha256:9e9cbff28364a13767fc0fe8230e1c6788fcfd15d991c5271c70bed28fd04d4d",
+      "image": "ghcr.io/cdxgen/cdxgen-alpine-node24:13.5.0",
+      "image_digest": "sha256:0fb2e022c564589424f8e6704e3417eae573434e5bb43540cc86fceac8a61d84",
       "user": "0:0",
       "entrypoint": [
         "sh"
@@ -232,14 +247,14 @@
       ],
       "input_fingerprint": {
         "algorithm": "bomlens-input-1",
-        "sha256": "f01fc3456a78b3cb42de7bb56c94fe031e25fd660bee8bbe017b569c61feacd2",
+        "sha256": "0433772b8b4a685d6eba1be0c462336a510f2af92b3bb705929fc1363a92a071",
         "reusable": true,
         "reasons": [],
         "components": [
           {
             "kind": "engine",
             "name": "build-prep.sh",
-            "sha256": "936ee7e44eff6361ca84f0c3c676b0f2dc4917a6e222ad769611a316c2ea3d13"
+            "sha256": "6e8133c0231d481e569fdcd4e22c355a37a37aaed2677c71bf95f2cd592dd4a2"
           },
           {
             "kind": "engine",
@@ -249,7 +264,7 @@
           {
             "kind": "engine",
             "name": "make-plan.sh",
-            "sha256": "4cd5f4a166896757bf510740f6b68ad3405595c2e59282a67b3c61f3d4f23636"
+            "sha256": "fd0b1f470e489c9e7fb50a221a7e962c6e1f968392ba5e447773e45e0882a650"
           },
           {
             "kind": "file",
@@ -260,16 +275,26 @@
           {
             "kind": "image",
             "name": "bomlens",
-            "sha256": "d05b2f4f2542ba1bc98fd07712fd4308f40205dd9ad28b7a8d15ae614b4b4128"
+            "sha256": "563fb0be1b188bbd550f504fcd77b3f2f062637d25104c3f9ac99bcfd61f2a51"
           },
           {
             "kind": "image",
             "name": "stage1",
-            "sha256": "9e9cbff28364a13767fc0fe8230e1c6788fcfd15d991c5271c70bed28fd04d4d"
+            "sha256": "0fb2e022c564589424f8e6704e3417eae573434e5bb43540cc86fceac8a61d84"
+          },
+          {
+            "kind": "setting",
+            "name": "BOMLENS_AI_USAGE_TIMEOUT",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
           },
           {
             "kind": "setting",
             "name": "BOMLENS_ANDROID_FULL_GRAPH",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          {
+            "kind": "setting",
+            "name": "BOMLENS_GRADLE_FULL_GRAPH",
             "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
           },
           {
@@ -295,6 +320,11 @@
           {
             "kind": "setting",
             "name": "BOMLENS_NODE_FULL_GRAPH",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          {
+            "kind": "setting",
+            "name": "BOMLENS_NO_AI_USAGE",
             "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
           },
           {
@@ -364,12 +394,15 @@
         "BOMLENS_KEEP_BUILD_OUTPUT",
         "BOMLENS_MAVEN_FULL_GRAPH",
         "BOMLENS_ANDROID_FULL_GRAPH",
+        "BOMLENS_GRADLE_FULL_GRAPH",
         "BOMLENS_NODE_FULL_GRAPH",
         "BOMLENS_PHP_FULL_GRAPH",
         "BOMLENS_INCLUDE_NON_SHIPPED",
         "BOMLENS_INCLUDE_DEV_DEPENDENCIES",
         "BOMLENS_NO_COPYRIGHT",
         "BOMLENS_NO_CARGO_LICENSE",
+        "BOMLENS_NO_AI_USAGE",
+        "BOMLENS_AI_USAGE_TIMEOUT",
         "BOMLENS_PREP_TIMEOUT",
         "HTTP_PROXY",
         "HTTPS_PROXY",
@@ -377,6 +410,7 @@
         "http_proxy",
         "https_proxy",
         "no_proxy",
+        "BOMLENS_EXTRA_CA_CERTS",
         "GOPROXY",
         "GOSUMDB",
         "HOST_UID",
@@ -397,8 +431,8 @@
     {
       "id": "postprocess",
       "stage": 2,
-      "image": "ghcr.io/sktelecom/bomlens:1.13.5",
-      "image_digest": "sha256:d05b2f4f2542ba1bc98fd07712fd4308f40205dd9ad28b7a8d15ae614b4b4128",
+      "image": "ghcr.io/sktelecom/bomlens:1.15.0",
+      "image_digest": "sha256:563fb0be1b188bbd550f504fcd77b3f2f062637d25104c3f9ac99bcfd61f2a51",
       "user": null,
       "entrypoint": null,
       "args": [],
@@ -439,12 +473,15 @@
         "BOMLENS_KEEP_BUILD_OUTPUT",
         "BOMLENS_MAVEN_FULL_GRAPH",
         "BOMLENS_ANDROID_FULL_GRAPH",
+        "BOMLENS_GRADLE_FULL_GRAPH",
         "BOMLENS_NODE_FULL_GRAPH",
         "BOMLENS_PHP_FULL_GRAPH",
         "BOMLENS_INCLUDE_NON_SHIPPED",
         "BOMLENS_INCLUDE_DEV_DEPENDENCIES",
         "BOMLENS_NO_COPYRIGHT",
         "BOMLENS_NO_CARGO_LICENSE",
+        "BOMLENS_NO_AI_USAGE",
+        "BOMLENS_AI_USAGE_TIMEOUT",
         "BOMLENS_PREP_TIMEOUT",
         "HTTP_PROXY",
         "HTTPS_PROXY",
@@ -452,6 +489,7 @@
         "http_proxy",
         "https_proxy",
         "no_proxy",
+        "BOMLENS_EXTRA_CA_CERTS",
         "TRIVY_DB_REPOSITORY",
         "TRIVY_JAVA_DB_REPOSITORY",
         "TRIVY_SKIP_DB_UPDATE",
@@ -462,6 +500,12 @@
         "TRIVY_REGISTRY_TOKEN",
         "TRIVY_INSECURE",
         "BOMLENS_TRIVY_DB_MAX_AGE_DAYS",
+        "BOMLENS_GRYPE_DB_MAX_AGE_DAYS",
+        "GRYPE_DB_UPDATE_URL",
+        "BOMLENS_GO_VULNDB",
+        "BOMLENS_GO_VULNDB_PATH",
+        "BOMLENS_GO_VULNDB_MAX_AGE_DAYS",
+        "BOMLENS_GO_VULNDB_URL",
         "KEV_URL",
         "EPSS_API"
       ],

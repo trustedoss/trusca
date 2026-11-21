@@ -8,21 +8,21 @@
               "name": "OWASP Foundation"
             }
           ],
-          "bom-ref": "pkg:npm/@cdxgen/cdxgen@13.3.0",
+          "bom-ref": "pkg:npm/@cdxgen/cdxgen@13.5.0",
           "group": "@cdxgen",
           "name": "cdxgen",
           "publisher": "OWASP Foundation",
-          "purl": "pkg:npm/%40cdxgen/cdxgen@13.3.0",
+          "purl": "pkg:npm/%40cdxgen/cdxgen@13.5.0",
           "type": "application",
-          "version": "13.3.0"
+          "version": "13.5.0"
         }
       },
       "bom-ref": "metadata-annotations",
       "subjects": [
         "pkg:npm/baseline-mixed-policy-fixture@1.0.0"
       ],
-      "text": "This Software Bill-of-Materials (SBOM) document was created on Thursday, October 15, 2026 with cdxgen. The data was captured during the build lifecycle phase. The document describes an application named 'baseline-mixed-policy-fixture' with version '1.0.0'.",
-      "timestamp": "2026-10-15T18:02:45Z"
+      "text": "This Software Bill-of-Materials (SBOM) document was created on Friday, November 20, 2026 with cdxgen. The data was captured during the build lifecycle phase. The document describes an application named 'baseline-mixed-policy-fixture' with version '1.0.0'.",
+      "timestamp": "2026-11-20T23:08:45Z"
     }
   ],
   "bomFormat": "CycloneDX",
@@ -60,10 +60,6 @@
       ],
       "name": "lodash",
       "properties": [
-        {
-          "name": "internal:LocalNodeModulesPath",
-          "value": "node_modules/lodash"
-        },
         {
           "name": "internal:ResolvedUrl",
           "value": "https://registry.npmjs.org/lodash/-/lodash-4.17.21.tgz"
@@ -139,7 +135,7 @@
         "value": "unknown-to-author"
       }
     ],
-    "timestamp": "2026-10-15T18:02:45Z",
+    "timestamp": "2026-11-20T23:08:45Z",
     "tools": {
       "components": [
         {
@@ -148,30 +144,34 @@
               "name": "OWASP Foundation"
             }
           ],
-          "bom-ref": "pkg:npm/@cdxgen/cdxgen@13.3.0",
+          "bom-ref": "pkg:npm/@cdxgen/cdxgen@13.5.0",
           "group": "@cdxgen",
           "name": "cdxgen",
           "publisher": "OWASP Foundation",
-          "purl": "pkg:npm/%40cdxgen/cdxgen@13.3.0",
+          "purl": "pkg:npm/%40cdxgen/cdxgen@13.5.0",
           "type": "application",
-          "version": "13.3.0"
+          "version": "13.5.0"
         },
         {
           "name": "BomLens",
           "publisher": "SK Telecom",
           "type": "application",
-          "version": "1.13.5"
+          "version": "1.15.0"
         }
       ]
     }
   },
-  "serialNumber": "urn:uuid:e1ed3078-8880-4db1-a2ca-dbb27cc0c962",
+  "serialNumber": "urn:uuid:e17297bb-a8b2-4c81-8fdf-11ec331eeae5",
   "services": [],
   "specVersion": "1.6",
   "version": 1,
   "compositions": [
     {
-      "aggregate": "unknown"
+      "aggregate": "unknown",
+      "dependencies": [
+        "pkg:npm/baseline-mixed-policy-fixture@1.0.0",
+        "pkg:npm/lodash@4.17.21"
+      ]
     }
   ]
 }

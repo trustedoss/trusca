@@ -101,6 +101,44 @@ Before that, the `1.13.2` captures had replaced ones from `sha-34010b6`
 same result apart from the image fields, the run times and the number of
 days in the stale database's detail.
 
+### Contract 1.4.0 images
+
+The BomLens v1.15.0 release, both images built from the same commit:
+
+| | |
+|---|---|
+| Image | `ghcr.io/sktelecom/bomlens:1.15.0` |
+| Digest | `sha256:563fb0be1b188bbd550f504fcd77b3f2f062637d25104c3f9ac99bcfd61f2a51` (index; the linux/arm64 manifest ran) |
+| Deep-license image | `ghcr.io/sktelecom/bomlens-deep-license:1.15.0` |
+| Deep-license digest | `sha256:d62f7db53491be9c2b351f0157f6b45b2d0aaea913033528a8742d92c0b28095` (index; the linux/arm64 manifest ran) |
+| Source commit | image label `org.opencontainers.image.revision=44168332`, the commit the `v1.15.0` tag in `sktelecom/bomlens` names (engine contract `1.4.0`) |
+| Trivy in the image | 0.75.0 |
+| Trivy database | schema 2, `UpdatedAt` 2026-11-17T06:59Z, downloaded with Trivy 0.76.1 `trivy image --download-db-only`, mounted read-only at `/trivy-db` |
+
+Used for `image-os-licenses`, `source-trivy-db`, `source-trivy-db-stale`,
+`image-registry-alpine` and `source-deep-license-trivy-db`, captured on
+2026-11-21. The source cases ran through the `bomlens-runner` package
+(commit `0d97e8f6`) on Docker, which runs the plan's stages with the same
+mounts and limits as before, with `BOMLENS_TRIVY_DB_MAX_AGE_DAYS=9` for stage 2
+and, for the deep-license case, `LICENSE_REGISTRY=true` and
+`LICENSE_REGISTRY_BUDGET=0`. The image cases ran with the `docker run` form
+described for `image-registry-alpine` below, with `BOMLENS_TRIVY_DB_MAX_AGE_DAYS=9`
+and the network's TLS-inspection CA bundle mounted read-only and named by
+`BOMLENS_EXTRA_CA_CERTS`; no capture records its path. `source-trivy-db-stale`
+used a copy of the same database whose `metadata.json` dates are twelve days
+earlier (`UpdatedAt` 2026-11-09T06:59Z).
+
+They replace captures of the same cases from the `1.13.5` release
+(2026-10-15). The steps, statuses, reasons and details are the same, with one
+new step in every manifest: `go-vulndb`, `skipped` (`no_input`, "no Go module
+in the SBOM"). The manifests say contract `1.4.0` and the engine `1.15.0`.
+The stage 1 image of the source cases is `cdxgen-alpine-node24:13.5.0`. The
+findings follow the newer database: `node` has two CVEs (`CVE-2025-13465`,
+`CVE-2026-4800`; `CVE-2026-2950` is no longer reported), and the distroless
+image has four advisories (`DLA-4845-1`, `DLA-4792-1`, `DLA-4854-1`,
+`DLA-4867-1`). SBOM component counts are the same: 1 for the source cases, 955
+for the distroless image, 96 entries for Alpine.
+
 ## What is kept from each run
 
 Only the files the adapter reads: `bomlens-result.json`, the `sbom.cyclonedx`

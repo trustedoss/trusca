@@ -3,8 +3,8 @@
   "Trivy": {
     "Version": "0.75.0"
   },
-  "ReportID": "01a140bb-1ef7-7c1f-b39f-7b1e7fc4bef9",
-  "CreatedAt": "2026-10-15T18:02:47.415795514Z",
+  "ReportID": "01a1fb37-d615-7428-8f16-23e2fa5397f8",
+  "CreatedAt": "2026-11-20T23:08:22.933274465Z",
   "ArtifactName": "node_1.0.0_bom.json",
   "ArtifactType": "cyclonedx",
   "Results": [
@@ -49,7 +49,7 @@
           },
           "Fingerprint": "sha256:76703af5c40ea26eb6a807312fa41989bfbf01a94ac661b1d38af00b97203bff",
           "Title": "lodash: lodash: Arbitrary code execution via untrusted input in template imports",
-          "Description": "Impact:\n\nThe fix for CVE-2021-23337 (https://github.com/advisories/GHSA-35jh-r3h4-6jhm) added validation for the variable option in _.template but did not apply the same validation to options.imports key names. Both paths flow into the same Function() constructor sink.\n\nWhen an application passes untrusted input as options.imports key names, an attacker can inject default-parameter expressions that execute arbitrary code at template compilation time.\n\nAdditionally, _.template uses assignInWith to merge imports, which enumerates inherited properties via for..in. If Object.prototype has been polluted by any other vector, the polluted keys are copied into the imports object and passed to Function().\n\nPatches:\n\nUsers should upgrade to version 4.18.0.\n\nWorkarounds:\n\nDo not pass untrusted input as key names in options.imports. Only use developer-controlled, static key names.",
+          "Description": "The fix for CVE-2021-23337 added validation for the variable option in _.template but did not apply the same validation to options.imports key names, and both paths flow into the same Function() constructor sink. When an application passes untrusted input as options.imports key names, an attacker can inject default-parameter expressions that execute arbitrary code at template compilation time. Additionally, _.template uses assignInWith to merge imports, which enumerates inherited properties via for..in, so if Object.prototype has been polluted by another vector the polluted keys are copied into the imports object and passed to Function(). The issue is fixed in 4.18.1 for lodash, lodash-es, lodash-amd, and lodash.template. As a workaround, do not pass untrusted input as key names in options.imports; use only developer-controlled, static key names.",
           "Severity": "HIGH",
           "CweIDs": [
             "CWE-94"
@@ -153,17 +153,20 @@
             "https://access.redhat.com/errata/RHSA-2026:8498",
             "https://access.redhat.com/errata/RHSA-2026:9385",
             "https://access.redhat.com/errata/RHSA-2026:9742",
+            "https://access.redhat.com/errata/RHSA-2026:97514",
+            "https://access.redhat.com/errata/RHSA-2026:97539",
             "https://access.redhat.com/security/cve/CVE-2026-4800",
             "https://advisory.echohq.com/cve/CVE-2026-4800",
             "https://bugzilla.redhat.com/2453496",
-            "https://bugzilla.redhat.com/show_bug.cgi?id=2431740",
+            "https://bugzilla.redhat.com/2453499",
             "https://bugzilla.redhat.com/show_bug.cgi?id=2453496",
+            "https://bugzilla.redhat.com/show_bug.cgi?id=2453499",
             "https://cna.openjsf.org/security-advisories.html",
             "https://creativecommons.org/licenses/by/4.0/",
-            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2025-13465",
+            "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-2950",
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-4800",
-            "https://errata.almalinux.org/9/ALSA-2026-19167.html",
-            "https://errata.rockylinux.org/RLSA-2026:24331",
+            "https://errata.almalinux.org/9/ALSA-2026-97539.html",
+            "https://errata.rockylinux.org/RLSA-2026:97514",
             "https://github.com/advisories/GHSA-35jh-r3h4-6jhm",
             "https://github.com/advisories/GHSA-r5fr-rjxr-66jc",
             "https://github.com/lodash/lodash",
@@ -177,7 +180,7 @@
             "https://www.cve.org/CVERecord?id=CVE-2026-4800"
           ],
           "PublishedDate": "2026-03-31T20:16:29.66Z",
-          "LastModifiedDate": "2026-09-10T13:20:23.21Z"
+          "LastModifiedDate": "2026-10-15T07:18:00.61Z"
         },
         {
           "VulnerabilityID": "CVE-2025-13465",
@@ -203,7 +206,7 @@
           },
           "Fingerprint": "sha256:ad15e270fc40b402e03c1888c2eb0a67e44dab4d4e014f6718c386cfb98744a8",
           "Title": "lodash: prototype pollution in _.unset and _.omit functions",
-          "Description": "Lodash versions 4.0.0 through 4.17.22 are vulnerable to prototype pollution in the _.unset and _.omit functions. An attacker can pass crafted paths which cause Lodash to delete methods from global prototypes.\n\nThe issue permits deletion of properties but does not allow overwriting their original behavior.\n\nThis issue is patched on 4.17.23",
+          "Description": "The _.unset and _.omit functions in Lodash are vulnerable to prototype pollution. An attacker can pass crafted paths which cause Lodash to delete methods from global prototypes. The issue permits deletion of properties but does not allow overwriting their original behavior. The issue is patched from 4.17.23 to 4.18.0 depending on the package: lodash, lodash-es, and lodash-amd in 4.17.23, and the standalone lodash.unset and lodash.omit packages in 4.18.0.",
           "Severity": "MEDIUM",
           "CweIDs": [
             "CWE-1321"
@@ -296,6 +299,7 @@
             "https://access.redhat.com/errata/RHSA-2026:3960",
             "https://access.redhat.com/errata/RHSA-2026:3962",
             "https://access.redhat.com/errata/RHSA-2026:40118",
+            "https://access.redhat.com/errata/RHSA-2026:40138",
             "https://access.redhat.com/errata/RHSA-2026:40945",
             "https://access.redhat.com/errata/RHSA-2026:40984",
             "https://access.redhat.com/errata/RHSA-2026:41064",
@@ -326,6 +330,7 @@
             "https://bugzilla.redhat.com/show_bug.cgi?id=2431740",
             "https://bugzilla.redhat.com/show_bug.cgi?id=2433645",
             "https://cert-portal.siemens.com/productcert/html/ssa-253495.html",
+            "https://cna.openjsf.org/security-advisories.html",
             "https://creativecommons.org/licenses/by/4.0/",
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2025-13465",
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2025-15284",
@@ -346,70 +351,7 @@
             "https://www.cve.org/CVERecord?id=CVE-2025-13465"
           ],
           "PublishedDate": "2026-01-21T20:16:05.25Z",
-          "LastModifiedDate": "2026-09-10T13:16:56.537Z"
-        },
-        {
-          "VulnerabilityID": "CVE-2026-2950",
-          "VendorIDs": [
-            "GHSA-f23m-r3pf-42rh"
-          ],
-          "PkgID": "lodash@4.17.21",
-          "PkgName": "lodash",
-          "PkgIdentifier": {
-            "PURL": "pkg:npm/lodash@4.17.21",
-            "UID": "245ea78b920af11a",
-            "BOMRef": "pkg:npm/lodash@4.17.21"
-          },
-          "InstalledVersion": "4.17.21",
-          "FixedVersion": "4.18.0",
-          "Status": "fixed",
-          "SeveritySource": "ghsa",
-          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-2950",
-          "DataSource": {
-            "ID": "ghsa",
-            "Name": "GitHub Security Advisory npm",
-            "URL": "https://github.com/advisories?query=type%3Areviewed+ecosystem%3Anpm"
-          },
-          "Fingerprint": "sha256:a5faf7fc43c1ae4c271c49693e56e6b40902104b09133773535b249fb8e9bad7",
-          "Title": "lodash: Lodash: Prototype pollution allows deletion of built-in prototype properties via array path bypass",
-          "Description": "Impact:\n\nLodash versions 4.17.23 and earlier are vulnerable to prototype pollution in the _.unset and _.omit functions. The fix for (CVE-2025-13465: https://github.com/lodash/lodash/security/advisories/GHSA-xxjr-mmjv-4gpg) only guards against string key members, so an attacker can bypass the check by passing array-wrapped path segments. This allows deletion of properties from built-in prototypes such as Object.prototype, Number.prototype, and String.prototype.\n\nThe issue permits deletion of prototype properties but does not allow overwriting their original behavior.\n\nPatches:\n\nThis issue is patched in 4.18.0.\n\nWorkarounds:\n\nNone. Upgrade to the patched version.",
-          "Severity": "MEDIUM",
-          "CweIDs": [
-            "CWE-1321"
-          ],
-          "VendorSeverity": {
-            "ghsa": 2,
-            "nvd": 2,
-            "redhat": 2,
-            "ubuntu": 2
-          },
-          "CVSS": {
-            "ghsa": {
-              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:L/A:L",
-              "V3Score": 6.5
-            },
-            "nvd": {
-              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:L/A:N",
-              "V3Score": 5.3
-            },
-            "redhat": {
-              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:N/I:N/A:H",
-              "V3Score": 6.5
-            }
-          },
-          "References": [
-            "https://access.redhat.com/security/cve/CVE-2026-2950",
-            "https://advisory.echohq.com/cve/CVE-2026-2950",
-            "https://github.com/advisories/GHSA-f23m-r3pf-42rh",
-            "https://github.com/lodash/lodash",
-            "https://github.com/lodash/lodash/security/advisories/GHSA-f23m-r3pf-42rh",
-            "https://github.com/lodash/lodash/security/advisories/GHSA-xxjr-mmjv-4gpg",
-            "https://nvd.nist.gov/vuln/detail/CVE-2026-2950",
-            "https://ubuntu.com/security/notices/USN-8411-1",
-            "https://www.cve.org/CVERecord?id=CVE-2026-2950"
-          ],
-          "PublishedDate": "2026-03-31T20:16:26.207Z",
-          "LastModifiedDate": "2026-07-24T20:10:00.147Z"
+          "LastModifiedDate": "2026-10-15T07:17:53.62Z"
         }
       ]
     }

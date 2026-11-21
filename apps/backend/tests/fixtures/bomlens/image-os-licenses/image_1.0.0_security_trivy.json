@@ -3,8 +3,8 @@
   "Trivy": {
     "Version": "0.75.0"
   },
-  "ReportID": "01a140bb-997f-7597-938d-a11f5d0343f5",
-  "CreatedAt": "2026-10-15T18:03:18.783368225Z",
+  "ReportID": "01a1fb39-e8fe-74b6-b65f-6793df31cadb",
+  "CreatedAt": "2026-11-20T23:10:38.846309927Z",
   "ArtifactName": "image_1.0.0_bom.json",
   "ArtifactType": "cyclonedx",
   "Metadata": {
@@ -105,6 +105,31 @@
       ],
       "Vulnerabilities": [
         {
+          "VulnerabilityID": "DLA-4845-1",
+          "VendorIDs": [
+            "DLA-4845-1"
+          ],
+          "PkgID": "ca-certificates@20250419~deb12u1",
+          "PkgName": "ca-certificates",
+          "PkgIdentifier": {
+            "PURL": "pkg:deb/debian/ca-certificates@20250419~deb12u1?arch=all\u0026distro=debian-12.15",
+            "UID": "37fccb778aa185fc",
+            "BOMRef": "pkg:deb/debian/ca-certificates@20250419~deb12u1?arch=all\u0026distro=debian-12.15\u0026package-id=a043ad59b17829f8"
+          },
+          "InstalledVersion": "20250419~deb12u1",
+          "FixedVersion": "20250419~deb12u2",
+          "Status": "fixed",
+          "DataSource": {
+            "ID": "debian",
+            "Name": "Debian Security Tracker",
+            "URL": "https://salsa.debian.org/security-tracker-team/security-tracker"
+          },
+          "Fingerprint": "sha256:2617e32eb5b05ef6b5adc315c5597aed758db5e1ea0298b62f018237990d7ca8",
+          "Title": "ca-certificates - security update",
+          "Description": "Description Not Available",
+          "Severity": "UNKNOWN"
+        },
+        {
           "VulnerabilityID": "DLA-4792-1",
           "VendorIDs": [
             "DLA-4792-1"
@@ -126,6 +151,57 @@
           },
           "Fingerprint": "sha256:8725a9f8e0e732ea3d5c07c9f2197698b5627b91285b5e84baa7c0d16013beed",
           "Title": "tzdata - new timezone database",
+          "Description": "Description Not Available",
+          "Severity": "UNKNOWN"
+        },
+        {
+          "VulnerabilityID": "DLA-4854-1",
+          "VendorIDs": [
+            "DLA-4854-1"
+          ],
+          "PkgID": "tzdata@2026b-0+deb12u1",
+          "PkgName": "tzdata",
+          "PkgIdentifier": {
+            "PURL": "pkg:deb/debian/tzdata@2026b-0%2Bdeb12u1?arch=all\u0026distro=debian-12.15",
+            "UID": "4f640c97faa7eb9c",
+            "BOMRef": "pkg:deb/debian/tzdata@2026b-0%2Bdeb12u1?arch=all\u0026distro=debian-12.15\u0026package-id=3bd5299282473d43"
+          },
+          "InstalledVersion": "2026b-0+deb12u1",
+          "FixedVersion": "2026e-0+deb12u1",
+          "Status": "fixed",
+          "DataSource": {
+            "ID": "debian",
+            "Name": "Debian Security Tracker",
+            "URL": "https://salsa.debian.org/security-tracker-team/security-tracker"
+          },
+          "Fingerprint": "sha256:98eec94dd9ed8d03d5a204db7164dd897b33abe6f486732075b10ad420e8276d",
+          "Title": "tzdata - new timezone database",
+          "Description": "Description Not Available",
+          "Severity": "UNKNOWN"
+        },
+        {
+          "VulnerabilityID": "DLA-4867-1",
+          "VendorIDs": [
+            "DLA-4867-1"
+          ],
+          "PkgID": "tzdata@2026b-0+deb12u1",
+          "PkgName": "tzdata",
+          "PkgIdentifier": {
+            "PURL": "pkg:deb/debian/tzdata@2026b-0%2Bdeb12u1?arch=all\u0026distro=debian-12.15",
+            "UID": "4f640c97faa7eb9c",
+            "BOMRef": "pkg:deb/debian/tzdata@2026b-0%2Bdeb12u1?arch=all\u0026distro=debian-12.15\u0026package-id=3bd5299282473d43"
+          },
+          "InstalledVersion": "2026b-0+deb12u1",
+          "FixedVersion": "2026f-0+deb12u1",
+          "Status": "fixed",
+          "DataSource": {
+            "ID": "debian",
+            "Name": "Debian Security Tracker",
+            "URL": "https://salsa.debian.org/security-tracker-team/security-tracker"
+          },
+          "Fingerprint": "sha256:ea1180280cb35ad04c957e320f8e0ef484727d03f8d388d937307a4b4a739833",
+          "Title": "tzdata - new timezone database",
+          "Description": "Description Not Available",
           "Severity": "UNKNOWN"
         }
       ]

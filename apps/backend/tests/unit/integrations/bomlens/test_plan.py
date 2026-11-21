@@ -79,7 +79,7 @@ def test_the_captured_plans_come_from_the_pinned_image(case: str) -> None:
     pinned_ref, pinned_digest = BOMLENS_IMAGE_DEFAULT.split("@", 1)
     plan = load_plan(PLAN_DIR / case)
     assert (plan.engine_image, plan.engine_image_digest) == (pinned_ref, pinned_digest)
-    assert plan.contract_version == "1.3.0"
+    assert plan.contract_version == "1.4.0"
 
 
 def test_the_captured_unsupported_plan_has_no_stages() -> None:
@@ -514,6 +514,19 @@ def test_the_captured_stage_2_env_and_passthrough_are_what_trusca_keeps() -> Non
         # Contract 1.3.0 lists stage 1's settings for stage 2 as well, and the
         # NVD key of the CPE match TRUSCA does not run.
         "NVD_API_KEY",
+        # Contract 1.4.0 adds the AI usage options, the extra CA bundle, the
+        # grype and Go vulnerability database options and Gradle's full graph.
+        # TRUSCA sets none of them, and mounts no CA bundle.
+        "BOMLENS_GRADLE_FULL_GRAPH",
+        "BOMLENS_NO_AI_USAGE",
+        "BOMLENS_AI_USAGE_TIMEOUT",
+        "BOMLENS_EXTRA_CA_CERTS",
+        "BOMLENS_GRYPE_DB_MAX_AGE_DAYS",
+        "GRYPE_DB_UPDATE_URL",
+        "BOMLENS_GO_VULNDB",
+        "BOMLENS_GO_VULNDB_PATH",
+        "BOMLENS_GO_VULNDB_MAX_AGE_DAYS",
+        "BOMLENS_GO_VULNDB_URL",
         "BOMLENS_KEEP_BUILD_OUTPUT",
         "BOMLENS_MAVEN_FULL_GRAPH",
         "BOMLENS_ANDROID_FULL_GRAPH",
@@ -539,7 +552,15 @@ def test_the_captured_stage_2_env_and_passthrough_are_what_trusca_keeps() -> Non
     stage1_left_out = set(_stage(document, "generate")["env_passthrough"]) - set(
         plan.generate.env_passthrough
     )
-    assert stage1_left_out == {"HOST_UID", "HOST_GID", "BOMLENS_INCLUDE_DEV_DEPENDENCIES"}
+    assert stage1_left_out == {
+        "HOST_UID",
+        "HOST_GID",
+        "BOMLENS_INCLUDE_DEV_DEPENDENCIES",
+        "BOMLENS_GRADLE_FULL_GRAPH",
+        "BOMLENS_NO_AI_USAGE",
+        "BOMLENS_AI_USAGE_TIMEOUT",
+        "BOMLENS_EXTRA_CA_CERTS",
+    }
 
 
 # ---------------------------------------------------------------------------

@@ -59,7 +59,7 @@ def _with_steps(*steps: dict[str, Any]) -> contract.EngineResult:
 #: sha-b826d43 wrote 1.0.0-dev, sha-5a93586 1.0.0, the 1.13.5 release 1.3.0.
 #: The contract version of the pinned release; its captures are checked against
 #: the digests in config.py.
-NEWEST = "1.3.0"
+NEWEST = "1.4.0"
 
 CONTRACT_VERSIONS = {
     "image-ok": "1.0.0-dev",
@@ -141,8 +141,8 @@ def test_the_trivy_report_is_found_by_role_when_it_is_not_the_combined_one() -> 
     """Contract 1.3.0 (BomLens v1.13.3): when the combined report lists a
     distribution advisory under ``Advisories`` instead of as a finding,
     ``vulnerabilities.trivy`` names Trivy's own report, a separate file. The
-    reader takes that role, so the image's one finding (``DLA-4792-1``) is
-    still read as Trivy wrote it."""
+    reader takes that role, so the image's findings (distribution advisories such as
+    ``DLA-4845-1``) are still read as Trivy wrote them."""
 
     from tests._bomlens_engine import FIXTURES
 
@@ -157,7 +157,7 @@ def test_the_trivy_report_is_found_by_role_when_it_is_not_the_combined_one() -> 
         for r in verified.document["Results"]
         for v in r.get("Vulnerabilities") or []
     ]
-    assert found == ["DLA-4792-1"]
+    assert found == ['DLA-4845-1', 'DLA-4792-1', 'DLA-4854-1', 'DLA-4867-1']
     # The combined report was not kept: the adapter never opens it.
     assert not (FIXTURES / "image-os-licenses" / combined.path).exists()
 

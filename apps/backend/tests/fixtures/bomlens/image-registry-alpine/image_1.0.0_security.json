@@ -3,8 +3,8 @@
   "Trivy": {
     "Version": "0.75.0"
   },
-  "ReportID": "01a140bb-afcf-7b3b-82c4-ceb4d124fdf5",
-  "CreatedAt": "2026-10-15T18:03:24.495737493Z",
+  "ReportID": "01a1fb3a-0040-7274-b4c6-b0d3e3dc52a6",
+  "CreatedAt": "2026-11-20T23:10:44.800162937Z",
   "ArtifactName": "image_1.0.0_bom.json",
   "ArtifactType": "cyclonedx",
   "Metadata": {
@@ -1135,7 +1135,7 @@
           ],
           "VendorSeverity": {
             "alma": 2,
-            "amazon": 3,
+            "amazon": 2,
             "azure": 2,
             "cbl-mariner": 2,
             "ghsa": 2,
@@ -1169,7 +1169,6 @@
             "http://www.openwall.com/lists/oss-security/2024/03/11/1",
             "https://access.redhat.com/errata/RHSA-2024:9088",
             "https://access.redhat.com/security/cve/CVE-2024-0727",
-            "https://advisory.echohq.com/cve/CVE-2024-0727",
             "https://bugzilla.redhat.com/2257571",
             "https://bugzilla.redhat.com/2258502",
             "https://bugzilla.redhat.com/2259944",
@@ -1216,7 +1215,7 @@
             "https://www.openssl.org/news/secadv/20240125.txt"
           ],
           "PublishedDate": "2024-01-26T09:15:07.637Z",
-          "LastModifiedDate": "2026-06-17T06:54:07.03Z"
+          "LastModifiedDate": "2026-10-15T01:17:18.263Z"
         },
         {
           "VulnerabilityID": "CVE-2025-9230",
@@ -1251,7 +1250,7 @@
             "cbl-mariner": 3,
             "julia": 3,
             "oracle-oval": 2,
-            "photon": 3,
+            "photon": 4,
             "redhat": 2,
             "rocky": 2,
             "ubuntu": 2
@@ -1300,7 +1299,7 @@
             "https://www.cve.org/CVERecord?id=CVE-2025-9230"
           ],
           "PublishedDate": "2025-09-30T14:15:41.05Z",
-          "LastModifiedDate": "2026-07-14T13:18:07.327Z"
+          "LastModifiedDate": "2026-11-09T20:57:31.21Z"
         },
         {
           "VulnerabilityID": "CVE-2023-6237",
@@ -1388,7 +1387,7 @@
             "https://www.openwall.com/lists/oss-security/2024/01/15/2"
           ],
           "PublishedDate": "2024-04-25T07:15:45.27Z",
-          "LastModifiedDate": "2026-10-14T23:17:19.22Z"
+          "LastModifiedDate": "2026-11-10T14:05:10.233Z"
         },
         {
           "VulnerabilityID": "CVE-2024-13176",
@@ -1629,7 +1628,7 @@
             "https://www.oracle.com/security-alerts/cpuapr2025.html#AppendixMSQL"
           ],
           "PublishedDate": "2025-01-20T14:15:26.247Z",
-          "LastModifiedDate": "2026-06-17T07:01:23.167Z"
+          "LastModifiedDate": "2026-11-09T20:22:46.043Z"
         },
         {
           "VulnerabilityID": "CVE-2024-2511",
@@ -1723,7 +1722,7 @@
             "https://www.openssl.org/news/vulnerabilities.html"
           ],
           "PublishedDate": "2024-04-08T14:15:07.66Z",
-          "LastModifiedDate": "2026-06-17T07:24:40.83Z"
+          "LastModifiedDate": "2026-11-06T19:29:12.633Z"
         },
         {
           "VulnerabilityID": "CVE-2024-4603",
@@ -1806,7 +1805,7 @@
             "https://www.openssl.org/news/secadv/20240516.txt"
           ],
           "PublishedDate": "2024-05-16T16:15:10.643Z",
-          "LastModifiedDate": "2026-06-17T08:02:14.847Z"
+          "LastModifiedDate": "2026-11-09T16:20:11.16Z"
         },
         {
           "VulnerabilityID": "CVE-2024-4741",
@@ -1840,7 +1839,7 @@
             "cbl-mariner": 3,
             "julia": 3,
             "oracle-oval": 3,
-            "photon": 3,
+            "photon": 4,
             "redhat": 1,
             "rocky": 1,
             "ubuntu": 1
@@ -1892,7 +1891,7 @@
             "https://www.openssl.org/news/secadv/20240528.txt"
           ],
           "PublishedDate": "2024-11-13T11:15:04.48Z",
-          "LastModifiedDate": "2026-06-17T08:02:32.007Z"
+          "LastModifiedDate": "2026-11-09T17:27:44.183Z"
         },
         {
           "VulnerabilityID": "CVE-2024-5535",
@@ -2041,7 +2040,7 @@
             "https://www.oracle.com/security-alerts/cpuoct2024.html#AppendixMSQL"
           ],
           "PublishedDate": "2024-06-27T11:15:24.447Z",
-          "LastModifiedDate": "2026-06-17T08:16:08.843Z"
+          "LastModifiedDate": "2026-11-10T14:31:44.263Z"
         },
         {
           "VulnerabilityID": "CVE-2024-9143",
@@ -2072,7 +2071,7 @@
           "VendorSeverity": {
             "amazon": 3,
             "julia": 2,
-            "photon": 2,
+            "photon": 3,
             "redhat": 1,
             "ubuntu": 1
           },
@@ -2114,7 +2113,7 @@
             "https://www.cve.org/CVERecord?id=CVE-2024-9143"
           ],
           "PublishedDate": "2024-10-16T17:15:18.13Z",
-          "LastModifiedDate": "2026-06-17T08:24:02.61Z"
+          "LastModifiedDate": "2026-11-09T15:56:44.17Z"
         },
         {
           "VulnerabilityID": "CVE-2025-9232",
@@ -2180,7 +2179,7 @@
             "https://www.cve.org/CVERecord?id=CVE-2025-9232"
           ],
           "PublishedDate": "2025-09-30T14:15:41.313Z",
-          "LastModifiedDate": "2026-07-14T13:18:07.783Z"
+          "LastModifiedDate": "2026-11-09T21:02:53.39Z"
         },
         {
           "VulnerabilityID": "CVE-2024-6119",
@@ -2397,7 +2396,7 @@
           ],
           "VendorSeverity": {
             "alma": 2,
-            "amazon": 3,
+            "amazon": 2,
             "azure": 2,
             "cbl-mariner": 2,
             "ghsa": 2,
@@ -2431,7 +2430,6 @@
             "http://www.openwall.com/lists/oss-security/2024/03/11/1",
             "https://access.redhat.com/errata/RHSA-2024:9088",
             "https://access.redhat.com/security/cve/CVE-2024-0727",
-            "https://advisory.echohq.com/cve/CVE-2024-0727",
             "https://bugzilla.redhat.com/2257571",
             "https://bugzilla.redhat.com/2258502",
             "https://bugzilla.redhat.com/2259944",
@@ -2478,7 +2476,7 @@
             "https://www.openssl.org/news/secadv/20240125.txt"
           ],
           "PublishedDate": "2024-01-26T09:15:07.637Z",
-          "LastModifiedDate": "2026-06-17T06:54:07.03Z"
+          "LastModifiedDate": "2026-10-15T01:17:18.263Z"
         },
         {
           "VulnerabilityID": "CVE-2025-9230",
@@ -2513,7 +2511,7 @@
             "cbl-mariner": 3,
             "julia": 3,
             "oracle-oval": 2,
-            "photon": 3,
+            "photon": 4,
             "redhat": 2,
             "rocky": 2,
             "ubuntu": 2
@@ -2562,7 +2560,7 @@
             "https://www.cve.org/CVERecord?id=CVE-2025-9230"
           ],
           "PublishedDate": "2025-09-30T14:15:41.05Z",
-          "LastModifiedDate": "2026-07-14T13:18:07.327Z"
+          "LastModifiedDate": "2026-11-09T20:57:31.21Z"
         },
         {
           "VulnerabilityID": "CVE-2023-6237",
@@ -2650,7 +2648,7 @@
             "https://www.openwall.com/lists/oss-security/2024/01/15/2"
           ],
           "PublishedDate": "2024-04-25T07:15:45.27Z",
-          "LastModifiedDate": "2026-10-14T23:17:19.22Z"
+          "LastModifiedDate": "2026-11-10T14:05:10.233Z"
         },
         {
           "VulnerabilityID": "CVE-2024-13176",
@@ -2891,7 +2889,7 @@
             "https://www.oracle.com/security-alerts/cpuapr2025.html#AppendixMSQL"
           ],
           "PublishedDate": "2025-01-20T14:15:26.247Z",
-          "LastModifiedDate": "2026-06-17T07:01:23.167Z"
+          "LastModifiedDate": "2026-11-09T20:22:46.043Z"
         },
         {
           "VulnerabilityID": "CVE-2024-2511",
@@ -2985,7 +2983,7 @@
             "https://www.openssl.org/news/vulnerabilities.html"
           ],
           "PublishedDate": "2024-04-08T14:15:07.66Z",
-          "LastModifiedDate": "2026-06-17T07:24:40.83Z"
+          "LastModifiedDate": "2026-11-06T19:29:12.633Z"
         },
         {
           "VulnerabilityID": "CVE-2024-4603",
@@ -3068,7 +3066,7 @@
             "https://www.openssl.org/news/secadv/20240516.txt"
           ],
           "PublishedDate": "2024-05-16T16:15:10.643Z",
-          "LastModifiedDate": "2026-06-17T08:02:14.847Z"
+          "LastModifiedDate": "2026-11-09T16:20:11.16Z"
         },
         {
           "VulnerabilityID": "CVE-2024-4741",
@@ -3102,7 +3100,7 @@
             "cbl-mariner": 3,
             "julia": 3,
             "oracle-oval": 3,
-            "photon": 3,
+            "photon": 4,
             "redhat": 1,
             "rocky": 1,
             "ubuntu": 1
@@ -3154,7 +3152,7 @@
             "https://www.openssl.org/news/secadv/20240528.txt"
           ],
           "PublishedDate": "2024-11-13T11:15:04.48Z",
-          "LastModifiedDate": "2026-06-17T08:02:32.007Z"
+          "LastModifiedDate": "2026-11-09T17:27:44.183Z"
         },
         {
           "VulnerabilityID": "CVE-2024-5535",
@@ -3303,7 +3301,7 @@
             "https://www.oracle.com/security-alerts/cpuoct2024.html#AppendixMSQL"
           ],
           "PublishedDate": "2024-06-27T11:15:24.447Z",
-          "LastModifiedDate": "2026-06-17T08:16:08.843Z"
+          "LastModifiedDate": "2026-11-10T14:31:44.263Z"
         },
         {
           "VulnerabilityID": "CVE-2024-9143",
@@ -3334,7 +3332,7 @@
           "VendorSeverity": {
             "amazon": 3,
             "julia": 2,
-            "photon": 2,
+            "photon": 3,
             "redhat": 1,
             "ubuntu": 1
           },
@@ -3376,7 +3374,7 @@
             "https://www.cve.org/CVERecord?id=CVE-2024-9143"
           ],
           "PublishedDate": "2024-10-16T17:15:18.13Z",
-          "LastModifiedDate": "2026-06-17T08:24:02.61Z"
+          "LastModifiedDate": "2026-11-09T15:56:44.17Z"
         },
         {
           "VulnerabilityID": "CVE-2025-9232",
@@ -3442,7 +3440,7 @@
             "https://www.cve.org/CVERecord?id=CVE-2025-9232"
           ],
           "PublishedDate": "2025-09-30T14:15:41.313Z",
-          "LastModifiedDate": "2026-07-14T13:18:07.783Z"
+          "LastModifiedDate": "2026-11-09T21:02:53.39Z"
         },
         {
           "VulnerabilityID": "CVE-2025-26519",
@@ -3585,7 +3583,7 @@
             "https://www.openwall.com/lists/oss-security/2026/04/03/2"
           ],
           "PublishedDate": "2026-04-10T09:16:25.45Z",
-          "LastModifiedDate": "2026-06-17T11:00:13.667Z"
+          "LastModifiedDate": "2026-10-26T21:10:00.17Z"
         },
         {
           "VulnerabilityID": "CVE-2025-26519",
@@ -3728,7 +3726,7 @@
             "https://www.openwall.com/lists/oss-security/2026/04/03/2"
           ],
           "PublishedDate": "2026-04-10T09:16:25.45Z",
-          "LastModifiedDate": "2026-06-17T11:00:13.667Z"
+          "LastModifiedDate": "2026-10-26T21:10:00.17Z"
         },
         {
           "VulnerabilityID": "CVE-2023-42363",
