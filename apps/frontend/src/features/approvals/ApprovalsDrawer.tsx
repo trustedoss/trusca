@@ -83,13 +83,26 @@ function StatusBadge({ status, t }: StatusBadgeProps) {
 // Meta row
 // ---------------------------------------------------------------------------
 
-function Meta({ label, value }: { label: string; value: ReactNode }) {
+function Meta({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: ReactNode;
+  hint?: ReactNode;
+}) {
   return (
     <div>
       <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
         {label}
       </div>
-      <div className="break-all font-mono text-xs">{value}</div>
+      <div className="break-words text-xs">{value}</div>
+      {hint ? (
+        <div className="break-all font-mono text-[11px] text-muted-foreground">
+          {hint}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -235,10 +248,14 @@ export function ApprovalsDrawer({
       onOpenChange={onOpenChange}
       title={
         approval
-              ? approval.id.slice(0, 8)
+              ? (approval.component_name ?? approval.id.slice(0, 8))
               : t("approvals.drawer.component_label")
       }
-      description={<span className="font-mono text-xs">{approval?.component_id ?? ""}</span>}
+      description={
+        <span className="font-mono text-xs">
+          {approval?.component_purl ?? approval?.component_id ?? ""}
+        </span>
+      }
       position="right"
       width="large"
       testId="approvals-drawer"
@@ -270,15 +287,17 @@ export function ApprovalsDrawer({
             <section className="grid grid-cols-1 gap-3 text-xs sm:grid-cols-2">
               <Meta
                 label={t("approvals.drawer.component_label")}
-                value={approval.component_id}
+                value={approval.component_name ?? approval.component_id}
+                hint={approval.component_purl}
               />
               <Meta
                 label={t("approvals.drawer.project_label")}
-                value={approval.project_id}
+                value={approval.project_name ?? approval.project_id}
+                hint={approval.project_slug}
               />
               <Meta
                 label={t("approvals.drawer.team_label")}
-                value={approval.team_id}
+                value={approval.team_name ?? approval.team_id}
               />
               {/* B2: the same name the row behind this panel shows. It read
                   the raw id, so opening a drawer from a named row replaced
@@ -303,7 +322,7 @@ export function ApprovalsDrawer({
               {approval.decided_by_user_id ? (
                 <Meta
                   label={t("approvals.drawer.decided_by_label")}
-                  value={approval.decided_by_user_id}
+                  value={approval.decided_by_name ?? approval.decided_by_user_id}
                 />
               ) : null}
               {approval.decided_at ? (

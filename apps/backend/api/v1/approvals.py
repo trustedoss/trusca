@@ -55,7 +55,7 @@ from services.component_approval_service import (
     delete_approval,
     get_approval,
     list_approvals,
-    resolve_requester_name,
+    fill_single_display_fields,
     transition_approval,
 )
 
@@ -200,9 +200,7 @@ async def get_approval_endpoint(
     # in the list behind it shows. Without it the queue said "Jin Park" and
     # the panel that opened from that row said "cccccccc".
     body = ApprovalOut.model_validate(row)
-    body.requested_by_name = await resolve_requester_name(
-        session, row.requested_by_user_id
-    )
+    await fill_single_display_fields(session, row, body)
     headers = {"ETag": f'"{row.version}"'}
     return Response(
         content=body.model_dump_json(),
@@ -252,9 +250,7 @@ async def create_approval_endpoint(
     # The other two single-row endpoints fill this in, and a create response
     # that leaves it null would be one payload shape for the same model.
     body = ApprovalOut.model_validate(row)
-    body.requested_by_name = await resolve_requester_name(
-        session, row.requested_by_user_id
-    )
+    await fill_single_display_fields(session, row, body)
     return Response(
         content=body.model_dump_json(),
         status_code=status.HTTP_201_CREATED,
@@ -344,9 +340,7 @@ async def transition_approval_endpoint(
     # in the list behind it shows. Without it the queue said "Jin Park" and
     # the panel that opened from that row said "cccccccc".
     body = ApprovalOut.model_validate(row)
-    body.requested_by_name = await resolve_requester_name(
-        session, row.requested_by_user_id
-    )
+    await fill_single_display_fields(session, row, body)
     headers = {"ETag": f'"{row.version}"'}
     return Response(
         content=body.model_dump_json(),
