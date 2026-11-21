@@ -32,6 +32,12 @@ vi.mock("@/lib/apiKeysApi", () => ({
   narrowApiKey: vi.fn(),
 }));
 
+// The dialog picks a project by name; the picker lists projects through this.
+vi.mock("@/lib/projectsApi", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/projectsApi")>()),
+  listProjects: vi.fn(),
+}));
+
 // IntegrationsPage always renders ServiceAccountsPanel alongside the API-key
 // table (L-16/L-18 gate which panel is interactive, not whether it mounts).
 // Its own useQuery calls listServiceAccounts unconditionally whenever the
@@ -52,7 +58,28 @@ import {
   narrowApiKey,
   revokeApiKey,
 } from "@/lib/apiKeysApi";
+import { listProjects } from "@/lib/projectsApi";
 import { listServiceAccounts } from "@/lib/serviceAccountsApi";
+
+type User = ReturnType<typeof userEvent.setup>;
+
+/** Pick a project in the create dialog's picker; the mocked list has one. */
+async function pickProject(user: User, id: string) {
+  vi.mocked(listProjects).mockResolvedValue({
+    items: [{ id, name: "Alpha", slug: "alpha" }],
+    total: 1,
+  } as never);
+  await user.click(screen.getByTestId("intake-project"));
+  const option = await screen.findByTestId("intake-project-option");
+  await user.click(option);
+}
+
+/** Pick the logged-in user's first team in the create dialog's picker. */
+async function pickTeam(user: User) {
+  await user.click(screen.getByTestId("project-team-combobox-trigger"));
+  const option = await screen.findByTestId("project-team-combobox-option");
+  await user.click(option);
+}
 
 const mockedList = vi.mocked(listApiKeys);
 const mockedCreate = vi.mocked(createApiKey);
@@ -313,10 +340,7 @@ describe("IntegrationsPage", () => {
       "release-bot",
     );
     // Default scope is "project" — supply a project id.
-    await user.type(
-      screen.getByTestId("integrations-create-project-id"),
-      "p-1",
-    );
+    await pickProject(user, "p-1");
     await user.click(screen.getByTestId("integrations-create-submit"));
 
     // The reveal dialog must show the plaintext exactly once, with a copy
@@ -366,10 +390,7 @@ describe("IntegrationsPage", () => {
     await user.click(screen.getByTestId("integrations-create-key"));
     await screen.findByTestId("integrations-create-dialog");
     await user.type(screen.getByTestId("integrations-create-name"), "ttl-bot");
-    await user.type(
-      screen.getByTestId("integrations-create-project-id"),
-      "p-1",
-    );
+    await pickProject(user, "p-1");
     await user.selectOptions(
       screen.getByTestId("integrations-create-expires"),
       "90",
@@ -458,7 +479,7 @@ describe("IntegrationsPage", () => {
       name: "team-runner",
       scope: "team",      permission_breadth: "read_only",
 
-      team_id: "t-1",
+      team_id: "team-1",
       project_id: null,
       created_by_user_id: "u-1",
       created_at: "2026-05-09T11:00:00Z",
@@ -484,10 +505,7 @@ describe("IntegrationsPage", () => {
       screen.getByTestId("integrations-create-scope"),
       "team",
     );
-    await user.type(
-      screen.getByTestId("integrations-create-team-id"),
-      "t-1",
-    );
+    await pickTeam(user);
     await user.click(screen.getByTestId("integrations-create-submit"));
 
     await waitFor(() => {
@@ -495,7 +513,7 @@ describe("IntegrationsPage", () => {
         name: "team-runner",
         scope: "team",        permission_breadth: "read_only",
 
-        team_id: "t-1",
+        team_id: "team-1",
         project_id: null,
         expires_in_days: null,
       });
@@ -582,10 +600,7 @@ describe("IntegrationsPage", () => {
       screen.getByTestId("integrations-create-name"),
       "boom-key",
     );
-    await user.type(
-      screen.getByTestId("integrations-create-project-id"),
-      "p-1",
-    );
+    await pickProject(user, "p-1");
     await user.click(screen.getByTestId("integrations-create-submit"));
 
     await waitFor(() => {
@@ -778,10 +793,7 @@ describe("IntegrationsPage", () => {
       screen.getByTestId("integrations-create-name"),
       "dev-runner",
     );
-    await user.type(
-      screen.getByTestId("integrations-create-project-id"),
-      "p-7",
-    );
+    await pickProject(user, "p-7");
     await user.click(screen.getByTestId("integrations-create-submit"));
 
     await waitFor(() => {
@@ -934,7 +946,7 @@ describe("IntegrationsPage", () => {
 
     await user.click(await screen.findByTestId("integrations-create-key"));
     await user.type(screen.getByTestId("integrations-create-name"), "ci");
-    await user.type(screen.getByTestId("integrations-create-project-id"), "p-1");
+    await pickProject(user, "p-1");
     await user.click(screen.getByTestId("integrations-create-submit"));
 
     await waitFor(() => expect(mockedCreate).toHaveBeenCalled());

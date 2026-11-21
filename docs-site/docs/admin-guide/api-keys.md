@@ -85,7 +85,7 @@ curl -sS -X POST "https://trustedoss.example.com/v1/api-keys" \
 4. Fill in:
    - **Name** (e.g. `github-action-checkout-service`)
    - **Scope**: `project` (default); `team` also appears if you administer a team
-   - **Project ID**: required when scope is `project`; **Team ID** when scope is `team`
+   - **Project**: required when scope is `project`; pick it by name from the list (type to search). **Team** when scope is `team`
    - **What this key may do**: Read only (the default, recommended) or Read and write; pick read-write for a key that will trigger scans
    - **Expiration**: **Never expires** (the default), or a 30 / 90 / 180 / 365-day preset, submitted as `expires_in_days`
 5. **Create**.

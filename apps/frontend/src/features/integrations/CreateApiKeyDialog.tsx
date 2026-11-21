@@ -20,7 +20,16 @@ import { Button } from "@/components/primer/Button";
 import { PrimerDialog } from "@/components/primer/PrimerDialog";
 import { Input } from "@/components/primer/Input";
 import { Label } from "@/components/primer/Label";
+import {
+  ProjectCombobox,
+  type ProjectComboboxSelection,
+} from "@/features/intake/ProjectCombobox";
 import { useApiKeyScopes } from "@/features/integrations/useApiKeyScopes";
+import {
+  TeamCombobox,
+  type TeamComboboxSelection,
+} from "@/features/projects/components/TeamCombobox";
+import { useAuthStore } from "@/stores/authStore";
 import {
   API_KEY_PERMISSION_BREADTHS,
   type APIKeyCreatePayload,
@@ -51,8 +60,13 @@ export function CreateApiKeyDialog({
   const defaultScope = allowedScopes[0] ?? "project";
   const [name, setName] = useState("");
   const [scope, setScope] = useState<APIKeyScope>(defaultScope);
-  const [teamId, setTeamId] = useState("");
-  const [projectId, setProjectId] = useState("");
+  // The picked team / project. The form asks for a name, not a UUID; only the
+  // id leaves this component.
+  const [team, setTeam] = useState<TeamComboboxSelection | null>(null);
+  const [project, setProject] = useState<ProjectComboboxSelection | null>(null);
+  const teamId = team?.id ?? "";
+  const projectId = project?.id ?? "";
+  const userTeams = useAuthStore((state) => state.user?.teams) ?? [];
   // "" → never expires; otherwise the TTL in days. Kept as the raw <select>
   // string and parsed to a number only at submit.
   const [expiresInDays, setExpiresInDays] = useState("");
@@ -65,8 +79,8 @@ export function CreateApiKeyDialog({
   function reset() {
     setName("");
     setScope(defaultScope);
-    setTeamId("");
-    setProjectId("");
+    setTeam(null);
+    setProject(null);
     setExpiresInDays("");
     // Back to read-only with the rest. Leaving this one behind would mean a
     // form that looks blank while the field deciding whether the key can
@@ -226,13 +240,12 @@ export function CreateApiKeyDialog({
             <Label htmlFor="apikey-team-id">
               {t("api_keys.create_dialog.team_id_label")}
             </Label>
-            <Input
-              id="apikey-team-id"
-              value={teamId}
-              onChange={(e) => setTeamId(e.target.value)}
-              placeholder={t("api_keys.create_dialog.team_id_placeholder")}
-              data-testid="integrations-create-team-id"
-              disabled={submitting}
+            <TeamCombobox
+              teams={userTeams}
+              selected={team}
+              onSelect={setTeam}
+              placeholder={t("api_keys.create_dialog.team_placeholder")}
+              triggerId="apikey-team-id"
             />
           </div>
         ) : null}
@@ -242,13 +255,10 @@ export function CreateApiKeyDialog({
             <Label htmlFor="apikey-project-id">
               {t("api_keys.create_dialog.project_id_label")}
             </Label>
-            <Input
-              id="apikey-project-id"
-              value={projectId}
-              onChange={(e) => setProjectId(e.target.value)}
-              placeholder={t("api_keys.create_dialog.project_id_placeholder")}
-              data-testid="integrations-create-project-id"
-              disabled={submitting}
+            <ProjectCombobox
+              selected={project}
+              onSelect={setProject}
+              triggerId="apikey-project-id"
             />
           </div>
         ) : null}

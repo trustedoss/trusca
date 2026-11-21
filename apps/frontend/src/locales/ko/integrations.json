@@ -56,10 +56,8 @@
       "expires_preset_90": "90일",
       "expires_preset_180": "180일",
       "expires_preset_365": "365일",
-      "team_id_label": "팀 ID",
-      "team_id_placeholder": "uuid",
-      "project_id_label": "프로젝트 ID",
-      "project_id_placeholder": "uuid",
+      "team_id_label": "팀",
+      "project_id_label": "프로젝트",
       "submit": "키 생성",
       "submitting": "생성 중…",
       "cancel": "취소",
@@ -68,7 +66,8 @@
       "breadth_option": {
         "read_only": "읽기 전용 (권장)",
         "read_write": "읽기·쓰기"
-      }
+      },
+      "team_placeholder": "팀 선택"
     },
     "create_result": {
       "title": "API 키가 생성되었습니다",

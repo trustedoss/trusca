@@ -56,10 +56,8 @@
       "expires_preset_90": "90 days",
       "expires_preset_180": "180 days",
       "expires_preset_365": "365 days",
-      "team_id_label": "Team ID",
-      "team_id_placeholder": "uuid",
-      "project_id_label": "Project ID",
-      "project_id_placeholder": "uuid",
+      "team_id_label": "Team",
+      "project_id_label": "Project",
       "submit": "Create key",
       "submitting": "Creating…",
       "cancel": "Cancel",
@@ -68,7 +66,8 @@
       "breadth_option": {
         "read_only": "Read only (recommended)",
         "read_write": "Read and write"
-      }
+      },
+      "team_placeholder": "Select a team"
     },
     "create_result": {
       "title": "API key created",
