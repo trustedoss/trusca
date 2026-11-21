@@ -1,5 +1,5 @@
 /**
- * VexMenu — unit tests (v2.1 A3).
+ * VexMenu: unit tests (v2.1 A3).
  *
  * Covers:
  *   - Two format items (OpenVEX / CycloneDX VEX) render and trigger the
