@@ -85,7 +85,7 @@ curl -sS -X POST "https://trustedoss.example.com/v1/api-keys" \
 4. 채우기:
    - **Name**(예: `github-action-checkout-service`)
    - **Scope** — `project`(기본). 팀 관리자라면 `team`도 함께 표시됩니다
-   - **Project ID** — scope가 `project`일 때 필수. scope가 `team`이면 **Team ID**
+   - **프로젝트**: scope가 `project`일 때 필수이며 목록에서 이름으로 고릅니다(입력하면 검색). scope가 `team`이면 **팀**
    - **이 키가 할 수 있는 일** — Read only(기본값, 권장) 또는 Read and write. 스캔을 실행할 Key라면 읽기 및 쓰기를 고릅니다
    - **Expiration** — **Never expires**(기본값) 또는 30 / 90 / 180 / 365일 프리셋. `expires_in_days`로 전송됩니다
 5. **Create**.
