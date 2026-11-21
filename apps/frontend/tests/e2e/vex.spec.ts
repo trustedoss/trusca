@@ -96,7 +96,8 @@ function writeOpenVexDoc(cveId: string, purl: string): string {
         vulnerability: { name: cveId },
         products: [{ "@id": purl }],
         status: "not_affected",
-        impact_statement: "Vulnerable code path is not reachable in this build.",
+        impact_statement:
+          "Vulnerable code path is not reachable in this build.",
       },
     ],
   };
