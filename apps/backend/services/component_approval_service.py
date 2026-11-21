@@ -44,6 +44,7 @@ import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 import structlog
 from sqlalchemy import String, and_, cast, func, select, update
@@ -55,7 +56,7 @@ from sqlalchemy.sql import Select
 
 from core.authz import assert_team_access, group_visibility_filter, super_admin_reaches
 from core.security import CurrentUser
-from models import ComponentApproval, Project, User
+from models import ComponentApproval, Project, Team, User
 from models.component_approval import APPROVAL_STATUS_VALUES, ApprovalStatus
 from models.scan import (  # explicit import avoids implicit lazy load
     Component,
@@ -65,6 +66,9 @@ from models.scan import (  # explicit import avoids implicit lazy load
     Scan,
     ScanComponent,
 )
+
+if TYPE_CHECKING:
+    from schemas.approvals import ApprovalOut
 
 log = structlog.get_logger("component_approval.service")
 
@@ -431,6 +435,43 @@ async def resolve_requester_name(
     if row is None:
         return None
     return (row.full_name or "").strip() or str(row.email)
+
+
+async def fill_single_display_fields(
+    session: AsyncSession,
+    row: ComponentApproval,
+    body: ApprovalOut,
+) -> None:
+    """Name the ids on one approval, the way the list names them for a page.
+
+    The drawer reads the single-row endpoints, and without this it showed the
+    component, project, team and decider as raw UUIDs while the queue row it
+    opened from showed names. The component and project come from the same
+    columns the list uses; the team and decider are only needed here.
+    """
+    comp = (
+        await session.execute(
+            select(Component.name, Component.purl).where(Component.id == row.component_id)
+        )
+    ).one_or_none()
+    if comp is not None:
+        body.component_name, body.component_purl = comp.name, comp.purl
+    proj = (
+        await session.execute(
+            select(Project.name, Project.slug).where(Project.id == row.project_id)
+        )
+    ).one_or_none()
+    if proj is not None:
+        body.project_name, body.project_slug = proj.name, proj.slug
+    body.team_name = (
+        await session.execute(select(Team.name).where(Team.id == row.team_id))
+    ).scalar_one_or_none()
+    body.requested_by_name = await resolve_requester_name(
+        session, row.requested_by_user_id
+    )
+    body.decided_by_name = await resolve_requester_name(
+        session, row.decided_by_user_id
+    )
 
 
 async def get_approval(

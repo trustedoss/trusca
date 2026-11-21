@@ -132,6 +132,32 @@ describe("ApprovalsDrawer", () => {
     expect(screen.getAllByText(a.component_id).length).toBeGreaterThanOrEqual(1);
   });
 
+  it("names the component, project, team and decider instead of their ids", async () => {
+    const a = approval({
+      status: "approved",
+      decided_by_user_id: "user-0002",
+      decided_at: "2026-05-02T10:00:00Z",
+      component_name: "lodash",
+      component_purl: "pkg:npm/lodash@4.17.21",
+      project_name: "Payments API",
+      project_slug: "payments-api",
+      team_name: "Platform",
+      decided_by_name: "Sora Kim",
+    });
+    mockedGet.mockResolvedValue({ approval: a, etag: "1" });
+    renderDrawer();
+    await waitFor(() => {
+      expect(screen.getByTestId("approvals-drawer")).toBeInTheDocument();
+      expect(screen.getAllByText("lodash").length).toBeGreaterThanOrEqual(1);
+    });
+    expect(screen.getAllByText("pkg:npm/lodash@4.17.21").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("Payments API")).toBeInTheDocument();
+    expect(screen.getByText("Platform")).toBeInTheDocument();
+    expect(screen.getByText("Sora Kim")).toBeInTheDocument();
+    expect(screen.queryByText(a.component_id)).not.toBeInTheDocument();
+    expect(screen.queryByText(a.team_id)).not.toBeInTheDocument();
+  });
+
   it("shows Start Review and Reject buttons for pending approval", async () => {
     mockedGet.mockResolvedValue({ approval: approval({ status: "pending" }), etag: "1" });
     renderDrawer();
