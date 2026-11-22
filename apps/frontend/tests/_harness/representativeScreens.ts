@@ -152,11 +152,11 @@ const VISITS: Record<AuthenticatedScreenId, VisitScreen> = {
   },
   policies: async (page) => {
     await page.goto("/policies");
-    await waitSettled(page, "policies-table");
+    await waitSettled(page, "policies-list");
   },
   integrations: async (page) => {
     await page.goto("/integrations");
-    await waitSettled(page, "integrations-keys-table");
+    await waitSettled(page, "integrations-keys-list");
   },
   notifications: async (page) => {
     await page.goto("/notifications");

@@ -8,6 +8,8 @@
       "team_label": "팀",
       "team_placeholder": "팀 선택…",
       "edit_team": "팀 정책 편집",
+      "edit_team_hint_pick": "먼저 팀을 고르세요. 팀의 라이선스 정책과 빌드 게이트를 한 패널에서 편집합니다.",
+      "edit_team_hint_ready": "이 팀의 라이선스 정책과 빌드 게이트를 엽니다.",
       "edit_org": "조직 기본값 편집"
     },
     "column": {

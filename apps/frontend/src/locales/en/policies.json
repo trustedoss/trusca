@@ -8,6 +8,8 @@
       "team_label": "Team",
       "team_placeholder": "Select a team…",
       "edit_team": "Edit team policy",
+      "edit_team_hint_pick": "Pick a team first. Its license policy and build gate open in one panel.",
+      "edit_team_hint_ready": "Opens this team's license policy and build gate.",
       "edit_org": "Edit org default"
     },
     "column": {

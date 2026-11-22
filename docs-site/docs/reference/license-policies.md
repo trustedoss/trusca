@@ -150,7 +150,9 @@ no-code way to author a policy — it drives the same REST API documented below.
    `super_admin` additionally sees **Edit org default** for the organization-wide
    fallback. The selected scope is encoded in the URL
    (`/policies?policy=team:<id>` / `?policy=org:<id>`), so a bookmark or a hard
-   reload reopens the same editor.
+   reload reopens the same editor. **Edit team policy** stays disabled until a
+   team is picked, and the hint beside it says so. The same drawer also holds
+   the team's **Build gate** settings, below the license policy fields.
 2. **Edit in the drawer.** The editor slides in from the right and exposes every
    field:
    - **Policy enabled** — master toggle. Off ⇒ the team falls back to the org

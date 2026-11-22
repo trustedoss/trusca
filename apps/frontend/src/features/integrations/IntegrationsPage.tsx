@@ -45,6 +45,7 @@ import { getApiBase } from "@/lib/apiBase";
 import { writeToClipboard } from "@/lib/clipboard";
 import { problemMessage } from "@/lib/problemMessage";
 import RelativeTime from "@/components/RelativeTime";
+import { ABSENT } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores/authStore";
 import type {
@@ -58,7 +59,7 @@ import type {
 const PAGE_SIZE = 20;
 
 /** Total <td> count per row — keep skeleton / empty colSpan in sync. */
-const COLUMN_COUNT = 9;
+const COLUMN_COUNT = 10;
 
 /**
  * Revocation status badge (L-17). Color is never the only signal — the
@@ -203,6 +204,8 @@ export function IntegrationsPage() {
   // The page is now something a link or a bookmark can carry, and it can
   // name a page this list no longer has.
   useClampPage(page, totalPages, setPage, keysQuery.isSuccess);
+  const isEmpty =
+    !keysQuery.isLoading && !keysQuery.isError && items.length === 0;
 
   function showToast(text: string, tone: "success" | "error", key: string) {
     toast(text, { tone, key });
@@ -351,184 +354,190 @@ export function IntegrationsPage() {
             </Alert>
           ) : null}
 
-          <div className="overflow-x-auto rounded-md border">
-            <table
-              className="w-full min-w-[880px] text-sm"
-              data-testid="integrations-keys-table"
-              aria-busy={keysQuery.isLoading}
-            >
-              <thead className="bg-muted/40">
-                <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
-                  <th className="px-3 py-2">{t("api_keys.table.name")}</th>
-                  <th className="px-3 py-2">{t("api_keys.table.scope")}</th>
-                  <th className="px-3 py-2">{t("api_keys.table.breadth")}</th>
-                  <th className="px-3 py-2">{t("api_keys.table.prefix")}</th>
-                  <th className="px-3 py-2">{t("api_keys.table.creator")}</th>
-                  <th className="px-3 py-2">{t("api_keys.table.created")}</th>
-                  <th className="px-3 py-2">{t("api_keys.table.last_used")}</th>
-                  <th className="px-3 py-2">{t("api_keys.table.expires")}</th>
-                  <th className="px-3 py-2">{t("api_keys.table.status")}</th>
-                  <th className="px-3 py-2 text-right">
-                    {t("api_keys.table.actions")}
-                  </th>
-                </tr>
-              </thead>
-              <tbody data-testid="integrations-keys-tbody">
-                {keysQuery.isLoading
-                  ? Array.from({ length: 4 }).map((_, i) => (
-                      <tr key={`skeleton-${i}`} className="border-b">
-                        <td className="px-3 py-2" colSpan={COLUMN_COUNT}>
-                          <Skeleton className="h-5 w-full" />
-                        </td>
-                      </tr>
-                    ))
-                  : items.map((row) => {
-                      const isRevoked = row.revoked_at !== null;
-                      // L-18: revoke is "issuer or admin" on the backend.
-                      // Developers only ever see the button on keys they
-                      // issued themselves; group_admin+ see it on every row
-                      // the list endpoint already deemed visible to them.
-                      const canRevoke =
-                        isTeamAdminOrAbove ||
-                        (currentUserId !== null &&
-                          row.created_by_user_id === currentUserId);
-                      return (
-                        <tr
-                          key={row.id}
-                          data-testid="integrations-key-row"
-                          data-key-id={row.id}
-                          data-key-prefix={row.key_prefix}
-                          data-revoked={isRevoked}
-                          className={cn(
-                            "border-b transition-colors duration-fast ease-out-soft hover:bg-accent/40",
-                            isRevoked && "opacity-60",
-                          )}
-                          style={{ height: "var(--table-row)" }}
-                        >
-                          <td className="max-w-[200px] truncate px-3">
-                            <span className="font-medium">{row.name}</span>
-                          </td>
-                          <td className="px-3">
-                            <ScopeBadge scope={row.scope} />
-                          </td>
-                          <td className="px-3">
-                            <BreadthBadge breadth={row.permission_breadth} />
-                          </td>
-                          <td className="px-3 font-mono text-xs">
-                            {row.key_prefix}…
-                          </td>
-                          <td
-                            className="max-w-[180px] truncate px-3 text-xs text-muted-foreground"
-                            data-testid="integrations-key-creator"
-                            title={row.created_by_email ?? undefined}
-                          >
-                            {row.created_by_email ?? "—"}
-                          </td>
-                          <td className="px-3 text-xs text-muted-foreground">
-                            <RelativeTime
-                              value={row.created_at}
-                              locale={i18n.resolvedLanguage}
-                            />
-                          </td>
-                          <td
-                            className="px-3 text-xs text-muted-foreground"
-                            data-testid="integrations-key-last-used"
-                          >
-                            {row.last_used_at ? (
-                              <RelativeTime
-                                value={row.last_used_at}
-                                locale={i18n.resolvedLanguage}
-                              />
-                            ) : (
-                              t("api_keys.last_used_never")
-                            )}
-                          </td>
-                          <td className="px-3 text-xs text-muted-foreground">
-                            {row.expires_at ? (
-                              <RelativeTime
-                                value={row.expires_at}
-                                locale={i18n.resolvedLanguage}
-                              />
-                            ) : (
-                              t("api_keys.expires_never")
-                            )}
-                          </td>
-                          <td className="px-3">
-                            <StatusBadge revoked={isRevoked} />
-                          </td>
-                          <td className="px-3 text-right">
-                            {!isRevoked &&
-                            canRevoke &&
-                            row.permission_breadth === "read_write" ? (
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                className="mr-2"
-                                disabled={narrowMutation.isPending}
-                                onClick={() => narrowMutation.mutate(row.id)}
-                                data-testid="integrations-key-narrow"
-                                data-key-id={row.id}
-                                title={t("api_keys.narrow_help")}
-                              >
-                                <span>{t("api_keys.narrow")}</span>
-                              </Button>
-                            ) : null}
-                            {!isRevoked && canRevoke ? (
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                onClick={() => setRevokeTarget(row)}
-                                data-testid="integrations-key-revoke"
-                                data-key-id={row.id}
-                              >
-                                <TrashIcon size={12} />
-                                <span>{t("api_keys.revoke")}</span>
-                              </Button>
-                            ) : null}
+          {/* Full width like the other lists: the table runs to the page
+              edges (the negative margin cancels the page padding) with the
+              first and last columns padded by the same 24px. The region
+              always renders and carries `aria-busy`, so the harness has one
+              node to wait on whether it ends up holding the table or the
+              empty state. */}
+          <div
+            className="-mx-6 overflow-x-auto border-t"
+            data-testid="integrations-keys-list"
+            aria-busy={keysQuery.isLoading}
+          >
+            {/* C3 - the shared primitive, and copy that matches who is
+                reading. It used to say "Create one to get started" to
+                everyone, including readers this page renders no create
+                button for. It takes the table's place instead of sitting
+                under its column headers. */}
+            {isEmpty ? (
+              <EmptyState
+                data-testid="integrations-keys-empty"
+                icon={<KeyIcon />}
+                title={t("api_keys.empty")}
+                description={
+                  canIssueAnyKey
+                    ? t("api_keys.empty_hint_can_create")
+                    : t("api_keys.empty_hint_cannot_create")
+                }
+                action={
+                  canIssueAnyKey ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setCreateOpen(true)}
+                      data-testid="integrations-keys-empty-create"
+                    >
+                      <PlusIcon size={12} />
+                      <span>{t("api_keys.create_button")}</span>
+                    </Button>
+                  ) : undefined
+                }
+              />
+            ) : (
+              <table
+                className="w-full min-w-[880px] text-sm"
+                data-testid="integrations-keys-table"
+                aria-busy={keysQuery.isLoading}
+              >
+                <thead className="bg-card">
+                  <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
+                    <th className="py-2 pl-6 pr-3">{t("api_keys.table.name")}</th>
+                    <th className="px-3 py-2">{t("api_keys.table.scope")}</th>
+                    <th className="px-3 py-2">{t("api_keys.table.breadth")}</th>
+                    <th className="px-3 py-2">{t("api_keys.table.prefix")}</th>
+                    <th className="px-3 py-2">{t("api_keys.table.creator")}</th>
+                    <th className="px-3 py-2">{t("api_keys.table.created")}</th>
+                    <th className="px-3 py-2">{t("api_keys.table.last_used")}</th>
+                    <th className="px-3 py-2">{t("api_keys.table.expires")}</th>
+                    <th className="px-3 py-2">{t("api_keys.table.status")}</th>
+                    <th className="py-2 pl-3 pr-6 text-right">
+                      {t("api_keys.table.actions")}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody data-testid="integrations-keys-tbody">
+                  {keysQuery.isLoading
+                    ? Array.from({ length: 4 }).map((_, i) => (
+                        <tr key={`skeleton-${i}`} className="border-b">
+                          <td className="px-6 py-2" colSpan={COLUMN_COUNT}>
+                            <Skeleton className="h-5 w-full" />
                           </td>
                         </tr>
-                      );
-                    })}
-                {!keysQuery.isLoading &&
-                !keysQuery.isError &&
-                items.length === 0 ? (
-                  <tr>
-                    <td colSpan={COLUMN_COUNT} className="p-0">
-                      {/* C3 - the shared primitive, and copy that matches who
-                          is reading. It used to say "Create one to get
-                          started" to everyone, including readers this page
-                          renders no create button for. */}
-                      <EmptyState
-                        data-testid="integrations-keys-empty"
-                        icon={<KeyIcon />}
-                        title={t("api_keys.empty")}
-                        description={
-                          canIssueAnyKey
-                            ? t("api_keys.empty_hint_can_create")
-                            : t("api_keys.empty_hint_cannot_create")
-                        }
-                        action={
-                          canIssueAnyKey ? (
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              onClick={() => setCreateOpen(true)}
-                              data-testid="integrations-keys-empty-create"
+                      ))
+                    : items.map((row) => {
+                        const isRevoked = row.revoked_at !== null;
+                        // L-18: revoke is "issuer or admin" on the backend.
+                        // Developers only ever see the button on keys they
+                        // issued themselves; group_admin+ see it on every row
+                        // the list endpoint already deemed visible to them.
+                        const canRevoke =
+                          isTeamAdminOrAbove ||
+                          (currentUserId !== null &&
+                            row.created_by_user_id === currentUserId);
+                        return (
+                          <tr
+                            key={row.id}
+                            data-testid="integrations-key-row"
+                            data-key-id={row.id}
+                            data-key-prefix={row.key_prefix}
+                            data-revoked={isRevoked}
+                            className={cn(
+                              "border-b transition-colors duration-fast ease-out-soft hover:bg-accent/40",
+                              isRevoked && "opacity-60",
+                            )}
+                            style={{ height: "var(--table-row)" }}
+                          >
+                            <td className="max-w-[200px] truncate pl-6 pr-3">
+                              <span className="font-medium">{row.name}</span>
+                            </td>
+                            <td className="px-3">
+                              <ScopeBadge scope={row.scope} />
+                            </td>
+                            <td className="px-3">
+                              <BreadthBadge breadth={row.permission_breadth} />
+                            </td>
+                            <td className="px-3 font-mono text-xs">
+                              {row.key_prefix}…
+                            </td>
+                            <td
+                              className="max-w-[180px] truncate px-3 text-xs text-muted-foreground"
+                              data-testid="integrations-key-creator"
+                              title={row.created_by_email ?? undefined}
                             >
-                              <PlusIcon size={12} />
-                              <span>{t("api_keys.create_button")}</span>
-                            </Button>
-                          ) : undefined
-                        }
-                      />
-                    </td>
-                  </tr>
-                ) : null}
-              </tbody>
-            </table>
+                              {row.created_by_email ?? ABSENT}
+                            </td>
+                            <td className="px-3 text-xs text-muted-foreground">
+                              <RelativeTime
+                                value={row.created_at}
+                                locale={i18n.resolvedLanguage}
+                              />
+                            </td>
+                            <td
+                              className="px-3 text-xs text-muted-foreground"
+                              data-testid="integrations-key-last-used"
+                            >
+                              {row.last_used_at ? (
+                                <RelativeTime
+                                  value={row.last_used_at}
+                                  locale={i18n.resolvedLanguage}
+                                />
+                              ) : (
+                                t("api_keys.last_used_never")
+                              )}
+                            </td>
+                            <td className="px-3 text-xs text-muted-foreground">
+                              {row.expires_at ? (
+                                <RelativeTime
+                                  value={row.expires_at}
+                                  locale={i18n.resolvedLanguage}
+                                />
+                              ) : (
+                                t("api_keys.expires_never")
+                              )}
+                            </td>
+                            <td className="px-3">
+                              <StatusBadge revoked={isRevoked} />
+                            </td>
+                            <td className="pl-3 pr-6 text-right">
+                              {!isRevoked &&
+                              canRevoke &&
+                              row.permission_breadth === "read_write" ? (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  className="mr-2"
+                                  disabled={narrowMutation.isPending}
+                                  onClick={() => narrowMutation.mutate(row.id)}
+                                  data-testid="integrations-key-narrow"
+                                  data-key-id={row.id}
+                                  title={t("api_keys.narrow_help")}
+                                >
+                                  <span>{t("api_keys.narrow")}</span>
+                                </Button>
+                              ) : null}
+                              {!isRevoked && canRevoke ? (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => setRevokeTarget(row)}
+                                  data-testid="integrations-key-revoke"
+                                  data-key-id={row.id}
+                                >
+                                  <TrashIcon size={12} />
+                                  <span>{t("api_keys.revoke")}</span>
+                                </Button>
+                              ) : null}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                </tbody>
+              </table>
+            )}
           </div>
 
           {totalPages > 1 ? (

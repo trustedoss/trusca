@@ -82,6 +82,9 @@ describe("PoliciesPage empty state", () => {
     // And says what is protecting them meanwhile, so an empty list does not
     // read as "nothing is checked".
     expect(empty.textContent).toContain("built-in license categories");
+    // In place of the table, not in a cell under its column headers.
+    expect(screen.queryByTestId("policies-table")).toBeNull();
+    expect(screen.queryByRole("columnheader")).toBeNull();
   });
 
   it("does not tell a developer to do what they cannot", async () => {
