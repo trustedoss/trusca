@@ -280,7 +280,7 @@ export function KevFeedPanel({ now }: KevFeedPanelProps = {}) {
           className="mb-3 flex items-center gap-1.5 text-xs text-status-warning-foreground"
           data-testid="kev-feed-skipped-reason"
         >
-          <AlertIcon size={14} className="shrink-0" />
+          <AlertIcon size={12} className="shrink-0" />
           {t("admin.kev_feed.skipped_reason", { reason: data.skipped_reason })}
         </p>
       ) : null}

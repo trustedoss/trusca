@@ -51,16 +51,16 @@ function TreeRow({ node }: { node: TreeNode }) {
             }
           >
             {open ? (
-              <ChevronDownIcon size={14} />
+              <ChevronDownIcon size={12} />
             ) : (
-              <ChevronRightIcon size={14} />
+              <ChevronRightIcon size={12} />
             )}
           </button>
         ) : (
           <span className="inline-block h-4 w-4 shrink-0" aria-hidden />
         )}
 
-        <PackageIcon size={14} className="shrink-0 text-muted-foreground" />
+        <PackageIcon size={12} className="shrink-0 text-muted-foreground" />
         <span className="font-mono text-xs">
           {node.name}
           {node.version ? (

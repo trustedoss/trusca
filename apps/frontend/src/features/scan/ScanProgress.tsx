@@ -298,13 +298,13 @@ export function ScanProgress({
               }
             >
               {isCompleted ? (
-                <CheckCircleIcon size={14} className="text-status-success-foreground" />
+                <CheckCircleIcon size={12} className="text-status-success-foreground" />
               ) : isCurrent ? (
                 <Spinner size="small" className="text-brand" />
               ) : isFailedAtThisStep ? (
-                <XCircleIcon size={14} className="text-risk-critical" />
+                <XCircleIcon size={12} className="text-risk-critical" />
               ) : (
-                <CircleIcon size={14} className="text-muted-foreground" />
+                <CircleIcon size={12} className="text-muted-foreground" />
               )}
               <span>{t(`progress.step_${s}`, t("progress.step_unknown"))}</span>
             </li>

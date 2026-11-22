@@ -117,7 +117,7 @@ export function ComponentDrawer({
               data-testid="component-drawer-open-full"
               className="h-7 gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground"
             >
-              <LinkExternalIcon size={14} />
+              <LinkExternalIcon size={12} />
               {t("drawer.open_full_view")}
             </Button>
           </div>

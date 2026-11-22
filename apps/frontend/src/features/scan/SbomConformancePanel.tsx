@@ -885,9 +885,9 @@ function CrosswalkFrameworkRow({
         data-testid={`crosswalk-framework-${framework.id}-toggle`}
       >
         {open ? (
-          <ChevronDownIcon size={14} className="shrink-0 text-muted-foreground" />
+          <ChevronDownIcon size={16} className="shrink-0 text-muted-foreground" />
         ) : (
-          <ChevronRightIcon size={14} className="shrink-0 text-muted-foreground" />
+          <ChevronRightIcon size={16} className="shrink-0 text-muted-foreground" />
         )}
         <span className="text-sm font-medium">{short}</span>
         <span className="font-mono text-xs text-foreground">

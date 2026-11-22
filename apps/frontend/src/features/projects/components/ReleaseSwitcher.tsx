@@ -157,7 +157,7 @@ export function ReleaseSwitcher({
           className="h-8 gap-1.5 px-2 text-xs font-medium"
         >
           {isHistorical ? (
-            <HistoryIcon size={14} className="text-risk-medium" />
+            <HistoryIcon size={12} className="text-risk-medium" />
           ) : null}
           <span
             className="max-w-[16rem] truncate"
@@ -165,7 +165,7 @@ export function ReleaseSwitcher({
           >
             {triggerLabel}
           </span>
-          <ChevronDownIcon size={14} className="opacity-60" />
+          <ChevronDownIcon size={12} className="opacity-60" />
         </Button>
       </ActionMenu.Anchor>
       <ActionMenu.Overlay width="medium" maxHeight="medium">
@@ -198,7 +198,7 @@ export function ReleaseSwitcher({
                 onSelect={handleCompare}
                 data-testid="release-switcher-compare"
               >
-                <DiffIcon size={14} className="shrink-0" />
+                <DiffIcon size={16} className="shrink-0" />
                 <span className="font-medium">
                   {t("compare.switcher_item")}
                 </span>

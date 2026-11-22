@@ -145,7 +145,7 @@ export function ScanCancelButton({
             className,
           )}
         >
-          <XCircleIcon size={14} />
+          <XCircleIcon size={12} />
           {t("cancel.action")}
         </Button>
       )}
