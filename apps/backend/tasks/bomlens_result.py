@@ -41,6 +41,7 @@ import errno
 import os
 import uuid
 from dataclasses import dataclass, replace
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Final
 
@@ -198,10 +199,21 @@ def _scancode_skip_reason(result: EngineResult) -> str | None:
     return reason if reason in scan_outcome.SCANCODE_SKIP_REASONS else "failed"
 
 
-def _record_engine_run(scan_uuid: uuid.UUID, result: EngineResult) -> None:
-    """Write stage timings, stage outcomes and the engine record, and commit."""
+def _record_engine_run(
+    scan_uuid: uuid.UUID,
+    result: EngineResult,
+    stage1_window: tuple[datetime, datetime] | None = None,
+) -> None:
+    """Write stage timings, stage outcomes and the engine record, and commit.
+
+    ``stage1_window`` is when stage 1 really ran, from the runner. The manifest
+    only has the ``generate`` step stamped by stage 2, so it replaces the
+    manifest's window for the ``cdxgen`` slot.
+    """
     outcomes = stages.stage_outcomes(result)
     windows = stages.stage_windows(result)
+    if stage1_window is not None:
+        windows[stages.TIMING_STAGE["generate"]] = stage1_window
     skip_reason = _scancode_skip_reason(result)
     with sync_session_scope() as session:
         scan = session.get(Scan, scan_uuid)
@@ -464,6 +476,7 @@ def apply_bomlens_result(
     source_dir: Path | None = None,
     artifact_dir: Path | None = None,
     container_image: bool = False,
+    stage1_window: tuple[datetime, datetime] | None = None,
 ) -> AppliedBomLensResult:
     """Persist the BomLens run in ``output_dir`` as scan ``scan_uuid``.
 
@@ -476,6 +489,7 @@ def apply_bomlens_result(
     for an input with no source tree. ``artifact_dir`` is where the verified
     bytes are kept for the scan's artifact rows; by default a sibling of
     ``output_dir`` (``<name>.verified``), outside the engine's folder.
+    ``stage1_window`` is when the runner saw stage 1 run (source scans only).
     ``container_image`` is set by the container pipeline: the image's packages
     are stored without PURL qualifiers, the identity the in-process container
     path gives them (see :func:`sbom_for_persistence`). Findings still attach,
@@ -494,7 +508,7 @@ def apply_bomlens_result(
         image_digest=result.image_digest,
         run_status=result.run_status,
     )
-    _record_engine_run(scan_uuid, result)
+    _record_engine_run(scan_uuid, result, stage1_window)
 
     if result.run_status in ("failed", "cancelled"):
         raise BomLensRunFailed(result.run_status, _first_failed_step(result))

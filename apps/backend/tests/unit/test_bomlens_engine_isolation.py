@@ -373,6 +373,7 @@ def test_where_docker_is_reachable_only_engine_tasks_run(
     monkeypatch.setattr(
         bomlens_engine_reaper, "reap_engine_containers", lambda *a, **k: ran.append("reap")
     )
+    monkeypatch.setattr(bomlens_engine_reaper, "remove_legacy_containers", lambda: 0)
     monkeypatch.setenv("DOCKER_HOST", "tcp://docker-socket-proxy:2375")
 
     with pytest.raises(DockerApiReachable, match="trustedoss.scan_source"):

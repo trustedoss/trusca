@@ -37,7 +37,7 @@ from core.config import (
     scancode_enabled,
 )
 from core.db import sync_session_scope
-from integrations.bomlens import runner as bomlens_runner
+from integrations.bomlens import engine as bomlens_engine
 from models import Project, Scan
 from services import scan_outcome
 from tasks import scan_source as pipeline
@@ -66,11 +66,7 @@ def _project_identity(scan_uuid: uuid.UUID, project_id: uuid.UUID) -> tuple[str,
     return name, version
 
 
-def _record_engine_run(
-    scan_uuid: uuid.UUID,
-    report: bomlens_runner.RunReport,
-    engine_image: bomlens_runner.PinnedImage,
-) -> None:
+def _record_engine_run(scan_uuid: uuid.UUID, record: bomlens_engine.RunRecord) -> None:
     """Keep what the runner did (plan status, stage 1 exit, restore) on the scan.
 
     Its own transaction and best-effort: it runs in a ``finally`` and must not
@@ -82,16 +78,23 @@ def _record_engine_run(
             if scan is None:
                 return
             metadata: dict[str, Any] = dict(scan.scan_metadata or {})
-            metadata[ENGINE_RUN_METADATA_KEY] = report.as_metadata()
+            metadata[ENGINE_RUN_METADATA_KEY] = record.metadata or {}
             # Which engine and image ran, even when no result is read:
             # the manifest's own record replaces this one when there is.
             metadata[ENGINE_METADATA_KEY] = engine_record_without_result(
-                engine_image.ref, engine_image.digest
+                record.image_ref, record.image_digest
             )
             scan.scan_metadata = metadata
             session.commit()
     except Exception:  # noqa: BLE001 - a record of the run must not fail it
         log.warning("bomlens_run_record_failed", exc_info=True)
+
+
+def _is_cancelled(scan_uuid: uuid.UUID) -> bool:
+    """Whether the scan is no longer ``running`` (the runner polls this while a container runs)."""
+    with sync_session_scope() as session:
+        scan = session.get(Scan, scan_uuid)
+        return (scan.status if scan is not None else None) != "running"
 
 
 def _require_running(scan_uuid: uuid.UUID) -> None:
@@ -107,7 +110,7 @@ def _require_running(scan_uuid: uuid.UUID) -> None:
         scan = session.get(Scan, scan_uuid)
         status = scan.status if scan is not None else None
     if status != "running":
-        raise bomlens_runner.EngineScanCancelled(f"scan is {status}")
+        raise bomlens_engine.EngineScanCancelled(f"scan is {status}")
 
 
 def _advance(scan_uuid: uuid.UUID, stage: str) -> None:
@@ -146,48 +149,44 @@ def run_bomlens_pipeline(
     task body records that as a terminal failure.
     """
     if shutil.which("docker") is None:
-        raise bomlens_runner.BomLensEngineError(
+        raise bomlens_engine.BomLensEngineError(
             "the BomLens engine needs the docker CLI and a Docker endpoint on the worker"
         )
-    images = bomlens_runner.resolve_images(deep_license=scancode_enabled())
     name, version = _project_identity(scan_uuid, project_id)
-    runner = bomlens_runner.BomLensRunner(
-        scan_uuid=scan_uuid,
-        layout=bomlens_runner.EngineLayout(scan_dir=workspace, source=project_root),
-        images=images,
-        project_name=name,
-        project_version=version,
-        fetch_license=cdxgen_fetch_license(),
-        include_non_shipped=not (
-            scan_scope_filter_enabled() and scan_scope_filter_non_deployable_enabled()
-        ),
-        line_callback=lambda stage: make_line_callback(scan_uuid, stage=stage),
-    )
-    log.info(
-        "bomlens_engine_start",
-        stage="prep",
-        image=images.plan.run_ref,
-        stage2_image=images.stage2.run_ref,
-        stage1_image_prefix=images.stage1_prefix,
-        deep_license=images.deep_license,
-    )
+    log.info("bomlens_engine_start", stage="prep", deep_license=scancode_enabled())
     try:
-        output_dir = runner.run(stage=lambda stage: _advance(scan_uuid, stage))
-    finally:
-        _record_engine_run(scan_uuid, runner.report, images.stage2)
+        run = bomlens_engine.run_source(
+            scan_uuid=scan_uuid,
+            scan_dir=workspace,
+            source=project_root,
+            project=name,
+            version=version,
+            fetch_license=cdxgen_fetch_license(),
+            deep_license=scancode_enabled(),
+            include_non_shipped=not (
+                scan_scope_filter_enabled() and scan_scope_filter_non_deployable_enabled()
+            ),
+            on_stage=lambda stage: _advance(scan_uuid, stage),
+            line_sink=lambda stage: make_line_callback(scan_uuid, stage=stage),
+            is_cancelled=lambda: _is_cancelled(scan_uuid),
+            on_finish=lambda record: _record_engine_run(scan_uuid, record),
+        )
+    except bomlens_engine.EngineWroteNoResult:
+        # A run that left no result says why (its exit and last output lines);
+        # checked after the cancellation, so a cancelled scan stays cancelled.
+        _require_running(scan_uuid)
+        raise
     _require_running(scan_uuid)
-    # A run that left no result says why (its exit and last output lines);
-    # checked after the cancellation, so a cancelled scan stays cancelled.
-    runner.require_result(output_dir)
-    # Every engine container has exited (runner.run guarantees it), so nothing
-    # writes to output_dir while the adapter reads it. The verified copies go
-    # to a folder only the worker writes: outside every folder an engine
-    # container mounted, created now, after the containers are gone.
+    # Every engine container has exited (the runner guarantees it), so nothing
+    # writes to the output folder while the adapter reads it. The verified
+    # copies go to a folder only the worker writes: outside every folder an
+    # engine container mounted, created after the containers are gone.
     applied = apply_bomlens_result(
         scan_uuid=scan_uuid,
-        output_dir=output_dir,
+        output_dir=run.output_dir,
         source_dir=project_root,
-        artifact_dir=runner.verified_dir(),
+        artifact_dir=run.verified_dir,
+        stage1_window=run.stage1_window,
     )
 
     # Signing follows generation, as in the in-process pipeline; its percent

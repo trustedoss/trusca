@@ -46,7 +46,7 @@ from core.db import sync_session_scope
 from integrations import trivy as trivy_adapter
 from integrations._size_guard import enforce_jsonb_row_size_limit
 from integrations.bomlens import contract as bomlens_contract
-from integrations.bomlens import runner as bomlens_runner
+from integrations.bomlens import engine as bomlens_engine
 from models import (
     Component,
     ComponentDependencyEdge,
@@ -210,7 +210,7 @@ def _run_container_task(self: Any, scan_id: str, *, engine: str) -> None:
                 verbose=verbose,
                 engine=engine,
             )
-    except bomlens_runner.EngineScanCancelled as exc:
+    except bomlens_engine.EngineScanCancelled as exc:
         # The engine noticed the scan was cancelled: the row already says so.
         log.info("scan_container_engine_stopped", reason=str(exc)[:100])
     except bomlens_contract.BomLensError as exc:
