@@ -14,10 +14,11 @@ from typing import Any
 import pytest
 from sqlalchemy.orm import Session
 
-from integrations.bomlens.runner import DockerCli, EngineContainer
+from integrations.bomlens.engine import EngineContainer
 from models import Scan
+from tasks import bomlens_engine_reaper
 from tasks.bomlens_engine_reaper import reap_engine_containers
-from tests._bomlens_engine import FakeDocker
+from tests._bomlens_engine import FakeBackend
 from tests.integration.scan.test_bomlens_result import _seed_running_source_scan
 
 pytestmark = pytest.mark.integration
@@ -42,8 +43,10 @@ def _set_status(session: Session, scan_id: uuid.UUID, status: str) -> None:
     session.commit()
 
 
-def _c(cid: str, scan_hex: str, deadline: int | None, instance: str = "this-one") -> Any:
-    return EngineContainer(id=cid, scan_hex=scan_hex, deadline=deadline, instance=instance)
+def _c(name: str, scan_id: str | None, deadline: int | None, running: bool = True) -> Any:
+    return EngineContainer(
+        name=name, scan_id=scan_id, component="engine-stage1", deadline=deadline, running=running
+    )
 
 
 def test_containers_no_running_scan_needs_are_removed(sync_session: Session) -> None:
@@ -53,8 +56,8 @@ def test_containers_no_running_scan_needs_are_removed(sync_session: Session) -> 
     cancelled = _seed_running_source_scan()
     _set_status(sync_session, cancelled, "cancelled")
     unknown = uuid.uuid4()
-    docker = FakeDocker()
-    docker.engine_list = [
+    backend = FakeBackend()
+    backend.engine_list = [
         _c("keep", running.hex, soon),
         _c("late", running.hex, past),
         _c("cancelled", cancelled.hex, soon),
@@ -62,57 +65,83 @@ def test_containers_no_running_scan_needs_are_removed(sync_session: Session) -> 
         _c("unknown-scan", unknown.hex, soon),
         # ... and removed after it.
         _c("unknown-scan-late", unknown.hex, past),
-        _c("no-labels", "", None),
+        _c("no-labels", None, None),
+        _c("no-deadline", running.hex, None),
         _c("bad-scan-label", "not-a-uuid", past),
     ]
 
-    counts = reap_engine_containers(docker, now=now)
+    counts = reap_engine_containers(backend, now=now)
 
-    assert sorted(docker.removed) == sorted(
-        ["late", "cancelled", "unknown-scan-late", "no-labels", "bad-scan-label"]
+    assert sorted(backend.removed_engine) == sorted(
+        ["late", "cancelled", "unknown-scan-late", "no-labels", "no-deadline", "bad-scan-label"]
     )
-    assert counts == {"seen": 7, "removed": 5}
+    assert counts == {"seen": 8, "removed": 6}
 
 
-def test_another_installations_containers_are_never_touched(sync_session: Session) -> None:
-    """Even when the listing returns them, and even past their deadline."""
-    now = time.time()
+def test_a_container_the_backend_will_not_remove_is_not_counted(
+    sync_session: Session,
+) -> None:
+    """The backend refuses a name outside its scope and says so."""
     cancelled = _seed_running_source_scan()
     _set_status(sync_session, cancelled, "cancelled")
-    docker = FakeDocker()
-    docker.engine_list = [
-        _c("theirs-running", uuid.uuid4().hex, int(now) + 600, instance="other"),
-        _c("theirs-late", uuid.uuid4().hex, int(now) - 1, instance="other"),
-        _c("theirs-same-scan-id", cancelled.hex, int(now) + 600, instance="other"),
-    ]
+    backend = FakeBackend()
+    backend.engine_list = [_c("cancelled", cancelled.hex, int(time.time()) + 600)]
+    backend.remove_engine_container = lambda name: False  # type: ignore[method-assign]
 
-    assert reap_engine_containers(docker, now=now) == {"seen": 0, "removed": 0}
-    assert docker.removed == []
+    assert reap_engine_containers(backend) == {"seen": 1, "removed": 0}
 
 
-def test_the_listing_asks_the_daemon_for_this_installation_only(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    seen: list[list[str]] = []
+def test_the_listing_is_narrowed_to_this_installation() -> None:
+    """The backend's own scope is the instance label too; asking for it by
+    name keeps the reaper from ever seeing another installation's containers."""
+    backend = FakeBackend()
 
-    def fake_run(argv: list[str], **_kw: Any) -> subprocess.CompletedProcess[bytes]:
-        seen.append(argv)
-        return subprocess.CompletedProcess(argv, 0, b"abc\tdef\t123\tthis-one\n", b"")
-
-    monkeypatch.setattr(subprocess, "run", fake_run)
-    listed = DockerCli().engine_containers()
-    assert listed == [EngineContainer(id="abc", scan_hex="def", deadline=123, instance="this-one")]
-    assert "label=trusca.instance=this-one" in seen[0]
-    assert "label=trusca.role=bomlens-engine" in seen[0]
+    assert reap_engine_containers(backend) == {"seen": 0, "removed": 0}
+    assert backend.listed_labels == [{"trusca.instance": "this-one"}]
 
 
 def test_a_listing_failure_removes_nothing() -> None:
-    from integrations.bomlens.runner import BomLensEngineError
+    class Broken(FakeBackend):
+        def list_engine_containers(self, labels: Any = None) -> list[Any]:
+            raise RuntimeError("cannot list")
 
-    class Broken(FakeDocker):
-        def engine_containers(self) -> list[EngineContainer]:  # type: ignore[override]
-            raise BomLensEngineError("cannot list")
+    backend = Broken()
+    assert reap_engine_containers(backend) == {"seen": 0, "removed": 0}
+    assert backend.removed_engine == []
 
-    docker = Broken()
-    assert reap_engine_containers(docker) == {"seen": 0, "removed": 0}
-    assert docker.removed == []
+
+def test_containers_of_the_runner_before_the_package_are_removed_by_label(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(argv: list[str], **_kw: Any) -> subprocess.CompletedProcess[str]:
+        calls.append(argv)
+        out = "abc\ndef\n" if argv[1] == "ps" else ""
+        return subprocess.CompletedProcess(argv, 0, out, "")
+
+    monkeypatch.setattr("tasks.bomlens_engine_reaper.subprocess.run", fake_run)
+
+    assert bomlens_engine_reaper.remove_legacy_containers() == 2
+
+    listing, *removals = calls
+    assert "label=trusca.role=bomlens-engine" in listing
+    assert "label=trusca.instance=this-one" in listing
+    assert [r[-1] for r in removals] == ["abc", "def"]
+    assert all(r[:3] == ["docker", "rm", "--force"] for r in removals)
+
+
+def test_a_daemon_that_cannot_be_asked_leaves_the_legacy_containers_alone(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def refused(argv: list[str], **_kw: Any) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(argv, 1, "", "cannot connect")
+
+    monkeypatch.setattr("tasks.bomlens_engine_reaper.subprocess.run", refused)
+    assert bomlens_engine_reaper.remove_legacy_containers() == 0
+
+    def missing(argv: list[str], **_kw: Any) -> subprocess.CompletedProcess[str]:
+        raise FileNotFoundError("docker")
+
+    monkeypatch.setattr("tasks.bomlens_engine_reaper.subprocess.run", missing)
+    assert bomlens_engine_reaper.remove_legacy_containers() == 0

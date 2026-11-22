@@ -252,16 +252,55 @@ def test_a_value_that_is_too_long_or_has_a_line_break_is_left_out(
 # --------------------------------------------------------------------------
 
 
-def _result(*, stage1_error: str | None = None, run_status: str | None = "succeeded") -> Any:
-    stages = {}
-    if stage1_error is not None:
-        stages["stage1"] = SimpleNamespace(start_error=stage1_error)
+def _result(*, run_status: str | None = "succeeded") -> Any:
     return SimpleNamespace(
         output_dir=Path("/x/out"),
-        stages=stages,
         manifest=SimpleNamespace(run_status=run_status) if run_status else None,
-        as_metadata=lambda: {"mode": "source"},
+        plan_status="ok",
+        plan_reason=None,
+        detected_ecosystem="node",
+        source_restored=None,
     )
+
+
+class _Containers:
+    """The package's backend, as the adapter wraps it: each container ends as told."""
+
+    reset_ownership = True
+
+    def __init__(self, **ends: dict[str, Any]) -> None:
+        self.ends = ends
+
+    def run(self, spec: Any, on_line: Any, cancelled: Any) -> Any:  # noqa: ARG002
+        end = self.ends.get(spec.component.removeprefix("engine-"), {})
+        return SimpleNamespace(
+            exit_code=end.get("exit_code", 0),
+            oom_killed=end.get("oom_killed", False),
+            timed_out=end.get("timed_out", False),
+            start_error=end.get("start_error"),
+        )
+
+
+def _spec(component: str) -> Any:
+    return SimpleNamespace(
+        name=f"bomlens-0123abcd-1-{component}",
+        component=f"engine-{component}",
+        image="img@sha256:" + "0" * 64,
+        network="none",
+    )
+
+
+def _containers_then(result: Any, *components: str) -> Any:
+    """A ``run_source_scan`` that runs ``components`` through the backend it is given."""
+
+    def run(policy: Any, backend: Any, **kwargs: Any) -> Any:  # noqa: ARG001
+        for component in components:
+            backend.run(_spec(component), lambda _line: None, lambda: False)
+        if isinstance(result, BaseException):
+            raise result
+        return result
+
+    return run
 
 
 def _run_source(**overrides: Any) -> engine.EngineRun:
@@ -286,19 +325,68 @@ def test_a_run_whose_stage_1_could_not_start_fails_the_scan(
     """The package goes on with stage 2 then, and a mount that changed after
     creation looks exactly like that. A reduced scan is not what TRUSCA reports
     for it."""
+    monkeypatch.setattr(engine, "run_source_scan", _containers_then(_result(), "plan", "stage1"))
     monkeypatch.setattr(
-        engine, "run_source_scan", lambda *a, **k: _result(stage1_error="mount changed")
+        engine,
+        "DockerBackend",
+        lambda options, cli=None: _Containers(
+            stage1={"exit_code": None, "start_error": "mount changed"}
+        ),
     )
-    monkeypatch.setattr(engine, "DockerBackend", lambda options: object())
     with pytest.raises(engine.BomLensEngineError, match="stage 1"):
         _run_source(scan_dir=tmp_path)
+
+
+def test_a_failed_run_still_records_how_its_containers_ended(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The package returns its own record only when the run ends well, so the
+    exit codes of a run that left no result come from the adapter's record."""
+    monkeypatch.setattr(
+        engine,
+        "run_source_scan",
+        _containers_then(package.EngineWroteNoResult("no manifest"), "plan", "stage1", "stage2"),
+    )
+    monkeypatch.setattr(
+        engine,
+        "DockerBackend",
+        lambda options, cli=None: _Containers(
+            stage1={"oom_killed": True, "exit_code": 137}, stage2={"exit_code": 1}
+        ),
+    )
+    seen: list[engine.RunRecord] = []
+    with pytest.raises(engine.EngineWroteNoResult):
+        _run_source(scan_dir=tmp_path, on_finish=seen.append)
+    (record,) = seen
+    assert record.image_ref.startswith("ghcr.io/sktelecom/bomlens")
+    assert record.metadata is not None
+    assert record.metadata["stage1_oom"] is True
+    assert record.metadata["stage1_exit_code"] == 137
+    assert record.metadata["stage2_exit_code"] == 1
+    assert record.metadata["plan_status"] is None
+
+
+def test_a_finished_run_records_the_plan_and_gives_the_real_stage_1_window(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(
+        engine, "run_source_scan", _containers_then(_result(), "plan", "stage1", "stage2")
+    )
+    monkeypatch.setattr(engine, "DockerBackend", lambda options, cli=None: _Containers())
+    run = _run_source(scan_dir=tmp_path)
+    assert run.metadata["plan_status"] == "ok"
+    assert run.metadata["detected_ecosystem"] == "node"
+    assert run.metadata["stage2_exit_code"] == 0
+    assert run.stage1_window is not None
+    started, ended = run.stage1_window
+    assert started <= ended
 
 
 def test_a_finished_run_gives_the_folder_the_status_and_a_fresh_verified_folder(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    monkeypatch.setattr(engine, "run_source_scan", lambda *a, **k: _result())
-    monkeypatch.setattr(engine, "DockerBackend", lambda options: object())
+    monkeypatch.setattr(engine, "run_source_scan", _containers_then(_result()))
+    monkeypatch.setattr(engine, "DockerBackend", lambda options, cli=None: _Containers())
     stale = tmp_path / "bomlens-verified"
     stale.mkdir()
     (stale / "old.json").write_text("{}")
@@ -313,8 +401,8 @@ def test_a_finished_run_gives_the_folder_the_status_and_a_fresh_verified_folder(
 def test_a_verified_folder_that_is_a_link_is_replaced_not_followed(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    monkeypatch.setattr(engine, "run_source_scan", lambda *a, **k: _result())
-    monkeypatch.setattr(engine, "DockerBackend", lambda options: object())
+    monkeypatch.setattr(engine, "run_source_scan", _containers_then(_result()))
+    monkeypatch.setattr(engine, "DockerBackend", lambda options, cli=None: _Containers())
     target = tmp_path / "elsewhere"
     target.mkdir()
     (tmp_path / "scan").mkdir()
@@ -331,7 +419,7 @@ def test_a_cancellation_becomes_the_event_the_tasks_handle(
         raise package.ScanCancelled("the scan was cancelled")
 
     monkeypatch.setattr(engine, "run_source_scan", cancelled)
-    monkeypatch.setattr(engine, "DockerBackend", lambda options: object())
+    monkeypatch.setattr(engine, "DockerBackend", lambda options, cli=None: object())
     with pytest.raises(engine.EngineScanCancelled):
         _run_source(scan_dir=tmp_path)
 
@@ -343,7 +431,7 @@ def test_a_package_error_is_a_bomlens_error_and_its_text_is_bounded(
         raise package.PlanRejected("x" * 5000)
 
     monkeypatch.setattr(engine, "run_source_scan", broken)
-    monkeypatch.setattr(engine, "DockerBackend", lambda options: object())
+    monkeypatch.setattr(engine, "DockerBackend", lambda options, cli=None: object())
     with pytest.raises(BomLensError) as caught:
         _run_source(scan_dir=tmp_path)
     assert len(str(caught.value)) <= 400
@@ -363,7 +451,7 @@ def test_a_run_with_no_result_names_the_last_output_without_credentials(
         raise package.EngineWroteNoResult("stage 2 exited 1 without a manifest")
 
     monkeypatch.setattr(engine, "run_source_scan", no_result)
-    monkeypatch.setattr(engine, "DockerBackend", lambda options: object())
+    monkeypatch.setattr(engine, "DockerBackend", lambda options, cli=None: object())
     with pytest.raises(engine.EngineWroteNoResult) as caught:
         _run_source(scan_dir=tmp_path)
     message = str(caught.value)
@@ -387,7 +475,7 @@ def test_the_log_lines_reach_the_scan_log_per_stage(
         return _result()
 
     monkeypatch.setattr(engine, "run_source_scan", run)
-    monkeypatch.setattr(engine, "DockerBackend", lambda options: object())
+    monkeypatch.setattr(engine, "DockerBackend", lambda options, cli=None: object())
     _run_source(scan_dir=tmp_path, line_sink=sink)
     assert seen == [
         ("cdxgen", "stdout", "one"),
@@ -396,28 +484,20 @@ def test_the_log_lines_reach_the_scan_log_per_stage(
     ]
 
 
-def test_the_cancellation_poll_reads_the_scan_status_at_most_every_few_seconds(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    clock = {"now": 100.0}
-    monkeypatch.setattr("integrations.bomlens.engine.time.monotonic", lambda: clock["now"])
-    reads: list[float] = []
+def test_the_cancellation_poll_asks_every_time_until_the_answer_is_yes() -> None:
+    """The package also asks before it starts the next container, so a cached
+    "no" would let one start after the scan was cancelled."""
+    answers = iter([False, False, True])
+    reads: list[int] = []
 
     def is_cancelled() -> bool:
-        reads.append(clock["now"])
-        return len(reads) >= 3
+        reads.append(1)
+        return next(answers)
 
     poll = engine._cancel_poll(is_cancelled)
     assert poll is not None
-    results = []
-    for _ in range(20):
-        results.append(poll())
-        clock["now"] += 1.0
-    # One read per window of CANCEL_POLL_SECONDS, then it stays cancelled
-    # without reading again.
-    assert reads == [100.0, 103.0, 106.0]
-    assert results[:6] == [False] * 6
-    assert results[6:] == [True] * 14
+    assert [poll(), poll(), poll(), poll(), poll()] == [False, False, True, True, True]
+    assert len(reads) == 3
     assert engine._cancel_poll(None) is None
 
 
@@ -432,7 +512,7 @@ def test_an_image_scan_gives_the_same_run_record(
         return _result()
 
     monkeypatch.setattr(engine, "run_image_scan", image)
-    monkeypatch.setattr(engine, "DockerBackend", lambda options: object())
+    monkeypatch.setattr(engine, "DockerBackend", lambda options, cli=None: object())
     run = engine.run_image(
         scan_uuid=uuid.uuid4(), scan_dir=tmp_path, target="alpine:3.19.0@sha256:" + "a" * 64,
         project="p", version="1",
@@ -440,3 +520,65 @@ def test_an_image_scan_gives_the_same_run_record(
     assert run.run_status == "succeeded"
     assert captured["target"].startswith("alpine:3.19.0")
     assert captured["deep_license"] is False
+
+
+def test_inspect_asks_for_a_container_only() -> None:
+    """``docker inspect <name>`` with no type goes on to ask for an image, a
+    network and a volume once there is no such container. Behind the
+    docker-socket-proxy those requests are refused, not answered "not found",
+    so the package's removal check never saw the container gone and every scan
+    failed after its first container."""
+    from bomlens_runner.docker import DockerCli
+
+    seen: list[list[str]] = []
+
+    def record(self: Any, argv: list[str], timeout: float) -> Any:  # noqa: ARG001
+        seen.append(argv)
+        return SimpleNamespace(returncode=0, stdout=b"", stderr=b"")
+
+    cli = engine._ContainerOnlyCli("docker")
+    original = DockerCli.run
+    DockerCli.run = record  # type: ignore[method-assign,assignment]
+    try:
+        cli.run(["inspect", "--format", "{{.Id}}", "abc"], 60)
+        cli.run(["image", "inspect", "--format", "{{.Id}}", "img"], 60)
+        cli.run(["container", "inspect", "abc"], 60)
+        cli.run(["ps", "--all", "--quiet"], 60)
+    finally:
+        DockerCli.run = original  # type: ignore[method-assign]
+    assert seen == [
+        ["container", "inspect", "--format", "{{.Id}}", "abc"],
+        ["image", "inspect", "--format", "{{.Id}}", "img"],
+        ["container", "inspect", "abc"],
+        ["ps", "--all", "--quiet"],
+    ]
+
+
+def test_every_container_logs_its_start_and_exit_for_the_comparison_report(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """tests/e2e/golden/shadow_report.py reads these two events (and the scan id
+    and time the log adds) to say how long each container ran."""
+    import structlog
+
+    from tests.e2e.golden import shadow_report
+
+    monkeypatch.setattr(
+        engine, "run_source_scan", _containers_then(_result(), "plan", "stage1", "stage2")
+    )
+    monkeypatch.setattr(engine, "DockerBackend", lambda options, cli=None: _Containers())
+    with structlog.testing.capture_logs() as captured:
+        _run_source(scan_dir=tmp_path)
+    events = [e for e in captured if e["event"].startswith("bomlens_container_")]
+    assert [(e["event"], e["stage"]) for e in events] == [
+        ("bomlens_container_start", "plan"),
+        ("bomlens_container_exit", "plan"),
+        ("bomlens_container_start", "stage1"),
+        ("bomlens_container_exit", "stage1"),
+        ("bomlens_container_start", "stage2"),
+        ("bomlens_container_exit", "stage2"),
+    ]
+    assert all(e["exit_code"] == 0 for e in events if e["event"].endswith("exit"))
+    # The report finds the container's label in the name the package gives.
+    label = shadow_report._CONTAINER_LABEL.search("bomlens-0123abcd-2-stage1")
+    assert label is not None and label.group(1) == "stage1"

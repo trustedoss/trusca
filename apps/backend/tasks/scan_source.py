@@ -110,7 +110,7 @@ from integrations._secret_scrub import scrub_secrets
 from integrations._size_guard import enforce_jsonb_row_size_limit
 from integrations._subprocess_env import scrubbed_env_for_prep
 from integrations.bomlens import contract as bomlens_contract
-from integrations.bomlens import runner as bomlens_runner
+from integrations.bomlens import engine as bomlens_engine
 from integrations.dependency_graph import (
     compute_depths,
     graph_depths_from_sbom,
@@ -341,7 +341,7 @@ def _run_source_task(self: Any, scan_id: str, *, engine: str) -> None:
                 ref=scan_ref,
                 engine=engine,
             )
-    except bomlens_runner.EngineScanCancelled as exc:
+    except bomlens_engine.EngineScanCancelled as exc:
         # The BomLens engine noticed the scan was cancelled: the row already
         # says so, and nothing is written over it.
         log.info("scan_source_engine_stopped", reason=str(exc)[:100])

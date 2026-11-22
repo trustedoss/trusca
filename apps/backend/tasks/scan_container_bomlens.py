@@ -6,7 +6,7 @@
 either engine, then hands an engine scan here. One container does the scan:
 the BomLens image in ``MODE=IMAGE`` reads the image from its registry (syft),
 reads the Debian packages' licences (Trivy) and matches the SBOM against the
-worker's Trivy database (``integrations.bomlens.runner.BomLensRunner.run_image``).
+worker's Trivy database (``integrations.bomlens.engine.run_image``).
 TRUSCA then persists the result through the same adapter a BomLens source scan
 uses (``tasks.bomlens_result.apply_bomlens_result``): components, declared
 licences, dependency edges, vulnerabilities, the image OS, stage outcomes, and
@@ -42,7 +42,7 @@ import structlog
 from sqlalchemy import select
 
 from core.db import sync_session_scope
-from integrations.bomlens import runner as bomlens_runner
+from integrations.bomlens import engine as bomlens_engine
 from models import Project, RegistryCredential, Scan, Team
 from services.registry_allowlist import allowed_registries, split_registry_host
 from tasks._progress import make_line_callback
@@ -59,11 +59,11 @@ log = structlog.get_logger("tasks.scan_container_bomlens")
 ENGINE_RUN_METADATA_KEY: Final = "scan_engine_run"
 
 
-class RegistryCredentialNotPassed(bomlens_runner.BomLensEngineError):
+class RegistryCredentialNotPassed(bomlens_engine.BomLensEngineError):
     """The image's registry has a stored credential the engine does not take."""
 
 
-class InternalRegistryRefused(bomlens_runner.BomLensEngineError):
+class InternalRegistryRefused(bomlens_engine.BomLensEngineError):
     """The image's registry is an address on the local machine or network."""
 
 
@@ -160,11 +160,7 @@ def _project_identity(scan_uuid: uuid.UUID) -> tuple[str, str]:
     return name, version
 
 
-def _record_engine_run(
-    scan_uuid: uuid.UUID,
-    report: bomlens_runner.RunReport,
-    engine_image: bomlens_runner.PinnedImage,
-) -> None:
+def _record_engine_run(scan_uuid: uuid.UUID, record: bomlens_engine.RunRecord) -> None:
     """Keep what the runner did on the scan; best-effort, in its own transaction."""
     try:
         with sync_session_scope() as session:
@@ -172,16 +168,23 @@ def _record_engine_run(
             if scan is None:
                 return
             metadata: dict[str, Any] = dict(scan.scan_metadata or {})
-            metadata[ENGINE_RUN_METADATA_KEY] = report.as_metadata()
+            metadata[ENGINE_RUN_METADATA_KEY] = record.metadata or {}
             # Which engine and image ran, even when no result is read:
             # the manifest's own record replaces this one when there is.
             metadata[ENGINE_METADATA_KEY] = engine_record_without_result(
-                engine_image.ref, engine_image.digest
+                record.image_ref, record.image_digest
             )
             scan.scan_metadata = metadata
             session.commit()
     except Exception:  # noqa: BLE001 - a record of the run must not fail it
         log.warning("bomlens_run_record_failed", exc_info=True)
+
+
+def _is_cancelled(scan_uuid: uuid.UUID) -> bool:
+    """Whether the scan is no longer ``running`` (polled while the container runs)."""
+    with sync_session_scope() as session:
+        scan = session.get(Scan, scan_uuid)
+        return (scan.status if scan is not None else None) != "running"
 
 
 def require_running(scan_uuid: uuid.UUID) -> None:
@@ -195,7 +198,7 @@ def require_running(scan_uuid: uuid.UUID) -> None:
         scan = session.get(Scan, scan_uuid)
         status = scan.status if scan is not None else None
     if status != "running":
-        raise bomlens_runner.EngineScanCancelled(f"scan is {status}")
+        raise bomlens_engine.EngineScanCancelled(f"scan is {status}")
 
 
 def run_bomlens_container_pipeline(
@@ -213,11 +216,11 @@ def run_bomlens_container_pipeline(
     stages and percents. Raises a
     :class:`~integrations.bomlens.contract.BomLensError` when the image cannot
     be scanned or its result cannot become a succeeded scan, and
-    :class:`~integrations.bomlens.runner.EngineScanCancelled` when the scan
+    :class:`~integrations.bomlens.engine.EngineScanCancelled` when the scan
     was cancelled meanwhile.
     """
     # Checked before anything else, the reference first: neither needs Docker.
-    target = bomlens_runner.image_target(image_ref)
+    target = bomlens_engine.image_target(image_ref)
     host = split_registry_host(image_ref)
     # With an allow-list the operator chose the registries (the task checked
     # it already); without one, an address is not a registry anyone chose.
@@ -226,41 +229,40 @@ def run_bomlens_container_pipeline(
     if _stored_credential_exists(scan_uuid, image_ref):
         raise RegistryCredentialNotPassed(credential_refusal(split_registry_host(image_ref)))
     if shutil.which("docker") is None:
-        raise bomlens_runner.BomLensEngineError(
+        raise bomlens_engine.BomLensEngineError(
             "the BomLens engine needs the docker CLI and a Docker endpoint on the worker"
         )
-    images = bomlens_runner.resolve_images(deep_license=False)
     name, version = _project_identity(scan_uuid)
     workspace.mkdir(parents=True, exist_ok=True)
-    runner = bomlens_runner.BomLensRunner(
-        scan_uuid=scan_uuid,
-        layout=bomlens_runner.EngineLayout(scan_dir=workspace, source=workspace / "source"),
-        images=images,
-        project_name=name,
-        project_version=version,
-        fetch_license=False,
-        line_callback=lambda stage: make_line_callback(scan_uuid, stage=stage),
-    )
 
     require_running(scan_uuid)
     set_stage(scan_uuid, "trivy")
-    log.info("bomlens_image_scan_start", stage="trivy", image=images.plan.run_ref)
+    log.info("bomlens_image_scan_start", stage="trivy")
     try:
-        output_dir = runner.run_image(target)
-    finally:
-        _record_engine_run(scan_uuid, runner.report, images.plan)
+        run = bomlens_engine.run_image(
+            scan_uuid=scan_uuid,
+            scan_dir=workspace,
+            target=target,
+            project=name,
+            version=version,
+            line_sink=lambda stage: make_line_callback(scan_uuid, stage=stage),
+            is_cancelled=lambda: _is_cancelled(scan_uuid),
+            on_finish=lambda record: _record_engine_run(scan_uuid, record),
+        )
+    except bomlens_engine.EngineWroteNoResult:
+        # A run that left no result says why (its exit and last output lines);
+        # checked after the cancellation, so a cancelled scan stays cancelled.
+        require_running(scan_uuid)
+        raise
     require_running(scan_uuid)
-    # A run that left no result says why (its exit and last output lines);
-    # checked after the cancellation, so a cancelled scan stays cancelled.
-    runner.require_result(output_dir)
     set_stage(scan_uuid, "persist")
-    # The container has exited (run_image guarantees it); the verified copies
+    # The container has exited (the runner guarantees it); the verified copies
     # go to a folder no container ever mounted.
     apply_bomlens_result(
         scan_uuid=scan_uuid,
-        output_dir=output_dir,
+        output_dir=run.output_dir,
         source_dir=None,
-        artifact_dir=runner.verified_dir(),
+        artifact_dir=run.verified_dir,
         container_image=True,
     )
 

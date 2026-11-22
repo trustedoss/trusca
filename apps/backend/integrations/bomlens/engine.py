@@ -18,7 +18,7 @@ What stays here, on purpose:
   database and the Docker API as an egress network;
 * the last lines the result container printed, cleaned of credentials and
   control characters, in the error of a run that left no manifest;
-* the scan-cancellation poll, which reads the scan's status (throttled).
+* the scan-cancellation poll, which reads the scan's status.
 
 Nothing here reads a result: :mod:`integrations.bomlens.contract` and
 :mod:`tasks.bomlens_result` still do, from the folder the package fills.
@@ -29,11 +29,11 @@ from __future__ import annotations
 import os
 import re
 import shutil
-import time
 import uuid
 from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Final
 
@@ -42,9 +42,7 @@ from bomlens_runner import (
     BomLensError as PackageError,
 )
 from bomlens_runner import (
-    EngineWroteNoResult as PackageWroteNoResult,
-)
-from bomlens_runner import (
+    EngineContainer,
     Images,
     RunnerPolicy,
     ScanCancelled,
@@ -54,7 +52,10 @@ from bomlens_runner import (
     run_image_scan,
     run_source_scan,
 )
-from bomlens_runner.docker import DockerBackend, DockerOptions
+from bomlens_runner import (
+    EngineWroteNoResult as PackageWroteNoResult,
+)
+from bomlens_runner.docker import DockerBackend, DockerCli, DockerOptions
 
 from core.config import (
     bomlens_deep_license_image,
@@ -74,6 +75,7 @@ from integrations.bomlens import contract
 from integrations.bomlens.runner import (
     ERROR_TAIL_LINE_CHARS,
     ERROR_TAIL_LINES,
+    image_target,
     is_loopback_proxy,
     output_tail,
     trivy_db_max_age_days,
@@ -85,10 +87,6 @@ log = structlog.get_logger("integrations.bomlens.engine")
 #: top of the ones the package refuses (``host``, ``none``, ``bridge``,
 #: ``default``). An engine container on either would reach TRUSCA's database.
 REFUSED_NETWORKS: Final = ("trustedoss", "trustedoss-docker-api")
-
-#: How often the scan's status is read while a container runs. The package asks
-#: for a cancellation about every second; a database read each time is too much.
-CANCEL_POLL_SECONDS: Final = 3.0
 
 #: The last lines of each stage's output kept for an error message.
 _TAIL_LINES_KEPT: Final = 60
@@ -176,9 +174,11 @@ def stage1_image_prefix(value: str) -> str | None:
     if not text:
         return None
     if len(text) > _STAGE1_PREFIX_MAX_CHARS or _STAGE1_PREFIX_RE.fullmatch(text) is None:
+        # The value is not repeated: it may carry a login, and the message
+        # reaches the scan's error and the worker's log.
         raise BomLensEngineError(
-            f"SCAN_BOMLENS_STAGE1_IMAGE_PREFIX={contract.clip(text)!r} is not a registry "
-            "host followed by a repository path (for example registry.example/mirror/cdxgen/)"
+            "SCAN_BOMLENS_STAGE1_IMAGE_PREFIX is not in the right form: use a registry host "
+            "followed by a repository path (for example registry.example/mirror/cdxgen/)"
         )
     return text if text.endswith("/") else text + "/"
 
@@ -338,8 +338,11 @@ class _Output:
     sink: Callable[[str], Callable[[str, str], None]] | None
     tails: dict[str, deque[str]] = field(default_factory=dict)
     callbacks: dict[str, Callable[[str, str], None]] = field(default_factory=dict)
+    #: The stage that printed last: the one a run with no result is about.
+    last_stage: str | None = None
 
     def __call__(self, stage: str, line: str) -> None:
+        self.last_stage = stage
         tail = self.tails.setdefault(stage, deque(maxlen=_TAIL_LINES_KEPT))
         tail.append(line[:_TAIL_LINE_MAX_CHARS])
         if self.sink is None:
@@ -360,26 +363,63 @@ class _Output:
 
 @dataclass(frozen=True)
 class EngineRun:
-    """A finished run: the folder the engine wrote, and how it went."""
+    """A finished run: the folder the engine wrote, and how it went.
+
+    ``stage1_window`` is when stage 1 really ran (started and ended, UTC): the
+    manifest's ``generate`` step is stamped by stage 2 and says nothing about it.
+    """
 
     output_dir: Path
     verified_dir: Path
     metadata: dict[str, Any]
     run_status: str | None
+    stage1_window: tuple[datetime, datetime] | None = None
+
+
+@dataclass
+class RunRecord:
+    """What a run did, for the scan's metadata. ``metadata`` is ``None`` when the
+    run ended before the package returned (an error), the image is always known."""
+
+    image_ref: str
+    image_digest: str
+    metadata: dict[str, Any] | None = None
+
+
+#: The progress labels the scan pipeline shows, by the package's stage names.
+_STAGE_LABELS: Final = {"prep": "prep", "cdxgen": "cdxgen", "postprocess": "scancode"}
+
+
+def _stage_hook(on_stage: Callable[[str], None] | None) -> Callable[[str], None] | None:
+    """``on_stage`` under the labels the pipeline shows. A cancellation raised by
+    it stops the run as the package's own does."""
+    if on_stage is None:
+        return None
+
+    def announce(name: str) -> None:
+        try:
+            on_stage(_STAGE_LABELS.get(name, name))
+        except EngineScanCancelled:
+            raise ScanCancelled("the scan was cancelled") from None
+
+    return announce
 
 
 def _cancel_poll(is_cancelled: Callable[[], bool] | None) -> Callable[[], bool] | None:
-    """``is_cancelled`` read at most every :data:`CANCEL_POLL_SECONDS`."""
+    """``is_cancelled``, read on every call until it says yes, then not again.
+
+    The package asks about once a second while a container runs, and before it
+    starts the next one. Answering the second kind from a cache would let a
+    container start after the scan was cancelled, so nothing is cached but the
+    answer yes.
+    """
     if is_cancelled is None:
         return None
-    last_read = 0.0
     cancelled = False
 
     def poll() -> bool:
-        nonlocal last_read, cancelled
-        now = time.monotonic()
-        if not cancelled and now - last_read >= CANCEL_POLL_SECONDS:
-            last_read = now
+        nonlocal cancelled
+        if not cancelled:
             cancelled = bool(is_cancelled())
         return cancelled
 
@@ -402,27 +442,196 @@ def _fresh_verified_dir(scan_dir: Path) -> Path:
     return path
 
 
-def _failure(exc: PackageError, output: _Output, result_stage: str) -> Exception:
+def _failure(exc: PackageError, output: _Output) -> Exception:
     """The TRUSCA error for a package error."""
     if isinstance(exc, ScanCancelled):
         return EngineScanCancelled("the scan was cancelled")
     if isinstance(exc, PackageWroteNoResult):
+        result_stage = output.last_stage or ""
         tail = output.tail(result_stage)
         log.error("bomlens_engine_no_result", stage=result_stage, output_tail=tail)
         short = " | ".join(line[:ERROR_TAIL_LINE_CHARS] for line in tail[-ERROR_TAIL_LINES:])
-        return EngineWroteNoResult(_message(exc) + (f"; last output: {short}" if short else ""))
+        # "BomLens " in front keeps the wording the scan's error always had.
+        return EngineWroteNoResult(
+            "BomLens " + _message(exc) + (f"; last output: {short}" if short else "")
+        )
     return BomLensEngineError(_message(exc))
 
 
-def _check_stage1(result: Any) -> None:
+class _ContainerOnlyCli(DockerCli):  # type: ignore[misc]  # the package has no type hints
+    """The package's docker commands, with ``docker inspect`` asking for a container only.
+
+    ``docker inspect <name>`` with no type asks the daemon for a container, then
+    an image, a network, a volume and so on. Behind the docker-socket-proxy the
+    later requests are refused (403, not 404), so the removal check, which waits
+    for "no such container", never saw it and failed every scan after the first
+    container.
+    """
+
+    def run(self, argv: list[str], timeout: float) -> Any:
+        if argv[:1] == ["inspect"]:
+            argv = ["container", *argv]
+        return super().run(argv, timeout)
+
+
+def _docker_backend(options: DockerOptions) -> Any:
+    return DockerBackend(options, cli=_ContainerOnlyCli(options.docker))
+
+
+def engine_backend() -> Any:
+    """The package's Docker backend as the settings describe it, for what is not a run.
+
+    The reaper lists and removes engine containers with it. Its options carry
+    the instance label, so the backend only ever sees this installation's
+    containers.
+    """
+    _, _, options = _volumes()
+    try:
+        return _docker_backend(options)
+    except PackageError as exc:
+        raise BomLensEngineError(_message(exc)) from None
+
+
+@dataclass
+class _Stage:
+    """One container as it ended: what the scan's run record keeps."""
+
+    image: str
+    started: datetime
+    ended: datetime
+    exit_code: int | None = None
+    oom_killed: bool = False
+    timed_out: bool = False
+    start_error: str | None = None
+
+
+class _RecordingBackend:
+    """The package's backend, with a record of every container it ran.
+
+    The package returns its own record only when the run ends well. A run that
+    fails (a stage 2 that wrote no result, a container that would not stop)
+    still has to say how its containers ended, so the record is kept here.
+    """
+
+    def __init__(self, inner: Any, *, egress_network: str | None) -> None:
+        self._inner = inner
+        self._egress_network = egress_network
+        self.stages: dict[str, _Stage] = {}
+
+    @property
+    def reset_ownership(self) -> bool:
+        return bool(self._inner.reset_ownership)
+
+    def preflight(self) -> None:
+        self._inner.preflight()
+
+    def remove_leftovers(self, scan_label: str) -> None:
+        self._inner.remove_leftovers(scan_label)
+
+    def list_engine_containers(self, labels: Any = None) -> Any:
+        return self._inner.list_engine_containers(labels)
+
+    def remove_engine_container(self, name: str) -> bool:
+        return bool(self._inner.remove_engine_container(name))
+
+    def run(self, spec: Any, on_line: Callable[[str], None], cancelled: Callable[[], bool]) -> Any:
+        if spec.network == "egress" and not self._egress_network:
+            # Refused before the container exists, as the stage that needs the
+            # package registries must not be put on a network TRUSCA did not choose.
+            raise BomLensEngineError(
+                "this stage needs the package registries and SCAN_BOMLENS_NETWORK is not set"
+            )
+        key = spec.component.removeprefix("engine-")
+        started = datetime.now(UTC)
+        stage = _Stage(image=spec.image, started=started, ended=started)
+        self.stages[key] = stage
+        # The events the golden comparison report reads for its container table.
+        log.info(
+            "bomlens_container_start",
+            stage=key,
+            image=spec.image,
+            network=spec.network,
+            container=spec.name,
+        )
+        try:
+            outcome = self._inner.run(spec, on_line, cancelled)
+        finally:
+            stage.ended = max(started, datetime.now(UTC))
+        stage.exit_code = outcome.exit_code
+        stage.oom_killed = bool(outcome.oom_killed)
+        stage.timed_out = bool(outcome.timed_out)
+        stage.start_error = outcome.start_error
+        log.info(
+            "bomlens_container_exit",
+            stage=key,
+            exit_code=stage.exit_code,
+            oom_killed=stage.oom_killed,
+            timed_out=stage.timed_out,
+        )
+        return outcome
+
+
+def _recording_backend(options: DockerOptions) -> _RecordingBackend:
+    """The Docker backend for ``options`` with the record around it.
+
+    The backend refuses an egress network it must not join (``host``, the
+    compose networks, an id) when it is built, so that is an error here, before
+    any container.
+    """
+    try:
+        return _RecordingBackend(_docker_backend(options), egress_network=options.egress_network)
+    except PackageError as exc:
+        # Most often the egress network: the package refuses the default
+        # ``bridge`` network too, where containers reach each other.
+        raise BomLensEngineError(f"{_message(exc)} (check SCAN_BOMLENS_NETWORK)") from None
+
+
+def _stage1_window(stages: dict[str, _Stage]) -> tuple[datetime, datetime] | None:
+    stage = stages.get("stage1")
+    return (stage.started, stage.ended) if stage is not None else None
+
+
+def _run_metadata(stages: dict[str, _Stage], result: Any | None, *, image: bool) -> dict[str, Any]:
+    """What the scan's ``scan_engine_run`` records, in the keys it always had.
+
+    The package's own record nests the containers under ``stages``; the keys
+    here are the ones the administrator guide names and the scan record kept
+    since the first engine release, so they stay. ``result`` is the package's
+    record, ``None`` when the run ended before it returned one.
+    """
+    stage1, stage2, whole = stages.get("stage1"), stages.get("stage2"), stages.get("image")
+    if image:
+        return {
+            "mode": "image",
+            "engine_image": whole.image if whole is not None else None,
+            "exit_code": whole.exit_code if whole is not None else None,
+            "timed_out": bool(whole.timed_out) if whole is not None else False,
+        }
+    plan_reason = result.plan_reason if result is not None else None
+    ecosystem = result.detected_ecosystem if result is not None else None
+    return {
+        "plan_status": result.plan_status if result is not None else None,
+        "plan_reason": contract.clip(plan_reason) if plan_reason else None,
+        "detected_ecosystem": contract.clip(ecosystem) if ecosystem else None,
+        "stage1_image": stage1.image if stage1 is not None else None,
+        "stage1_exit_code": stage1.exit_code if stage1 is not None else None,
+        "stage1_oom": bool(stage1.oom_killed) if stage1 is not None else False,
+        "stage1_timed_out": bool(stage1.timed_out) if stage1 is not None else False,
+        "source_restored": result.source_restored if result is not None else None,
+        "stage2_image": stage2.image if stage2 is not None else None,
+        "stage2_exit_code": stage2.exit_code if stage2 is not None else None,
+    }
+
+
+def _check_stage1(stages: dict[str, _Stage]) -> None:
     """Refuse a run whose stage 1 container could not be started.
 
     The package then runs stage 2 on what is left, which is a reduced scan.
     A container that cannot start is also what a changed mount or a missing
     network looks like, so TRUSCA fails the scan instead.
     """
-    record = result.stages.get("stage1")
-    if record is not None and record.start_error:
+    stage = stages.get("stage1")
+    if stage is not None and stage.start_error:
         raise BomLensEngineError("the BomLens stage 1 container could not be started")
 
 
@@ -439,35 +648,50 @@ def run_source(
     on_stage: Callable[[str], None] | None = None,
     line_sink: Callable[[str], Callable[[str, str], None]] | None = None,
     is_cancelled: Callable[[], bool] | None = None,
+    on_finish: Callable[[RunRecord], None] | None = None,
 ) -> EngineRun:
-    """Run the engine on a source tree. Every container is gone when this returns."""
+    """Run the engine on a source tree. Every container is gone when this returns.
+
+    ``on_stage`` is told ``prep``, ``cdxgen`` and ``scancode`` before each step.
+    ``on_finish`` is called once, also when the run raised.
+    """
     policy, options = build_policy(
         deep_license=deep_license, include_non_shipped=include_non_shipped
     )
     output = _Output(line_sink)
+    image = policy.stage2_image
+    record = RunRecord(image.ref, image.digest)
+    result: Any = None
     try:
-        result = run_source_scan(
-            policy,
-            DockerBackend(options),
-            scan_id=scan_uuid.hex,
-            project=project,
-            version=version,
-            scan_dir=scan_dir,
-            source=source,
-            fetch_license=fetch_license,
-            on_stage=on_stage,
-            on_log=output,
-            cancel=_cancel_poll(is_cancelled),
+        backend = _recording_backend(options)
+        try:
+            result = run_source_scan(
+                policy,
+                backend,
+                scan_id=scan_uuid.hex,
+                project=project,
+                version=version,
+                scan_dir=scan_dir,
+                source=source,
+                fetch_license=fetch_license,
+                on_stage=_stage_hook(on_stage),
+                on_log=output,
+                cancel=_cancel_poll(is_cancelled),
+            )
+        except PackageError as exc:
+            raise _failure(exc, output) from None
+        finally:
+            record.metadata = _run_metadata(backend.stages, result, image=False)
+        _check_stage1(backend.stages)
+        return EngineRun(
+            output_dir=result.output_dir,
+            verified_dir=_fresh_verified_dir(scan_dir),
+            metadata=record.metadata,
+            run_status=result.manifest.run_status if result.manifest else None,
+            stage1_window=_stage1_window(backend.stages),
         )
-    except PackageError as exc:
-        raise _failure(exc, output, "postprocess") from None
-    _check_stage1(result)
-    return EngineRun(
-        output_dir=result.output_dir,
-        verified_dir=_fresh_verified_dir(scan_dir),
-        metadata=result.as_metadata(),
-        run_status=result.manifest.run_status if result.manifest else None,
-    )
+    finally:
+        _finish(on_finish, record)
 
 
 def run_image(
@@ -479,41 +703,72 @@ def run_image(
     version: str,
     line_sink: Callable[[str], Callable[[str, str], None]] | None = None,
     is_cancelled: Callable[[], bool] | None = None,
+    on_finish: Callable[[RunRecord], None] | None = None,
 ) -> EngineRun:
-    """Scan a container image with the engine. Every container is gone when this returns."""
+    """Scan a container image with the engine. Every container is gone when this returns.
+
+    ``target`` is what :func:`image_target` gave (``registry:<reference>``); the
+    package adds the scheme itself, so it gets the reference alone.
+    """
     policy, options = build_policy(deep_license=False, include_non_shipped=False)
     output = _Output(line_sink)
+    image = policy.images.engine
+    record = RunRecord(image.ref, image.digest)
+    result: Any = None
     try:
-        result = run_image_scan(
-            policy,
-            DockerBackend(options),
-            scan_id=scan_uuid.hex,
-            target=target,
-            project=project,
-            version=version,
-            scan_dir=scan_dir,
-            on_log=output,
-            cancel=_cancel_poll(is_cancelled),
+        backend = _recording_backend(options)
+        try:
+            result = run_image_scan(
+                policy,
+                backend,
+                scan_id=scan_uuid.hex,
+                target=target.removeprefix("registry:"),
+                project=project,
+                version=version,
+                scan_dir=scan_dir,
+                on_log=output,
+                cancel=_cancel_poll(is_cancelled),
+            )
+        except PackageError as exc:
+            raise _failure(exc, output) from None
+        finally:
+            record.metadata = {
+                **_run_metadata(backend.stages, None, image=True),
+                "image_target": target,
+            }
+        return EngineRun(
+            output_dir=result.output_dir,
+            verified_dir=_fresh_verified_dir(scan_dir),
+            metadata=record.metadata,
+            run_status=result.manifest.run_status if result.manifest else None,
         )
-    except PackageError as exc:
-        raise _failure(exc, output, "trivy") from None
-    return EngineRun(
-        output_dir=result.output_dir,
-        verified_dir=_fresh_verified_dir(scan_dir),
-        metadata=result.as_metadata(),
-        run_status=result.manifest.run_status if result.manifest else None,
-    )
+    finally:
+        _finish(on_finish, record)
+
+
+def _finish(on_finish: Callable[[RunRecord], None] | None, record: RunRecord) -> None:
+    """Hand the record on; a failure of the callback must not replace the run's outcome."""
+    if on_finish is None:
+        return
+    try:
+        on_finish(record)
+    except Exception:  # noqa: BLE001 - a record of the run must not fail it
+        log.warning("bomlens_run_record_failed", exc_info=True)
 
 
 __all__ = [
-    "CANCEL_POLL_SECONDS",
     "REFUSED_NETWORKS",
     "BomLensEngineError",
+    "EngineContainer",
     "EngineRun",
     "EngineScanCancelled",
+    "RunRecord",
     "EngineWroteNoResult",
     "build_policy",
+    "engine_backend",
+    "image_target",
     "run_image",
     "run_source",
     "stage1_image_prefix",
+    "trivy_db_max_age_days",
 ]
