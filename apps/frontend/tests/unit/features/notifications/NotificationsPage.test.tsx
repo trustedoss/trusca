@@ -515,6 +515,27 @@ describe("NotificationsPage", () => {
       expect(rowText("k3")).not.toContain("stored english");
     });
 
+    it("ignores params named after i18next options", async () => {
+      // A param called `lng` would otherwise switch the row to Korean.
+      mockedList.mockResolvedValue(
+        makeList([
+          makeItem("r1", {
+            kind: "scan_completed",
+            title: "stored english",
+            body: "stored english",
+            message_key: "scan_scheduled_completed",
+            params: { project_name: "web", lng: "ko" },
+          }),
+        ]),
+      );
+      renderPage();
+      await waitFor(() => {
+        expect(screen.getAllByTestId("notifications-row")).toHaveLength(1);
+      });
+      expect(rowText("r1")).toContain("Scheduled scan completed: web");
+      expect(rowText("r1")).not.toContain("예약 스캔");
+    });
+
     it("falls back to the stored text for an absent or unknown key", async () => {
       await i18n.changeLanguage("ko");
       mockedList.mockResolvedValue(

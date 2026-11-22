@@ -121,3 +121,10 @@ def test_notification_out_carries_message_fields() -> None:
     dumped = new_row.model_dump(mode="json")
     assert dumped["message_key"] == "mfa_enabled"
     assert dumped["params"] == {"a": "b"}
+
+
+@pytest.mark.parametrize("name", ["lng", "ns", "context", "replace", "interpolation"])
+def test_reserved_i18next_option_names_are_dropped(name: str) -> None:
+    """These names would steer the client's lookup instead of filling a slot."""
+    cleaned = _clean_params({"project_name": "web", name: "x"})
+    assert cleaned == {"project_name": "web"}

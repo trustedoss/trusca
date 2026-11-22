@@ -436,6 +436,13 @@ def _truncate(value: str, max_len: int) -> str:
 # as ``link`` below: the English ``title``/``body`` still reach the reader.
 _MESSAGE_KEY_RE = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
 _PARAM_NAME_RE = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
+# i18next reads these names from its options object as lookup controls
+# (language, namespace, context), so a param with one of them would change
+# which text is shown rather than fill a placeholder. The client drops the
+# same names (notificationText.ts).
+_RESERVED_PARAM_NAMES = frozenset(
+    {"lng", "lngs", "ns", "context", "ordinal", "replace", "interpolation", "defaultvalue"}
+)
 _MAX_PARAMS = 16
 _MAX_PARAM_STR = 512
 
@@ -449,7 +456,11 @@ def _clean_params(params: dict[str, Any] | None) -> dict[str, Any] | None:
         if len(cleaned) >= _MAX_PARAMS:
             log.warning("notification.params_truncated", kept=_MAX_PARAMS)
             break
-        if not isinstance(name, str) or not _PARAM_NAME_RE.fullmatch(name):
+        if (
+            not isinstance(name, str)
+            or not _PARAM_NAME_RE.fullmatch(name)
+            or name in _RESERVED_PARAM_NAMES
+        ):
             log.warning("notification.param_name_rejected", name=str(name)[:40])
             continue
         if isinstance(value, bool) or value is None:

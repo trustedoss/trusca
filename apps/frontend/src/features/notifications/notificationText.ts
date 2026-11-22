@@ -50,6 +50,20 @@ function formatDay(value: string, locale: string): string | null {
   }).format(date);
 }
 
+// i18next reads these from its options object as lookup controls, so a param
+// with one of these names would change which text is shown. The server drops
+// the same names (notification_service._RESERVED_PARAM_NAMES).
+const RESERVED_PARAM_NAMES = new Set([
+  "lng",
+  "lngs",
+  "ns",
+  "context",
+  "ordinal",
+  "replace",
+  "interpolation",
+  "defaultvalue",
+]);
+
 function interpolationValues(
   params: Record<string, unknown>,
   t: TFunction,
@@ -57,6 +71,7 @@ function interpolationValues(
 ): Record<string, string | number> {
   const values: Record<string, string | number> = {};
   for (const [name, value] of Object.entries(params)) {
+    if (RESERVED_PARAM_NAMES.has(name)) continue;
     if (typeof value === "string" || typeof value === "number") {
       values[name] = value;
     } else if (typeof value === "boolean") {
