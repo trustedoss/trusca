@@ -116,6 +116,13 @@ describe("ActionQueuePanel", () => {
       "href",
       "/projects/p-1",
     );
+    // One forbidden license reads singular, not "1 forbidden licenses".
+    expect(screen.getByTestId("action-queue-gate-row-p-1")).toHaveTextContent(
+      "4 critical · 1 forbidden license",
+    );
+    expect(
+      screen.getByTestId("action-queue-gate-row-p-1"),
+    ).not.toHaveTextContent("1 forbidden licenses");
     expect(screen.getByTestId("action-queue-stale-row-p-2")).toBeInTheDocument();
     expect(screen.queryByTestId("action-queue-clear")).toBeNull();
   });

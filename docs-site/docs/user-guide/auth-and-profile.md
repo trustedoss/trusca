@@ -159,7 +159,7 @@ Errors are surfaced as i18n-mapped messages. The seven distinct codes cover prov
 
 ## Manage connected accounts on `/profile`
 
-The `/profile` page has a **Connected Accounts** section that lists the OAuth identities currently attached to your account:
+The `/profile` page has a **Connected accounts** section that lists the OAuth identities currently attached to your account:
 
 - **GitHub** — present if you have ever signed in with GitHub.
 - **Google** — present if you have ever signed in with Google.

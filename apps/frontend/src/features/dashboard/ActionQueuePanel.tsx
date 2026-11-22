@@ -214,7 +214,9 @@ export function ActionQueuePanel() {
                     <span className="shrink-0 text-xs text-muted-foreground">
                       {t("action_queue.gate_reason", {
                         critical: entry.critical_cve_count,
-                        licenses: entry.forbidden_license_count,
+                        licenses: t("action_queue.gate_reason_licenses", {
+                          count: entry.forbidden_license_count,
+                        }),
                       })}
                     </span>
                   </Link>

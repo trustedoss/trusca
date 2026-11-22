@@ -92,12 +92,12 @@
     "empty": {
       "title": "No compliance findings yet",
       "description": "Run a scan to populate license inventory and obligations for this project.",
-      "filtered_title": "No licences match these filters",
-      "filtered_description": "Every licence finding was excluded by the current filters.",
+      "filtered_title": "No licenses match these filters",
+      "filtered_description": "Every license finding was excluded by the current filters.",
       "clear_filters": "Clear all filters",
       "run_scan": "Run a scan"
     },
-    "table_aria": "Licences and obligations",
+    "table_aria": "Licenses and obligations",
     "errors": {
       "load_list": "Could not load compliance data."
     }
@@ -139,7 +139,8 @@
   },
   "overview": {
     "eol_chip": {
-      "title": "{{count}} component(s) past end-of-life",
+      "title": "{{count}} component past end-of-life",
+      "title_other": "{{count}} components past end-of-life",
       "body": "End-of-life releases receive no upstream fixes — a future Critical CVE will have no patch.",
       "link": "View EOL components"
     },
@@ -159,7 +160,6 @@
     },
     "risk_card": {
       "title": "Risk score",
-      "subtitle": "Computed from {{total}} component(s) in the latest scan.",
       "security": "Security",
       "license": "License",
       "security_counts": "{{critical}} Critical · {{high}} High",
@@ -286,9 +286,12 @@
         "incomplete_scan_incomplete": "The scan is incomplete, so components or dependencies may be missing and the counts understate the risk",
         "incomplete_scan_unknown": "The scan's completeness could not be established, and the gate is set to block in that case",
         "intro": "This build is blocked because:",
-        "critical_cve": "{{count}} open critical CVE(s)",
-        "forbidden_license": "{{count}} forbidden license(s)",
-        "epss": "{{count}} finding(s) with EPSS ≥ {{threshold}}",
+        "critical_cve": "{{count}} open critical CVE",
+        "critical_cve_other": "{{count}} open critical CVEs",
+        "forbidden_license": "{{count}} forbidden license",
+        "forbidden_license_other": "{{count}} forbidden licenses",
+        "epss": "{{count}} finding with EPSS ≥ {{threshold}}",
+        "epss_other": "{{count}} findings with EPSS ≥ {{threshold}}",
         "fallback": "The build gate failed. See the metrics below for details.",
         "malicious": "{{count}} known-malicious package — remove it and rotate the credentials this build could reach",
         "malicious_other": "{{count}} known-malicious packages — remove them and rotate the credentials this build could reach"
@@ -301,7 +304,8 @@
       "detail": "Try refreshing the page."
     },
     "outdated_chip": {
-      "title": "{{count}} component(s) behind latest patch",
+      "title": "{{count}} component behind latest patch",
+      "title_other": "{{count}} components behind latest patch",
       "body": "A newer patch is available on the same release line — still supported, just not current.",
       "link": "View outdated components"
     },
@@ -511,7 +515,8 @@
     "column": {
       "affected": "Affected",
       "affected_more_count": "+{{count}}",
-      "affected_more_count_tooltip": "{{count}} more component(s) also affected (see drawer)",
+      "affected_more_count_tooltip": "{{count}} more component also affected (see drawer)",
+      "affected_more_count_tooltip_other": "{{count}} more components also affected (see drawer)",
       "assignee": "Owner",
       "component": "Component",
       "cve_id": "CVE ID",
@@ -1087,7 +1092,7 @@
     },
     "fulfilment": {
       "section": "Fulfilment",
-      "help": "Whether this project has met the obligation. Recorded here, not in the generated notice: the notice states what the licence asks, and nothing on this panel changes it.",
+      "help": "Whether this project has met the obligation. Recorded here, not in the generated notice: the notice states what the license asks, and nothing on this panel changes it.",
       "status": {
         "unrecorded": "Not recorded",
         "not_started": "Not started",
@@ -1203,7 +1208,7 @@
       "default_branch_placeholder": "main",
       "declared_license": "Outbound license",
       "declared_license_placeholder": "Apache-2.0",
-      "declared_license_help": "The license this project is distributed under, as an SPDX id or expression. The Licenses tab judges every dependency against it. Leave empty to skip the assessment.",
+      "declared_license_help": "The license this project is distributed under, as an SPDX id or expression. The Compliance tab judges every dependency against it. Leave empty to skip the assessment.",
       "ai_usage_context": "AI usage scenario",
       "ai_usage_context_unset": "Not set, apply the full license terms",
       "ai_usage_context_help": "How this project uses the AI models it carries. Narrows a model or dataset license to the conditions that bind that use. Leaving it unset applies every condition, which is the conservative reading.",
@@ -1556,7 +1561,8 @@
     "never_scanned": "No successful scan yet",
     "error": "Could not load the governance summary. Retry before reading its absence as good news.",
     "gate_reason_critical": "{{count}} critical",
-    "gate_reason_licenses": "{{count}} forbidden licences",
+    "gate_reason_licenses": "{{count}} forbidden license",
+    "gate_reason_licenses_other": "{{count}} forbidden licenses",
     "gate_reason_epss": "{{count}} above the EPSS threshold",
     "gate_reason_malicious": "{{count}} known-malicious package",
     "gate_reason_malicious_other": "{{count}} known-malicious packages"

@@ -291,9 +291,9 @@ function ChecklistRow({
         <div
           className={cn(
             "text-sm font-medium",
-            // Struck through as well as ticked, so the state does not rest on
-            // the brand colour alone.
-            step.done && "text-muted-foreground line-through",
+            // Muted, not struck through. The state does not rest on colour:
+            // the step icon becomes a check and the hint becomes the done text.
+            step.done && "text-muted-foreground",
           )}
         >
           {label}

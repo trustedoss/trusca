@@ -1,9 +1,9 @@
 {
   "approvals": {
-    "title": "Component Approvals",
+    "title": "Component approvals",
     "subtitle": "Review and approve conditional-license components.",
     "filter": {
-      "status_open": "Open (Pending + Under Review)",
+      "status_open": "Open (Pending or Under Review)",
       "status_all": "All statuses",
       "from_label": "From",
       "to_label": "To",
@@ -26,7 +26,7 @@
       "rejected": "Rejected"
     },
     "action": {
-      "start_review": "Start Review",
+      "start_review": "Start review",
       "approve": "Approve",
       "reject": "Reject",
       "refresh": "Refresh",
@@ -64,7 +64,7 @@
     "total_other": "{{count}} requests",
     "requested_by_unknown": "No requester recorded",
     "empty_none": "Nothing is waiting for a decision.",
-    "empty_none_help": "A request appears here when a component's licence needs a decision, whether a scan raises it or someone files it.",
+    "empty_none_help": "A request appears here when a component's license needs a decision, whether a scan raises it or someone files it.",
     "empty_filtered": "No approvals match these filters.",
     "empty_filtered_help": "Widen the status, the dates, or the project to see more.",
     "total": "{{count}} request"

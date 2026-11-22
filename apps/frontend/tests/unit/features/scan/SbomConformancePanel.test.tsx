@@ -258,6 +258,14 @@ describe("SbomConformancePanel", () => {
     expect(
       screen.getByTestId("conformance-g7-section").textContent,
     ).toContain("require human review");
+    // Each headline clause is its own plural key: 0 reads plural, 1 singular.
+    const headline = screen.getByTestId("conformance-headline");
+    expect(headline).toHaveAttribute("data-advisory-short", "1");
+    expect(headline).toHaveAttribute("data-needs-review", "1");
+    expect(headline).toHaveAttribute("data-mandatory-failed", "0");
+    expect(headline.textContent).toBe(
+      "0 mandatory checks failed · 1 advisory element short · 1 needs a person",
+    );
   });
 
   it("pairs each G7 row with a status badge and a source badge (color never alone)", () => {

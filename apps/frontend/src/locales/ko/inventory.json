@@ -71,6 +71,7 @@
   "affected": {
     "title": "함께 영향받는 프로젝트",
     "also_in": "다른 프로젝트 {{count}}개",
+    "also_in_other": "다른 프로젝트 {{count}}개",
     "this_project": "현재 프로젝트"
   },
   "export": {

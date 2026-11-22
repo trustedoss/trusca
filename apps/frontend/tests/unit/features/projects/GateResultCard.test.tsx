@@ -105,12 +105,13 @@ describe("GateResultCard", () => {
     const reason = screen.getByTestId("gate-reason");
     // The backend's raw English sentence is gone.
     expect(reason.textContent).not.toContain("block this build");
-    // Two positive counts → two composed clauses. Per the codebase i18n
-    // convention (i18next-parser pluralSeparator: false) the keys use simple
-    // {{count}} interpolation with count-neutral "(s)" text, not _one/_other.
+    // Two positive counts → two composed clauses. Each clause is a plural
+    // key (bare key for one, `_other` beside it), so 1 reads singular and 2
+    // reads plural.
     expect(reason).toHaveAttribute("data-reason-clauses", "2");
-    expect(reason.textContent).toContain("1 open critical CVE(s)");
-    expect(reason.textContent).toContain("2 forbidden license(s)");
+    expect(reason.textContent).toContain("1 open critical CVE");
+    expect(reason.textContent).not.toContain("1 open critical CVEs");
+    expect(reason.textContent).toContain("2 forbidden licenses");
 
     expect(screen.getByTestId("gate-metric-critical")).toHaveAttribute(
       "data-value",

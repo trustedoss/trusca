@@ -152,7 +152,8 @@
       "label": "Project folder",
       "choose_folder": "Choose folder",
       "no_folder_chosen": "No folder chosen",
-      "files_count": "{{count}} file(s) selected",
+      "files_count": "{{count}} file selected",
+      "files_count_other": "{{count}} files selected",
       "hint": "The folder is zipped in your browser before upload, up to {{max}}.",
       "selected": "{{count}} files selected ({{size}})",
       "too_large": "The selected folder exceeds the {{max}} limit. Remove large directories and try again.",
@@ -279,7 +280,15 @@
       "network": "Could not load the conformance verdict due to a network error.",
       "unknown": "Could not load the conformance verdict."
     },
-    "headline": "{{mandatoryFailed}} mandatory check(s) failed · {{advisoryShort}} advisory element(s) short · {{needsReview}} need a person",
+    "headline": "{{mandatory}} · {{advisory}} · {{review}}",
+    "headline_parts": {
+      "mandatory_failed": "{{count}} mandatory check failed",
+      "mandatory_failed_other": "{{count}} mandatory checks failed",
+      "advisory_short": "{{count}} advisory element short",
+      "advisory_short_other": "{{count}} advisory elements short",
+      "needs_review": "{{count}} needs a person",
+      "needs_review_other": "{{count}} need a person"
+    },
     "missing_omitted": "+{{count}} more",
     "fragment_summary": "How to satisfy this",
     "cisa": {
