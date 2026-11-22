@@ -51,7 +51,9 @@
     "stale": "Not scanned lately",
     "stale_hint": "No successful scan in 14 days",
     "gate_blocked_detail": "Blocked by the build gate",
-    "gate_reason": "{{critical}} critical · {{licenses}} forbidden licences",
+    "gate_reason": "{{critical}} critical · {{licenses}}",
+    "gate_reason_licenses": "{{count}} forbidden license",
+    "gate_reason_licenses_other": "{{count}} forbidden licenses",
     "stale_detail": "Waiting on a scan",
     "never_scanned": "Never scanned",
     "all_clear": "Nothing is waiting on you right now.",
@@ -87,7 +89,8 @@
     "heading": "Portfolio by team",
     "empty": "No projects yet. Register one to see your portfolio here.",
     "error": "Could not load the portfolio. An empty grid would read as a clean one, which is not what this means.",
-    "team_projects": "{{count}} project(s)",
+    "team_projects": "{{count}} project",
+    "team_projects_other": "{{count}} projects",
     "never_scanned": "Never scanned",
     "clean": "Clean",
     "bucket": {
@@ -120,9 +123,9 @@
         "cta": "Open projects"
       },
       "policy": {
-        "label": "Set a licence policy",
-        "hint": "Decide which licences block a build. Until you do, the built-in categories apply.",
-        "done": "A licence policy applies to you.",
+        "label": "Set a license policy",
+        "hint": "Decide which licenses block a build. Until you do, the built-in categories apply.",
+        "done": "A license policy applies to you.",
         "cta": "Open policies"
       },
       "apiKey": {

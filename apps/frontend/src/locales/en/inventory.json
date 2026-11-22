@@ -70,7 +70,8 @@
   },
   "affected": {
     "title": "Also affected",
-    "also_in": "{{count}} other project(s)",
+    "also_in": "{{count}} other project",
+    "also_in_other": "{{count}} other projects",
     "this_project": "This project"
   },
   "export": {

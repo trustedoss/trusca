@@ -4,10 +4,10 @@
       "entry": "Admin",
       "users": "Users",
       "teams": "Teams",
-      "scans": "Scan Queue",
+      "scans": "Scan queue",
       "disk": "Disk",
-      "audit": "Audit Log",
-      "health": "System Health",
+      "audit": "Audit log",
+      "health": "System health",
       "backup": "Backups"
     }
   },
@@ -193,7 +193,7 @@
       "empty": "No teams match the current filters."
     },
     "scans": {
-      "title": "Scan Queue",
+      "title": "Scan queue",
       "subtitle": "Cross-team view of every scan. Cancel runaway jobs from here.",
       "tabs": {
         "running": "Running",
@@ -287,7 +287,7 @@
       "collected_at": "Collected {{when}}"
     },
     "audit": {
-      "title": "Audit Log",
+      "title": "Audit log",
       "subtitle": "Search every audited mutation across the portal. Sensitive columns (email, name) appear as sha256 fingerprints.",
       "filter": {
         "actor_user_id": "Actor user ID",
@@ -326,7 +326,7 @@
       }
     },
     "health": {
-      "title": "System Health",
+      "title": "System health",
       "subtitle": "Aggregated probe status for every infrastructure component.",
       "actions": {
         "refresh": "Refresh"
@@ -347,7 +347,8 @@
       "no_detail": "—",
       "detail": {
         "celery": {
-          "workers_responded": "{{count}} worker(s) responded",
+          "workers_responded": "{{count}} worker responded",
+          "workers_responded_other": "{{count}} workers responded",
           "no_workers": "No workers responded"
         },
         "redis": {
@@ -358,10 +359,12 @@
           "worst_mount_unknown": "{{name}}"
         },
         "active_scans": {
-          "count": "{{count}} scan(s) queued or running"
+          "count": "{{count}} scan queued or running",
+          "count_other": "{{count}} scans queued or running"
         },
         "last_24h_errors": {
-          "count": "{{count}} failed scan(s) in the last 24h"
+          "count": "{{count}} failed scan in the last 24h",
+          "count_other": "{{count}} failed scans in the last 24h"
         }
       },
       "updated_at": "Updated {{when}}"
@@ -441,7 +444,7 @@
     },
     "backup": {
       "title": "Backups",
-      "subtitle": "Automated daily backups + manual triggers + restore.",
+      "subtitle": "Automatic daily backups, manual backups on demand, and restore.",
       "column": {
         "name": "Name",
         "kind": "Kind",

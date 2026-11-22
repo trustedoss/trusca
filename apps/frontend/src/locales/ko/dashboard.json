@@ -51,7 +51,9 @@
     "stale": "최근 스캔 없음",
     "stale_hint": "14일간 성공한 스캔 없음",
     "gate_blocked_detail": "빌드 게이트가 막은 프로젝트",
-    "gate_reason": "치명 {{critical}}건 · 금지 라이선스 {{licenses}}건",
+    "gate_reason": "치명 {{critical}}건 · {{licenses}}",
+    "gate_reason_licenses": "금지 라이선스 {{count}}건",
+    "gate_reason_licenses_other": "금지 라이선스 {{count}}건",
     "stale_detail": "스캔을 기다리는 프로젝트",
     "never_scanned": "스캔한 적 없음",
     "all_clear": "지금 처리를 기다리는 일이 없습니다.",
@@ -88,6 +90,7 @@
     "empty": "아직 프로젝트가 없습니다. 프로젝트를 등록하면 여기에 포트폴리오가 표시됩니다.",
     "error": "포트폴리오를 불러오지 못했습니다. 빈 격자는 깨끗하다는 뜻으로 읽히므로 그렇게 표시하지 않습니다.",
     "team_projects": "프로젝트 {{count}}개",
+    "team_projects_other": "프로젝트 {{count}}개",
     "never_scanned": "스캔한 적 없음",
     "clean": "이상 없음",
     "bucket": {

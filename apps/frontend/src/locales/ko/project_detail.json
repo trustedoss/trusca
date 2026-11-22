@@ -140,6 +140,7 @@
   "overview": {
     "eol_chip": {
       "title": "지원 종료된 컴포넌트 {{count}}개",
+      "title_other": "지원 종료된 컴포넌트 {{count}}개",
       "body": "지원 종료된 릴리스에는 업스트림 수정이 제공되지 않아, 이후 발견되는 Critical CVE에 패치가 없습니다.",
       "link": "EOL 컴포넌트 보기"
     },
@@ -159,7 +160,6 @@
     },
     "risk_card": {
       "title": "리스크 점수",
-      "subtitle": "최근 스캔의 컴포넌트 {{total}}개를 기반으로 산출되었습니다.",
       "security": "보안",
       "license": "라이선스",
       "security_counts": "Critical {{critical}} · High {{high}}",
@@ -287,8 +287,11 @@
         "incomplete_scan_unknown": "스캔의 완전성을 확인할 수 없고, 게이트가 이 경우 차단하도록 설정되어 있습니다",
         "intro": "다음 사유로 이 빌드가 차단되었습니다:",
         "critical_cve": "미해결 Critical CVE {{count}}건",
+        "critical_cve_other": "미해결 Critical CVE {{count}}건",
         "forbidden_license": "금지 라이선스 {{count}}건",
+        "forbidden_license_other": "금지 라이선스 {{count}}건",
         "epss": "EPSS ≥ {{threshold}} 취약점 {{count}}건",
+        "epss_other": "EPSS ≥ {{threshold}} 취약점 {{count}}건",
         "fallback": "빌드 차단 게이트가 실패했습니다. 자세한 내용은 아래 지표를 확인하세요.",
         "malicious": "알려진 악성 패키지 {{count}}개를 제거하고, 이 빌드가 접근할 수 있던 자격증명을 교체하십시오",
         "malicious_other": "알려진 악성 패키지 {{count}}개를 제거하고, 이 빌드가 접근할 수 있던 자격증명을 교체하십시오"
@@ -302,6 +305,7 @@
     },
     "outdated_chip": {
       "title": "최신 패치보다 뒤처진 컴포넌트 {{count}}개",
+      "title_other": "최신 패치보다 뒤처진 컴포넌트 {{count}}개",
       "body": "같은 릴리스 라인에 더 새로운 패치가 있습니다. 지원은 유지되지만 최신 상태는 아닙니다.",
       "link": "뒤처진 컴포넌트 보기"
     },
@@ -512,6 +516,7 @@
       "affected": "영향 컴포넌트",
       "affected_more_count": "+{{count}}",
       "affected_more_count_tooltip": "추가로 {{count}}개의 컴포넌트가 영향을 받습니다(드로어에서 확인)",
+      "affected_more_count_tooltip_other": "추가로 {{count}}개의 컴포넌트가 영향을 받습니다(드로어에서 확인)",
       "assignee": "담당",
       "component": "컴포넌트",
       "cve_id": "CVE ID",
@@ -1203,7 +1208,7 @@
       "default_branch_placeholder": "main",
       "declared_license": "배포 라이선스",
       "declared_license_placeholder": "Apache-2.0",
-      "declared_license_help": "이 프로젝트를 배포할 때 적용하는 라이선스를 SPDX 식별자나 표현식으로 적습니다. 라이선스 탭이 모든 의존성을 이 값과 비교해 판정합니다. 비워 두면 판정하지 않습니다.",
+      "declared_license_help": "이 프로젝트를 배포할 때 적용하는 라이선스를 SPDX 식별자나 표현식으로 적습니다. 컴플라이언스 탭이 모든 의존성을 이 값과 비교해 판정합니다. 비워 두면 판정하지 않습니다.",
       "ai_usage_context": "AI 사용 시나리오",
       "ai_usage_context_unset": "지정 안 함 - 전체 라이선스 조건 적용",
       "ai_usage_context_help": "이 프로젝트가 포함한 AI 모델을 어떻게 쓰는지 지정합니다. 모델이나 데이터셋 라이선스를 그 용도에 실제로 걸리는 조건으로 좁혀 판정합니다. 지정하지 않으면 모든 조건을 적용하며, 이쪽이 더 보수적인 해석입니다.",
@@ -1557,6 +1562,7 @@
     "error": "거버넌스 요약을 불러오지 못했습니다. 값이 비어 있는 것을 좋은 신호로 읽기 전에 다시 시도하세요.",
     "gate_reason_critical": "치명 {{count}}건",
     "gate_reason_licenses": "금지 라이선스 {{count}}건",
+    "gate_reason_licenses_other": "금지 라이선스 {{count}}건",
     "gate_reason_epss": "EPSS 임계 초과 {{count}}건",
     "gate_reason_malicious": "알려진 악성 패키지 {{count}}개",
     "gate_reason_malicious_other": "알려진 악성 패키지 {{count}}개"

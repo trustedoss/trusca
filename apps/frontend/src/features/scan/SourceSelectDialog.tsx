@@ -670,7 +670,7 @@ function FolderPanel({
         >
           {inspection && !inspection.isEmpty
             ? t("source.folder.files_count", {
-                defaultValue: "{{count}} file(s) selected",
+                defaultValue: "{{count}} files selected",
                 count: inspection.files.length,
               })
             : t("source.folder.no_folder_chosen", {

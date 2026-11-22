@@ -1901,7 +1901,7 @@ function ComponentColumnCell({ name, version, count }: ComponentColumnCellProps)
           title={t("vulnerabilities.column.affected_more_count_tooltip", {
             count: remainder,
             defaultValue:
-              "{{count}} more component(s) also affected — see drawer",
+              "{{count}} more components also affected (see drawer)",
           })}
         >
           {t("vulnerabilities.column.affected_more_count", {

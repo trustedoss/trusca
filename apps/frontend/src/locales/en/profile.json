@@ -8,7 +8,7 @@
     "email_label": "Email"
   },
   "connected_accounts": {
-    "section_title": "Connected Accounts",
+    "section_title": "Connected accounts",
     "section_description": "OAuth providers linked to your account.",
     "loading": "Loading connected accounts…",
     "error": "Failed to load connected accounts.",

@@ -348,6 +348,7 @@
       "detail": {
         "celery": {
           "workers_responded": "워커 {{count}}대가 응답했습니다",
+          "workers_responded_other": "워커 {{count}}대가 응답했습니다",
           "no_workers": "응답한 워커가 없습니다"
         },
         "redis": {
@@ -358,10 +359,12 @@
           "worst_mount_unknown": "{{name}}"
         },
         "active_scans": {
-          "count": "대기·실행 중인 스캔 {{count}}건"
+          "count": "대기·실행 중인 스캔 {{count}}건",
+          "count_other": "대기·실행 중인 스캔 {{count}}건"
         },
         "last_24h_errors": {
-          "count": "최근 24시간 실패한 스캔 {{count}}건"
+          "count": "최근 24시간 실패한 스캔 {{count}}건",
+          "count_other": "최근 24시간 실패한 스캔 {{count}}건"
         }
       },
       "updated_at": "갱신 시각: {{when}}"
@@ -441,7 +444,7 @@
     },
     "backup": {
       "title": "백업",
-      "subtitle": "자동 일일 백업 + 수동 백업 트리거 + 복원.",
+      "subtitle": "매일 자동으로 백업하고, 필요할 때 직접 백업하거나 복원합니다.",
       "column": {
         "name": "이름",
         "kind": "종류",

@@ -188,7 +188,26 @@ describe("AdminHealthPage", () => {
       renderPage();
       await waitFor(() => {
         expect(screen.getByTestId("admin-health-detail")).toHaveTextContent(
-          "7 scan(s) queued or running",
+          "7 scans queued or running",
+        );
+      });
+    });
+
+    it("reads singular at a count of one", async () => {
+      mockedGet.mockResolvedValue(
+        fixture([
+          component("active_scans", {
+            detail: "1 scan(s) queued or running",
+            detail_code: "active_scans.count",
+            detail_params: { count: 1 },
+            value: 1,
+          }),
+        ]),
+      );
+      renderPage();
+      await waitFor(() => {
+        expect(screen.getByTestId("admin-health-detail")).toHaveTextContent(
+          /^1 scan queued or running$/,
         );
       });
     });

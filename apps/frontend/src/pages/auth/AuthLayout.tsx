@@ -33,11 +33,10 @@ const TRUST_KEYS = ["gateway.trust.hosting", "gateway.trust.sources", "gateway.t
 /**
  * Split gateway shared by Login / Register / Forgot / Reset.
  *
- * The brand panel is the same ink surface as the post-login global bar, and
- * that is the point: the first screen and the shell the user lands in are made
- * of one material, so signing in reads as entering the same product rather
- * than crossing into a different one. It reuses `--topbar-*` for exactly that
- * reason — the tokens whose contrast on ink is already measured.
+ * The brand panel is a dark ink surface. It does not match the post-login
+ * global bar: since the 2026-11 redesign the bar sits on the light card plane
+ * (`--bar-*`), and the panel stays ink by decision. `--topbar-*` now exists
+ * for this panel only, and its contrast on ink is already measured.
  *
  * Below `lg` the panel is not shown. A phone has no room for a brand column
  * beside a form, and stacking them would push the form under a screenful of

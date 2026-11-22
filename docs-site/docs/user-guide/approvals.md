@@ -65,7 +65,7 @@ The portal exposes a `POST /v1/approvals` endpoint for clients that need to seed
 ## Disposing a request
 
 1. Open the row to slide in the drawer.
-2. Click **Start Review** — the state moves to Under Review and the reviewer field is set to you.
+2. Click **Start review**. The state moves to Under Review and the reviewer field is set to you.
 3. Read the license terms and the obligations the portal lists.
 4. Choose **Approve** or **Reject**. Both prompt for an optional **decision note** (`decision_note`, ≤ 2000 chars). The note is stored on the approval row for audit.
 

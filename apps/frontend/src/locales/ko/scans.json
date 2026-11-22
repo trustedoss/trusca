@@ -153,6 +153,7 @@
       "choose_folder": "폴더 선택",
       "no_folder_chosen": "선택된 폴더 없음",
       "files_count": "파일 {{count}}개 선택됨",
+      "files_count_other": "파일 {{count}}개 선택됨",
       "hint": "폴더는 업로드 전에 브라우저에서 압축됩니다. 최대 {{max}}.",
       "selected": "파일 {{count}}개 선택됨 ({{size}})",
       "too_large": "선택한 폴더가 {{max}} 제한을 초과합니다. 큰 디렉터리를 제거하고 다시 시도하세요.",
@@ -279,7 +280,15 @@
       "network": "네트워크 오류로 적합성 결과를 불러오지 못했습니다.",
       "unknown": "적합성 결과를 불러오지 못했습니다."
     },
-    "headline": "필수 검사 {{mandatoryFailed}}건 실패 · 권고 항목 {{advisoryShort}}건 부족 · 사람 확인 필요 {{needsReview}}건",
+    "headline": "{{mandatory}} · {{advisory}} · {{review}}",
+    "headline_parts": {
+      "mandatory_failed": "필수 검사 {{count}}건 실패",
+      "mandatory_failed_other": "필수 검사 {{count}}건 실패",
+      "advisory_short": "권고 항목 {{count}}건 부족",
+      "advisory_short_other": "권고 항목 {{count}}건 부족",
+      "needs_review": "사람 확인 필요 {{count}}건",
+      "needs_review_other": "사람 확인 필요 {{count}}건"
+    },
     "missing_omitted": "외 {{count}}건",
     "fragment_summary": "충족하는 방법",
     "cisa": {

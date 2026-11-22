@@ -77,7 +77,7 @@
     "trigger_failed": "Could not start the scan."
   },
   "create": {
-    "title": "New Project",
+    "title": "New project",
     "scan_hint": "This registers the project. After creating it, start a scan (and pick source / container, upload, and a release label) from the project page or the project list.",
     "name_label": "Name",
     "name_placeholder": "my-awesome-project",
@@ -96,7 +96,7 @@
     "team_combobox_min_length_hint": "Keep typing to search (2 characters minimum).",
     "team_combobox_searching": "Searching...",
     "team_combobox_empty": "No matching groups found.",
-    "submit": "Create Project",
+    "submit": "Create project",
     "cancel": "Cancel",
     "error_name_required": "Project name is required",
     "error_name_max": "Name must be 100 characters or less",

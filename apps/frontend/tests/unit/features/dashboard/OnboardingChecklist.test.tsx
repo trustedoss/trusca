@@ -276,7 +276,7 @@ describe("OnboardingChecklist", () => {
     // satisfies the key step - and nothing else in the suite would notice if
     // they drifted back to claiming more than the endpoint can support.
     expect(screen.getByTestId("onboarding-step-policy")).toHaveTextContent(
-      "A licence policy applies to you.",
+      "A license policy applies to you.",
     );
     expect(screen.getByTestId("onboarding-step-apiKey")).toHaveTextContent(
       "A key has been issued.",
@@ -384,10 +384,14 @@ describe("OnboardingChecklist", () => {
     await screen.findByTestId("onboarding-checklist");
     const done = screen.getByTestId("onboarding-step-policy");
     const pending = screen.getByTestId("onboarding-step-apiKey");
-    // Colour is never the only carrier of state: the label of a finished step
-    // is struck through as well as ticked.
-    expect(done.innerHTML).toContain("line-through");
-    expect(pending.innerHTML).not.toContain("line-through");
+    // Colour is never the only carrier of state: a finished step swaps its
+    // icon for a check and its hint for the done text. The label is muted,
+    // not struck through.
+    expect(done.querySelector(".octicon-check")).not.toBeNull();
+    expect(pending.querySelector(".octicon-check")).toBeNull();
+    expect(done).toHaveTextContent("A license policy applies to you.");
+    expect(pending).not.toHaveTextContent("A key has been issued.");
+    expect(done.innerHTML).not.toContain("line-through");
   });
 
   it("stops asking once the card is dismissed for good", async () => {

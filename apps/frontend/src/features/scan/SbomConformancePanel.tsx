@@ -148,9 +148,15 @@ export function SbomConformancePanel({
         data-needs-review={headline.needsReview}
       >
         {t("conformance.headline", {
-          mandatoryFailed: headline.mandatoryFailed,
-          advisoryShort: headline.advisoryShort,
-          needsReview: headline.needsReview,
+          mandatory: t("conformance.headline_parts.mandatory_failed", {
+            count: headline.mandatoryFailed,
+          }),
+          advisory: t("conformance.headline_parts.advisory_short", {
+            count: headline.advisoryShort,
+          }),
+          review: t("conformance.headline_parts.needs_review", {
+            count: headline.needsReview,
+          }),
         })}
       </p>
 
