@@ -557,7 +557,19 @@ describe("PoliciesPage — super_admin org default", () => {
     // The admin team name (not a raw id) is offered as an option label.
     expect(within(picker).getByText("Platform")).toBeInTheDocument();
 
+    // Disabled until a team is picked, with the reason in view and tied to
+    // the button, and the build gate named so it can be found from here.
+    const edit = screen.getByTestId("policy-edit-team");
+    const hint = screen.getByTestId("policy-edit-team-hint");
+    expect(edit).toBeDisabled();
+    expect(edit).toHaveAttribute("aria-describedby", hint.id);
+    expect(hint).toHaveTextContent(/pick a team first/i);
+    expect(hint).toHaveTextContent(/build gate/i);
+
     await user.selectOptions(picker, TEAM_ID);
+    expect(edit).not.toBeDisabled();
+    expect(hint).not.toHaveTextContent(/pick a team first/i);
+    expect(hint).toHaveTextContent(/build gate/i);
     await user.click(screen.getByTestId("policy-edit-team"));
     await waitFor(() => {
       expect(mockedGetTeam).toHaveBeenCalledWith(TEAM_ID);

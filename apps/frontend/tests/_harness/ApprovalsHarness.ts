@@ -46,14 +46,13 @@ export class ApprovalsHarness {
     await expect(this.page.getByTestId("approvals-page")).toBeVisible({
       timeout: DEFAULT_TIMEOUT_MS,
     });
-    // The table + footer wrappers always render (skeleton, rows, or empty
-    // cell — all inside the same table). Asserting on those keeps the
-    // predicate immune to the empty-tbody zero-height race that the earlier
-    // `tbody OR empty-cell` fallback hit during capture runs.
-    await expect(this.page.getByTestId("approvals-table")).toBeVisible({
-      timeout: DEFAULT_TIMEOUT_MS,
-    });
-    await expect(this.page.getByTestId("approvals-pagination")).toBeVisible({
+    // The list region always renders, whether it ends up holding the
+    // skeleton, the rows or the empty state (which replaces the table).
+    // Asserting on it keeps the predicate immune to the empty-tbody
+    // zero-height race that the earlier `tbody OR empty-cell` fallback hit
+    // during capture runs. Pagination is not asserted: it renders only when
+    // there is more than one page.
+    await expect(this.page.getByTestId("approvals-list")).toBeVisible({
       timeout: DEFAULT_TIMEOUT_MS,
     });
     // Wait until the initial fetch settles so screenshots do not capture
@@ -61,7 +60,7 @@ export class ApprovalsHarness {
     await expect
       .poll(
         () =>
-          this.page.getByTestId("approvals-table").getAttribute("aria-busy"),
+          this.page.getByTestId("approvals-list").getAttribute("aria-busy"),
         { timeout: DEFAULT_TIMEOUT_MS },
       )
       .not.toBe("true");
@@ -190,7 +189,7 @@ export class ApprovalsHarness {
     await expect
       .poll(
         () =>
-          this.page.getByTestId("approvals-table").getAttribute("aria-busy"),
+          this.page.getByTestId("approvals-list").getAttribute("aria-busy"),
         { timeout: DEFAULT_TIMEOUT_MS },
       )
       .not.toBe("true");

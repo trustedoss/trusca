@@ -256,11 +256,53 @@ describe("ApprovalsPage", () => {
     });
   });
 
-  it("previous page button is disabled on page 1", async () => {
+  it("renders the empty state in place of the table, not under its headers", async () => {
     mockedList.mockResolvedValue(page([]));
+    renderPage();
+    await screen.findByTestId("approvals-empty");
+    expect(screen.queryByTestId("approvals-table")).toBeNull();
+    expect(screen.queryByRole("columnheader")).toBeNull();
+    expect(screen.getByTestId("approvals-list")).toHaveAttribute(
+      "aria-busy",
+      "false",
+    );
+  });
+
+  it("hides pagination when everything fits on one page", async () => {
+    mockedList.mockResolvedValue(
+      page([approval({ id: "only-1" }), approval({ id: "only-2" })]),
+    );
+    renderPage();
+    await waitFor(() => {
+      expect(screen.getAllByTestId("approvals-row")).toHaveLength(2);
+    });
+    expect(screen.queryByTestId("approvals-pagination")).toBeNull();
+  });
+
+  it("previous page button is disabled on page 1 of several", async () => {
+    mockedList.mockResolvedValue(
+      page(Array.from({ length: 25 }, (_, i) => approval({ id: `p1-${i}` })), 26),
+    );
     renderPage();
     await waitFor(() => {
       expect(screen.getByTestId("approvals-page-prev")).toBeDisabled();
+    });
+    expect(screen.getByTestId("approvals-page-next")).not.toBeDisabled();
+    // Directly under the table, inside the same scroll region, rather
+    // than a footer pinned below it.
+    expect(screen.getByTestId("approvals-list")).toContainElement(
+      screen.getByTestId("approvals-pagination"),
+    );
+  });
+
+  it("keeps pagination on a page past the end so the reader can step back", async () => {
+    mockedList.mockResolvedValue(page([], 3));
+    renderPage({ initialUrl: "/approvals?page=3" });
+    const prev = await screen.findByTestId("approvals-page-prev");
+    expect(prev).not.toBeDisabled();
+    await userEvent.click(prev);
+    await waitFor(() => {
+      expect(mockedList.mock.calls.at(-1)?.[0]).toMatchObject({ page: 2 });
     });
   });
 

@@ -260,6 +260,15 @@ export function ApprovalsPage() {
   // The signed-in user, so their own requests read as waiting rather than as
   // something they can wave through themselves.
   const currentUserId = useAuthStore((s) => s.user?.id ?? null);
+  // A query that did not answer is not an empty queue, so an error never
+  // counts as empty (see the empty-state comment below).
+  const isEmpty =
+    !approvalsQuery.isLoading && !approvalsQuery.isError && items.length === 0;
+  // Pagination only when there is somewhere to go. It stays while the URL
+  // names a page past the first, so a reader who landed on a page the queue
+  // no longer has can still step back.
+  const showPagination =
+    approvalsQuery.isSuccess && (totalPages > 1 || page > 1);
   const clearFilters = useCallback(() => {
     setSearchParams(new URLSearchParams(), { replace: false });
   }, [setSearchParams]);
@@ -443,8 +452,14 @@ export function ApprovalsPage() {
         </Button>
       </div>
 
-      {/* Table */}
-      <div className="flex-1 overflow-y-auto">
+      {/* List region. It always renders and carries `aria-busy`, so the
+          harness has one node to wait on whether it ends up holding the
+          table or the empty state. */}
+      <div
+        className="flex-1 overflow-y-auto"
+        data-testid="approvals-list"
+        aria-busy={approvalsQuery.isLoading}
+      >
         {approvalsQuery.isError ? (
           <div className="px-6 py-4">
             <Alert variant="destructive" data-testid="approvals-error">
@@ -455,245 +470,248 @@ export function ApprovalsPage() {
           </div>
         ) : null}
 
-        <table
-          className="w-full text-sm"
-          data-testid="approvals-table"
-          aria-busy={approvalsQuery.isLoading}
-        >
-          <thead className="sticky top-0 bg-card">
-            <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
-              <th className="px-6 py-2">
-                {t("approvals.column.component")}
-              </th>
-              <th className="px-3 py-2">
-                {t("approvals.column.project")}
-              </th>
-              <th className="px-3 py-2">
-                {t("approvals.column.status")}
-              </th>
-              <th className="px-3 py-2">
-                {t("approvals.column.requested_by")}
-              </th>
-              <th className="px-3 py-2">
-                {t("approvals.column.requested_at")}
-              </th>
-              <th className="px-3 py-2 text-right">
-                {t("approvals.column.actions")}
-              </th>
-            </tr>
-          </thead>
-          <tbody data-testid="approvals-tbody">
-            {approvalsQuery.isLoading
-              ? Array.from({ length: 6 }).map((_, i) => (
-                  <tr key={`skeleton-${i}`} className="border-b">
-                    <td className="px-6 py-2" colSpan={6}>
-                      <Skeleton className="h-5 w-full" />
-                    </td>
-                  </tr>
-                ))
-              : items.map((item) => (
-                  <tr
-                    key={item.id}
-                    data-testid="approvals-row"
-                    data-approval-id={item.id}
-                    data-status={item.status}
-                    className={cn(
-                      "cursor-pointer border-b transition-colors duration-fast ease-out-soft hover:bg-accent/40 focus-within:bg-accent/40",
-                    )}
-                    style={{ height: "var(--table-row)" }}
-                    tabIndex={0}
-                    onClick={() => setOpenId(item.id)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        setOpenId(item.id);
-                      }
-                    }}
-                  >
-                    {/* P1 #6 — Component column: show the component name with
-                        purl in a smaller line below; fall back to the legacy
-                        UUID prefix when the BE didn't supply the labels (e.g.
-                        a single-row endpoint or a hard-deleted referent). */}
-                    <td className="px-6">
-                      {item.component_name ? (
-                        <div className="flex flex-col">
-                          <span className="text-sm font-medium text-foreground">
-                            {item.component_name}
-                          </span>
-                          {item.component_purl ? (
-                            <span
-                              className="truncate font-mono text-xs text-muted-foreground"
-                              title={item.component_purl}
-                            >
-                              {item.component_purl}
-                            </span>
-                          ) : null}
-                        </div>
-                      ) : (
-                        <span className="font-mono text-xs">
-                          {item.component_id.slice(0, 8)}
-                        </span>
+        {/* B2 - two states, not one sentence. "No approvals match the
+            current filters" is a lie on an empty queue with no filters set,
+            and it hides the good news. The shared EmptyState is what every
+            other zero-state in the product uses.
+
+            Neither sentence is shown when the request failed. A query that
+            did not answer is not a queue with nothing in it, and saying so
+            beside a red error banner (and beside a total of zero) states a
+            fact nobody established.
+
+            The empty state takes the table's place instead of sitting in a
+            cell under its column headers, where it read as a table that
+            failed to fill. */}
+        {isEmpty ? (
+          <EmptyState
+            data-testid="approvals-empty"
+            icon={hasFilters ? <FilterIcon /> : <ChecklistIcon />}
+            title={
+              hasFilters
+                ? t("approvals.empty_filtered")
+                : t("approvals.empty_none")
+            }
+            description={
+              hasFilters
+                ? t("approvals.empty_filtered_help")
+                : t("approvals.empty_none_help")
+            }
+            action={
+              hasFilters ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={clearFilters}
+                  data-testid="approvals-clear-filters"
+                >
+                  {t("approvals.filter.clear")}
+                </Button>
+              ) : undefined
+            }
+          />
+        ) : (
+          <table
+            className="w-full text-sm"
+            data-testid="approvals-table"
+            aria-busy={approvalsQuery.isLoading}
+          >
+            <thead className="sticky top-0 bg-card">
+              <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
+                <th className="px-6 py-2">
+                  {t("approvals.column.component")}
+                </th>
+                <th className="px-3 py-2">
+                  {t("approvals.column.project")}
+                </th>
+                <th className="px-3 py-2">
+                  {t("approvals.column.status")}
+                </th>
+                <th className="px-3 py-2">
+                  {t("approvals.column.requested_by")}
+                </th>
+                <th className="px-3 py-2">
+                  {t("approvals.column.requested_at")}
+                </th>
+                <th className="py-2 pl-3 pr-6 text-right">
+                  {t("approvals.column.actions")}
+                </th>
+              </tr>
+            </thead>
+            <tbody data-testid="approvals-tbody">
+              {approvalsQuery.isLoading
+                ? Array.from({ length: 6 }).map((_, i) => (
+                    <tr key={`skeleton-${i}`} className="border-b">
+                      <td className="px-6 py-2" colSpan={6}>
+                        <Skeleton className="h-5 w-full" />
+                      </td>
+                    </tr>
+                  ))
+                : items.map((item) => (
+                    <tr
+                      key={item.id}
+                      data-testid="approvals-row"
+                      data-approval-id={item.id}
+                      data-status={item.status}
+                      className={cn(
+                        "cursor-pointer border-b transition-colors duration-fast ease-out-soft hover:bg-accent/40 focus-within:bg-accent/40",
                       )}
-                    </td>
-
-                    {/* P1 #6 — Project column: link to /projects/{id} when
-                        BE surfaced the name. Stop click propagation so the
-                        link doesn't also trip the row's drawer-open handler. */}
-                    <td className="px-3">
-                      {item.project_name ? (
-                        <a
-                          href={`/projects/${item.project_id}`}
-                          onClick={(e) => e.stopPropagation()}
-                          className="text-sm font-medium text-foreground hover:underline"
-                          data-testid="approvals-row-project-link"
-                        >
-                          {item.project_name}
-                        </a>
-                      ) : (
-                        <span className="font-mono text-xs">
-                          {item.project_id.slice(0, 8)}
-                        </span>
-                      )}
-                    </td>
-
-                    {/* Status */}
-                    <td className="px-3">
-                      <StatusBadge status={item.status} t={t} />
-                    </td>
-
-                    {/* B2 - the requester by name. This column used to print
-                        the first eight characters of a uuid, which names
-                        nobody and cannot be chased up. The backend resolves
-                        it the same way the project list resolves its creator
-                        column.
-
-                        The id branch is defensive rather than reachable from
-                        the list: the approvals table sets the requester to
-                        NULL when the user row goes (see the 0008 migration),
-                        so a missing name comes with a missing id. It stays
-                        because the single-row endpoints are separate code
-                        paths, and it costs one line. */}
-                    <td className="px-3">
-                      {item.requested_by_name ? (
-                        <span className="text-sm text-foreground">
-                          {item.requested_by_name}
-                        </span>
-                      ) : item.requested_by_user_id ? (
-                        <span
-                          className="font-mono text-xs text-muted-foreground"
-                          title={item.requested_by_user_id}
-                        >
-                          {item.requested_by_user_id.slice(0, 8)}
-                        </span>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">
-                          {t("approvals.requested_by_unknown")}
-                        </span>
-                      )}
-                    </td>
-
-                    {/* Requested at */}
-                    <td className="px-3 text-xs text-muted-foreground">
-                      <RelativeTime
-                        value={item.requested_at}
-                        locale={i18n.resolvedLanguage}
-                      />
-                    </td>
-
-                    {/* Actions */}
-                    <td className="px-3 text-right">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={(e) => {
-                          e.stopPropagation();
+                      style={{ height: "var(--table-row)" }}
+                      tabIndex={0}
+                      onClick={() => setOpenId(item.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
                           setOpenId(item.id);
-                        }}
-                        data-testid="approvals-row-action"
-                        aria-label={t("approvals.column.actions")}
-                      >
-                        {t("approvals.column.actions")}
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
+                        }
+                      }}
+                    >
+                      {/* P1 #6 - Component column: show the component name with
+                          purl in a smaller line below; fall back to the legacy
+                          UUID prefix when the BE didn't supply the labels (e.g.
+                          a single-row endpoint or a hard-deleted referent). */}
+                      <td className="px-6">
+                        {item.component_name ? (
+                          <div className="flex flex-col">
+                            <span className="text-sm font-medium text-foreground">
+                              {item.component_name}
+                            </span>
+                            {item.component_purl ? (
+                              <span
+                                className="truncate font-mono text-xs text-muted-foreground"
+                                title={item.component_purl}
+                              >
+                                {item.component_purl}
+                              </span>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <span className="font-mono text-xs">
+                            {item.component_id.slice(0, 8)}
+                          </span>
+                        )}
+                      </td>
 
-            {/* B2 - two states, not one sentence. "No approvals match the
-                current filters" is a lie on an empty queue with no filters
-                set, and it hides the good news. The shared EmptyState is what
-                every other zero-state in the product uses.
+                      {/* P1 #6 - Project column: link to /projects/{id} when
+                          BE surfaced the name. Stop click propagation so the
+                          link doesn't also trip the row's drawer-open handler. */}
+                      <td className="px-3">
+                        {item.project_name ? (
+                          <a
+                            href={`/projects/${item.project_id}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="text-sm font-medium text-foreground hover:underline"
+                            data-testid="approvals-row-project-link"
+                          >
+                            {item.project_name}
+                          </a>
+                        ) : (
+                          <span className="font-mono text-xs">
+                            {item.project_id.slice(0, 8)}
+                          </span>
+                        )}
+                      </td>
 
-                Neither sentence is shown when the request failed. A query
-                that did not answer is not a queue with nothing in it, and
-                saying so beside a red error banner (and beside a total of
-                zero) states a fact nobody established. */}
-            {!approvalsQuery.isLoading &&
-            !approvalsQuery.isError &&
-            items.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="px-6 py-6">
-                  <EmptyState
-                    data-testid="approvals-empty"
-                    icon={hasFilters ? <FilterIcon /> : <ChecklistIcon />}
-                    title={
-                      hasFilters
-                        ? t("approvals.empty_filtered")
-                        : t("approvals.empty_none")
-                    }
-                    description={
-                      hasFilters
-                        ? t("approvals.empty_filtered_help")
-                        : t("approvals.empty_none_help")
-                    }
-                    action={
-                      hasFilters ? (
+                      {/* Status */}
+                      <td className="px-3">
+                        <StatusBadge status={item.status} t={t} />
+                      </td>
+
+                      {/* B2 - the requester by name. This column used to print
+                          the first eight characters of a uuid, which names
+                          nobody and cannot be chased up. The backend resolves
+                          it the same way the project list resolves its creator
+                          column.
+
+                          The id branch is defensive rather than reachable from
+                          the list: the approvals table sets the requester to
+                          NULL when the user row goes (see the 0008 migration),
+                          so a missing name comes with a missing id. It stays
+                          because the single-row endpoints are separate code
+                          paths, and it costs one line. */}
+                      <td className="px-3">
+                        {item.requested_by_name ? (
+                          <span className="text-sm text-foreground">
+                            {item.requested_by_name}
+                          </span>
+                        ) : item.requested_by_user_id ? (
+                          <span
+                            className="font-mono text-xs text-muted-foreground"
+                            title={item.requested_by_user_id}
+                          >
+                            {item.requested_by_user_id.slice(0, 8)}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">
+                            {t("approvals.requested_by_unknown")}
+                          </span>
+                        )}
+                      </td>
+
+                      {/* Requested at */}
+                      <td className="px-3 text-xs text-muted-foreground">
+                        <RelativeTime
+                          value={item.requested_at}
+                          locale={i18n.resolvedLanguage}
+                        />
+                      </td>
+
+                      {/* Actions */}
+                      <td className="pl-3 pr-6 text-right">
                         <Button
                           size="sm"
-                          variant="outline"
-                          onClick={clearFilters}
-                          data-testid="approvals-clear-filters"
+                          variant="ghost"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setOpenId(item.id);
+                          }}
+                          data-testid="approvals-row-action"
+                          aria-label={t("approvals.column.actions")}
                         >
-                          {t("approvals.filter.clear")}
+                          {t("approvals.column.actions")}
                         </Button>
-                      ) : undefined
-                    }
-                  />
-                </td>
-              </tr>
-            ) : null}
-          </tbody>
-        </table>
-      </div>
+                      </td>
+                    </tr>
+                  ))}
 
-      {/* Pagination */}
-      <footer
-        className="flex shrink-0 items-center justify-between border-t bg-card px-6 py-2 text-xs"
-        data-testid="approvals-pagination"
-      >
-        <span className="text-muted-foreground" data-testid="approvals-page-label">
-          {t("approvals.pagination.summary", { page, total: totalPages })}
-        </span>
-        <div className="flex items-center gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={page <= 1}
-            onClick={() => setPage(Math.max(1, page - 1))}
-            data-testid="approvals-page-prev"
+            </tbody>
+          </table>
+        )}
+
+        {/* Pagination sits directly under the table, the way the admin
+            lists place it, instead of being pinned to the bottom of the
+            viewport. See showPagination for when it renders. */}
+        {showPagination ? (
+          <div
+            className="flex items-center justify-between px-6 py-3 text-xs"
+            data-testid="approvals-pagination"
           >
-            {t("approvals.action.previous")}
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={page >= totalPages}
-            onClick={() => setPage(Math.min(totalPages, page + 1))}
-            data-testid="approvals-page-next"
-          >
-            {t("approvals.action.next")}
-          </Button>
-        </div>
-      </footer>
+            <span className="text-muted-foreground" data-testid="approvals-page-label">
+              {t("approvals.pagination.summary", { page, total: totalPages })}
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={page <= 1}
+                onClick={() => setPage(Math.max(1, page - 1))}
+                data-testid="approvals-page-prev"
+              >
+                {t("approvals.action.previous")}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={page >= totalPages}
+                onClick={() => setPage(Math.min(totalPages, page + 1))}
+                data-testid="approvals-page-next"
+              >
+                {t("approvals.action.next")}
+              </Button>
+            </div>
+          </div>
+        ) : null}
+      </div>
 
       <ApprovalsDrawer
         open={openId !== null}

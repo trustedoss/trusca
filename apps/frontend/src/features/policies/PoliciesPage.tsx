@@ -164,6 +164,8 @@ export function PoliciesPage() {
 
   const [pickerTeamId, setPickerTeamId] = useState("");
 
+  const isEmpty = !policiesQuery.isLoading && policies.length === 0;
+
   const drawerTitle =
     drawerTarget?.scope === "org"
       ? t("policies.editor.org_title")
@@ -209,9 +211,25 @@ export function PoliciesPage() {
           disabled={!pickerTeamId}
           onClick={() => openDrawer({ scope: "team", id: pickerTeamId })}
           data-testid="policy-edit-team"
+          aria-describedby="policy-edit-team-hint"
         >
           {t("policies.toolbar.edit_team")}
         </Button>
+        {/* The button starts disabled, and a disabled control with no
+            visible reason reads as broken. The hint names the reason while
+            no team is picked, and in both states says the build gate opens
+            in the same panel: the gate lives in the team drawer, below the
+            license policy, so nothing on this screen pointed to it. */}
+        <span
+          id="policy-edit-team-hint"
+          className="flex h-8 items-center text-xs text-muted-foreground"
+          data-testid="policy-edit-team-hint"
+          data-state={pickerTeamId ? "ready" : "pick"}
+        >
+          {pickerTeamId
+            ? t("policies.toolbar.edit_team_hint_ready")
+            : t("policies.toolbar.edit_team_hint_pick")}
+        </span>
 
         {isSuperAdmin && orgIds.length > 0 ? (
           <Button
@@ -225,8 +243,14 @@ export function PoliciesPage() {
         ) : null}
       </div>
 
-      {/* Existing policies table */}
-      <div className="flex-1 overflow-y-auto">
+      {/* Existing policies. List region. It always renders and carries `aria-busy`, so the
+          harness has one node to wait on whether it ends up holding the
+          table or the empty state. */}
+      <div
+        className="flex-1 overflow-y-auto"
+        data-testid="policies-list"
+        aria-busy={policiesQuery.isLoading}
+      >
         {policiesQuery.isError ? (
           <div className="px-6 py-4">
             <Alert variant="destructive" data-testid="policies-error">
@@ -237,131 +261,129 @@ export function PoliciesPage() {
           </div>
         ) : null}
 
-        <table
-          className="w-full text-sm"
-          data-testid="policies-table"
-          aria-busy={policiesQuery.isLoading}
-        >
-          <thead className="sticky top-0 bg-card">
-            <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
-              <th className="px-6 py-2">{t("policies.column.scope")}</th>
-              <th className="px-3 py-2">{t("policies.column.name")}</th>
-              <th className="px-3 py-2">{t("policies.column.status")}</th>
-              <th className="px-3 py-2">{t("policies.column.overrides")}</th>
-              <th className="px-3 py-2">{t("policies.column.exceptions")}</th>
-              <th className="px-3 py-2 text-right">
-                {t("policies.column.actions")}
-              </th>
-            </tr>
-          </thead>
-          <tbody data-testid="policies-tbody">
-            {policiesQuery.isLoading
-              ? Array.from({ length: 4 }).map((_, i) => (
-                  <tr key={`skeleton-${i}`} className="border-b">
-                    <td className="px-6 py-2" colSpan={6}>
-                      <Skeleton className="h-5 w-full" />
-                    </td>
-                  </tr>
-                ))
-              : policies.map((policy) => {
-                  const scope: PolicyScope = policy.team_id ? "team" : "org";
-                  const target: DrawerTarget = {
-                    scope,
-                    id: policy.team_id ?? policy.organization_id,
-                  };
-                  return (
-                    <tr
-                      key={policy.id}
-                      data-testid="policies-row"
-                      data-policy-id={policy.id}
-                      data-scope={scope}
-                      className={cn(
-                        "cursor-pointer border-b transition-colors duration-fast ease-out-soft hover:bg-accent/40 focus-within:bg-accent/40",
-                      )}
-                      style={{ height: "var(--table-row)" }}
-                      tabIndex={0}
-                      onClick={() => openDrawer(target)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          openDrawer(target);
-                        }
-                      }}
-                    >
-                      <td className="px-6">
-                        <span className="font-medium">
-                          {scope === "org"
-                            ? t("policies.scope.org")
-                            : (teamNameById.get(policy.team_id ?? "") ??
-                              (policy.team_id ?? "").slice(0, 8))}
-                        </span>
-                      </td>
-                      <td className="px-3 text-muted-foreground">
-                        {policy.name ?? t("policies.no_name")}
-                      </td>
-                      <td className="px-3">
-                        <Badge
-                          variant="outline"
-                          className={cn(
-                            policy.enabled
-                              ? "border-status-success-border bg-status-success-subtle text-status-success-foreground"
-                              : "border-muted bg-muted text-muted-foreground",
-                          )}
-                          data-enabled={policy.enabled}
-                        >
-                          {policy.enabled
-                            ? t("policies.status.enabled")
-                            : t("policies.status.disabled")}
-                        </Badge>
-                      </td>
-                      <td className="px-3 font-mono text-xs text-muted-foreground">
-                        {Object.keys(policy.category_overrides).length}
-                      </td>
-                      <td className="px-3 font-mono text-xs text-muted-foreground">
-                        {policy.license_exceptions.length}
-                      </td>
-                      <td className="px-3 text-right">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openDrawer(target);
-                          }}
-                          data-testid="policies-row-action"
-                          aria-label={t("policies.column.actions")}
-                        >
-                          {t("policies.action.open")}
-                        </Button>
+        {/* C3 - the absence and the instruction used to be one sentence,
+            and the instruction was wrong for a developer: they can pick a
+            team and open the drawer, but the editor is read-only unless they
+            administer that team. The description also says what applies
+            meanwhile, so an empty list does not read as "nothing is
+            checked". It takes the table's place instead of sitting under
+            its column headers. */}
+        {isEmpty ? (
+          <EmptyState
+            data-testid="policies-empty"
+            icon={<FileIcon />}
+            title={t("policies.empty")}
+            description={
+              isTeamAdminOrAbove
+                ? t("policies.empty_hint_can_author")
+                : t("policies.empty_hint_cannot_author")
+            }
+          />
+        ) : (
+          <table
+            className="w-full text-sm"
+            data-testid="policies-table"
+            aria-busy={policiesQuery.isLoading}
+          >
+            <thead className="sticky top-0 bg-card">
+              <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
+                <th className="px-6 py-2">{t("policies.column.scope")}</th>
+                <th className="px-3 py-2">{t("policies.column.name")}</th>
+                <th className="px-3 py-2">{t("policies.column.status")}</th>
+                <th className="px-3 py-2">{t("policies.column.overrides")}</th>
+                <th className="px-3 py-2">{t("policies.column.exceptions")}</th>
+                <th className="py-2 pl-3 pr-6 text-right">
+                  {t("policies.column.actions")}
+                </th>
+              </tr>
+            </thead>
+            <tbody data-testid="policies-tbody">
+              {policiesQuery.isLoading
+                ? Array.from({ length: 4 }).map((_, i) => (
+                    <tr key={`skeleton-${i}`} className="border-b">
+                      <td className="px-6 py-2" colSpan={6}>
+                        <Skeleton className="h-5 w-full" />
                       </td>
                     </tr>
-                  );
-                })}
+                  ))
+                : policies.map((policy) => {
+                    const scope: PolicyScope = policy.team_id ? "team" : "org";
+                    const target: DrawerTarget = {
+                      scope,
+                      id: policy.team_id ?? policy.organization_id,
+                    };
+                    return (
+                      <tr
+                        key={policy.id}
+                        data-testid="policies-row"
+                        data-policy-id={policy.id}
+                        data-scope={scope}
+                        className={cn(
+                          "cursor-pointer border-b transition-colors duration-fast ease-out-soft hover:bg-accent/40 focus-within:bg-accent/40",
+                        )}
+                        style={{ height: "var(--table-row)" }}
+                        tabIndex={0}
+                        onClick={() => openDrawer(target)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            openDrawer(target);
+                          }
+                        }}
+                      >
+                        <td className="px-6">
+                          <span className="font-medium">
+                            {scope === "org"
+                              ? t("policies.scope.org")
+                              : (teamNameById.get(policy.team_id ?? "") ??
+                                (policy.team_id ?? "").slice(0, 8))}
+                          </span>
+                        </td>
+                        <td className="px-3 text-muted-foreground">
+                          {policy.name ?? t("policies.no_name")}
+                        </td>
+                        <td className="px-3">
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              policy.enabled
+                                ? "border-status-success-border bg-status-success-subtle text-status-success-foreground"
+                                : "border-muted bg-muted text-muted-foreground",
+                            )}
+                            data-enabled={policy.enabled}
+                          >
+                            {policy.enabled
+                              ? t("policies.status.enabled")
+                              : t("policies.status.disabled")}
+                          </Badge>
+                        </td>
+                        <td className="px-3 font-mono text-xs text-muted-foreground">
+                          {Object.keys(policy.category_overrides).length}
+                        </td>
+                        <td className="px-3 font-mono text-xs text-muted-foreground">
+                          {policy.license_exceptions.length}
+                        </td>
+                        <td className="pl-3 pr-6 text-right">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openDrawer(target);
+                            }}
+                            data-testid="policies-row-action"
+                            aria-label={t("policies.column.actions")}
+                          >
+                            {t("policies.action.open")}
+                          </Button>
+                        </td>
+                      </tr>
+                    );
+                  })}
 
-            {!policiesQuery.isLoading && policies.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="p-0">
-                  {/* C3 - the absence and the instruction used to be one
-                      sentence, and the instruction was wrong for a developer:
-                      they can pick a team and open the drawer, but the editor
-                      is read-only unless they administer that team. The
-                      description also says what applies meanwhile, so an
-                      empty list does not read as "nothing is checked". */}
-                  <EmptyState
-                    data-testid="policies-empty"
-                    icon={<FileIcon />}
-                    title={t("policies.empty")}
-                    description={
-                      isTeamAdminOrAbove
-                        ? t("policies.empty_hint_can_author")
-                        : t("policies.empty_hint_cannot_author")
-                    }
-                  />
-                </td>
-              </tr>
-            ) : null}
-          </tbody>
-        </table>
+            </tbody>
+          </table>
+        )}
       </div>
 
       <PrimerDialog

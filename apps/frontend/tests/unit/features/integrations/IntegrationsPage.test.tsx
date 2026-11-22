@@ -218,6 +218,12 @@ describe("IntegrationsPage", () => {
       expect(screen.getByTestId("integrations-keys-empty")).toBeInTheDocument();
     });
     expect(screen.queryByTestId("integrations-key-row")).not.toBeInTheDocument();
+    // In place of the table, not in a cell under its column headers.
+    expect(screen.queryByTestId("integrations-keys-table")).toBeNull();
+    expect(screen.queryByRole("columnheader")).toBeNull();
+    expect(screen.getByTestId("integrations-keys-list")).toContainElement(
+      screen.getByTestId("integrations-keys-empty"),
+    );
   });
 
   // C3 - what the card says when there is nothing in it.
