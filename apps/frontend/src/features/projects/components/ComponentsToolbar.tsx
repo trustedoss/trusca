@@ -16,6 +16,7 @@ import {
 import { ExportCsvButton } from "@/components/ExportCsvButton";
 import { Input } from "@/components/primer/Input";
 import { MultiSelect } from "@/components/primer/multi-select";
+import { SegmentedControl } from "@/components/primer/SegmentedControl";
 import type {
   ComponentSeverity,
   DependencyScopeFilter,
@@ -262,38 +263,17 @@ export function ComponentsToolbar({
         <span className="text-xs font-medium text-muted-foreground">
           {t("components.toolbar.dependency_type_label")}
         </span>
-        <div
-          role="group"
+        <SegmentedControl
+          className="mt-1"
           aria-label={t("components.toolbar.dependency_type_label")}
-          className="mt-1 inline-flex h-8 items-stretch overflow-hidden rounded-md border border-input bg-background"
-        >
-          {DEPENDENCY_TYPE_OPTIONS.map((opt, idx) => {
-            const isActive = direct === opt.value;
-            return (
-              <button
-                key={opt.key}
-                type="button"
-                aria-pressed={isActive}
-                data-testid={`components-dependency-type-${opt.key}`}
-                data-active={isActive ? "true" : "false"}
-                onClick={() => onDirectChange(opt.value)}
-                className={cn(
-                  // W11-F polish — segmented control hovers / active-state
-                  // colour swap glides on the W11-A 150 ms ease-out-soft so
-                  // toggling between dependency-type pills no longer flips.
-                  "px-3 text-xs font-medium transition-colors duration-fast ease-out-soft",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
-                  idx > 0 && "border-l border-input",
-                  isActive
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:bg-muted",
-                )}
-              >
-                {t(`components.toolbar.dependency_type.${opt.key}`)}
-              </button>
-            );
-          })}
-        </div>
+          value={direct}
+          onChange={onDirectChange}
+          options={DEPENDENCY_TYPE_OPTIONS.map((opt) => ({
+            value: opt.value,
+            label: t(`components.toolbar.dependency_type.${opt.key}`),
+            testId: `components-dependency-type-${opt.key}`,
+          }))}
+        />
       </div>
 
       <div className="flex flex-col">

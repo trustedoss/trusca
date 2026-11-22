@@ -144,6 +144,8 @@ Columns:
 - **SLA due** — the remediation-SLA due date, graded **Overdue** / **Due soon** / **On track**; `—` when the severity carries no SLA. See [Remediation SLA and aging](#sla).
 - **Discovered** — when *this* scan recorded the finding. A re-scan resets it; the SLA clock uses **First detected** instead — see [First detected vs. Discovered](#first-detected-vs-discovered).
 
+Title, Owner and Discovered start hidden so the default columns fit a 1440 px screen with the sidebar open. Turn them on from the **Columns** menu; the table widens and scrolls sideways when they do not fit, and your choice is remembered in this browser.
+
 Filters on the inline bar: severity, status, an **EPSS threshold** filter (`min_epss`), an **SLA** state filter (`sla`), plus a **search** box (free text against CVE ID / title / component) and sort + order controls. The default sort is **Priority** — KEV-listed findings first, then severity, then EPSS; see [Priority sort](#priority-sort). The sort control also includes **EPSS** (`sort=epss`) and **SLA due** (`sort=sla_due`); rows without a value for the chosen key sort last.
 
 The toolbar also carries a **Group by** control that swaps the flat findings table for the upgrade-centric remediation worklist — see [Group by upgrade](#group-by-upgrade).

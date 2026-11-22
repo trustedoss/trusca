@@ -19,6 +19,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/primer/card";
+import { SegmentedControl } from "@/components/primer/SegmentedControl";
 import { Skeleton } from "@/components/primer/Skeleton";
 import { VIRTUOSO_TABLE_BODY } from "@/components/primer/virtuoso-table-body";
 import {
@@ -512,40 +513,28 @@ export function ComponentsTab({
     <div data-testid="components-tab" className="flex flex-1 flex-col">
       {/* View toggle — Table (virtual list) vs Graph (dependency graph, H-1).
           The choice is mirrored into `?view=graph` so reload / deep-link keep
-          it. Rendered as a segmented control, keyboard-reachable, with the
-          active view marked via aria-pressed (not color alone). */}
-      <div
-        className="flex items-center justify-end border-b border-border/60 px-6 py-2"
-        data-testid="components-view-toggle"
-        role="group"
-        aria-label={t("components.view_toggle.aria")}
-      >
-        <div className="inline-flex overflow-hidden rounded-md border">
-          <Button
-            type="button"
-            variant={view === "table" ? "secondary" : "ghost"}
-            size="sm"
-            className="h-7 rounded-none px-3"
-            aria-pressed={view === "table"}
-            data-testid="components-view-toggle-table"
-            data-active={view === "table"}
-            onClick={() => setView("table")}
-          >
-            {t("components.view_toggle.table")}
-          </Button>
-          <Button
-            type="button"
-            variant={view === "graph" ? "secondary" : "ghost"}
-            size="sm"
-            className="h-7 rounded-none px-3"
-            aria-pressed={view === "graph"}
-            data-testid="components-view-toggle-graph"
-            data-active={view === "graph"}
-            onClick={() => setView("graph")}
-          >
-            {t("components.view_toggle.graph")}
-          </Button>
-        </div>
+          it. Rendered as the shared segmented control, keyboard-reachable,
+          with the active view marked via aria-pressed (not color alone). */}
+      <div className="flex items-center justify-end border-b border-border/60 px-6 py-2">
+        <SegmentedControl
+          data-testid="components-view-toggle"
+          aria-label={t("components.view_toggle.aria")}
+          size="small"
+          value={view}
+          onChange={setView}
+          options={[
+            {
+              value: "table",
+              label: t("components.view_toggle.table"),
+              testId: "components-view-toggle-table",
+            },
+            {
+              value: "graph",
+              label: t("components.view_toggle.graph"),
+              testId: "components-view-toggle-graph",
+            },
+          ]}
+        />
       </div>
 
       {view === "graph" ? (
