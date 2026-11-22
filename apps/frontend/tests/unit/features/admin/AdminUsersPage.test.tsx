@@ -108,9 +108,14 @@ describe("AdminUsersPage", () => {
   it("renders the empty state when the list is empty", async () => {
     mockedList.mockResolvedValue(listResponse([]));
     renderPage();
-    await waitFor(() => {
-      expect(screen.getByTestId("admin-users-empty")).toBeInTheDocument();
-    });
+    const empty = await screen.findByTestId("admin-users-empty");
+    expect(empty).toHaveTextContent("No users found");
+    // The empty state stands in for the table rather than sitting in a row.
+    expect(screen.queryByRole("table")).toBeNull();
+    expect(screen.getByTestId("admin-users-table")).toHaveAttribute(
+      "aria-busy",
+      "false",
+    );
   });
 
   it("renders an error alert when the list query fails", async () => {

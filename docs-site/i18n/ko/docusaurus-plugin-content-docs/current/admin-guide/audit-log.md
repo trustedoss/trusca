@@ -97,9 +97,9 @@ Admin UI의 `target_table` 필터 드롭다운은 `apps/backend/schemas/admin_op
 
 현재 릴리스의 상단 인라인 필터 바:
 
-- **행위자 user ID** — UUID 정확 일치.
+- **행위자**: 사용자 선택 목록입니다. 이름이나 이메일 일부를 입력한 뒤 사람을 고릅니다. 비활성화된 계정도 목록에 나옵니다. URL에는 사용자 id(`actor=<uuid>`)가 남으므로, 링크를 공유하면 같은 사람이 선택됩니다. **모든 행위자**를 고르면 선택이 해제됩니다.
 - **대상 테이블** — enum 단일 선택(`projects`, `teams`, `users`, `vulnerability_findings` 등).
-- **동작** — 자유 텍스트 contains(대소문자 무시 — 서버가 `ilike`를 사용하므로 `create`와 `CREATE`가 같은 행을 매칭합니다).
+- **동작**: 포털이 기록하는 모든 동작을 고르는 선택 목록입니다. 일반 동작인 `create`, `update`, `delete`, `archive`, `unarchive` 다음에 `backup.restore_requested`, `user.mfa_cleared`, `sca_pr_comment.posted` 같은 이름 있는 이벤트가 이어집니다. 서버는 여전히 값을 대소문자 구분 없는 부분 문자열(`ilike`)로 비교합니다. 그래서 `archive`를 고르면 `unarchive` 행도, `update`를 고르면 `sca_pr_comment.updated` 행도 함께 나옵니다. 범위를 좁히려면 대상 테이블을 함께 고르세요.
 - **날짜 범위** — `from`과 `to`(사용자 지정).
 - **검색** — 자유 텍스트 쿼리(`q`). JSON 인코딩된 `diff` 컬럼에 대해 `ilike` 매칭을 수행합니다. `action`과 `target_table`은 별도 필터 파라미터(`action=`, `target_table=`)이며 `q`는 이 두 컬럼을 매칭하지 않습니다.
 
@@ -115,7 +115,7 @@ Admin UI의 `target_table` 필터 드롭다운은 `apps/backend/schemas/admin_op
 
 ## CSV 내보내기
 
-툴바의 **Export CSV**는 **현재 필터된** 결과 집합을 한 번에 최대 10만 행까지 내보냅니다. CSV는 UTF-8 이며 선두에 byte-order mark (`EF BB BF`)가 붙어 있습니다 — 한국어 / 일본어 / 중국어 로케일의 Excel이 CP949 / SJIS / GB18030으로 폴백하지 않고 UTF-8을 자동 인식하므로, 비ASCII actor 이메일이나 감사 행 diff가 mojibake로 깨지지 않습니다. 이미 UTF-8을 자동 인식하는 도구(LibreOffice, awk, Python `csv` / `utf-8-sig` 코덱)는 BOM을 자동으로 제거합니다.
+페이지 머리글 오른쪽의 **CSV 내보내기**는 **현재 필터된** 결과 집합을 한 번에 최대 10만 행까지 내보냅니다. CSV는 UTF-8 이며 선두에 byte-order mark (`EF BB BF`)가 붙어 있습니다 — 한국어 / 일본어 / 중국어 로케일의 Excel이 CP949 / SJIS / GB18030으로 폴백하지 않고 UTF-8을 자동 인식하므로, 비ASCII actor 이메일이나 감사 행 diff가 mojibake로 깨지지 않습니다. 이미 UTF-8을 자동 인식하는 도구(LibreOffice, awk, Python `csv` / `utf-8-sig` 코덱)는 BOM을 자동으로 제거합니다.
 
 더 큰 윈도는 API로 페이지네이션:
 
@@ -137,7 +137,7 @@ curl -sS \
 
 ### "사용자 Y가 지난주에 무엇을 했나?"
 
-필터: `actor=y@acme.com`, 날짜 범위 지난 7일. 동작 목록이 활동을 요약합니다.
+필터: **행위자**에서 Y를 이메일로 골라 선택하고, 날짜 범위는 지난 7일로 둡니다. 동작 목록이 활동을 요약합니다.
 
 ### "모든 프로젝트에 걸쳐 CVE-2024-12345를 누가 억제했나?"
 

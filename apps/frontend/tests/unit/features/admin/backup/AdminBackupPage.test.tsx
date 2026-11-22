@@ -9,8 +9,9 @@
  *   2. The "Run manual backup now" button calls the POST endpoint.
  *   3. Delete is two-step: the first click only opens the inline confirm
  *      strip; the destructive call fires only after the second click.
- *   4. The restore Submit button is disabled until the user types
- *      `restore` exactly (case-sensitive) — anything else is a no-op.
+ *   4. Picking a restore file opens a confirmation dialog. Its danger
+ *      button is disabled until the user types `restore` exactly
+ *      (case-sensitive); cancelling closes the dialog without uploading.
  *   5. Auto rows render the Delete control as disabled (the backend
  *      returns 409 for `auto-*` and the UI surfaces the rule up front).
  */
@@ -106,12 +107,33 @@ describe("AdminBackupPage", () => {
     expect(firstRow.getAttribute("data-kind")).toBe("auto");
   });
 
-  it("renders the empty state when the list is empty", async () => {
+  it("replaces the table with an empty state when the list is empty", async () => {
     mockedList.mockResolvedValue(listResponse([]));
     renderPage();
-    await waitFor(() => {
-      expect(screen.getByTestId("admin-backup-empty")).toBeInTheDocument();
-    });
+    const empty = await screen.findByTestId("admin-backup-empty");
+    expect(empty).toHaveTextContent("No backups yet");
+    expect(screen.queryByRole("table")).toBeNull();
+    expect(screen.getByTestId("admin-backup-table")).toHaveAttribute(
+      "aria-busy",
+      "false",
+    );
+  });
+
+  it("puts Run manual backup in the page header as the one primary button", async () => {
+    mockedList.mockResolvedValue(listResponse([]));
+    renderPage();
+    const trigger = screen.getByTestId("admin-backup-manual-trigger");
+    const header = trigger.closest("header");
+    expect(header).not.toBeNull();
+    const variants = Array.from(
+      (header as HTMLElement).querySelectorAll("button"),
+      (b) => b.getAttribute("data-variant"),
+    );
+    expect(variants.filter((v) => v === "primary")).toHaveLength(1);
+    expect(trigger.getAttribute("data-variant")).toBe("primary");
+    expect(
+      within(header as HTMLElement).getByTestId("admin-backup-file-picker"),
+    ).toBeInTheDocument();
   });
 
   it("Run manual backup → calls triggerManualBackup", async () => {
@@ -184,9 +206,19 @@ describe("AdminBackupPage", () => {
     const file = new File(["payload"], "snap.tar.gz", {
       type: "application/gzip",
     });
+    expect(screen.queryByRole("dialog")).toBeNull();
     await userEvent.upload(input, file);
-    // Restore strip + submit button now visible.
-    const submit = await screen.findByTestId("admin-backup-restore-submit");
+    // The confirmation is a modal dialog holding the warning, the file name
+    // and the typing gate, with a danger button.
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      within(dialog).getByTestId("admin-backup-restore-warning"),
+    ).toHaveTextContent("overwrite ALL data");
+    expect(within(dialog).getByTestId("admin-backup-file-name")).toHaveTextContent(
+      "snap.tar.gz",
+    );
+    const submit = within(dialog).getByTestId("admin-backup-restore-submit");
+    expect(submit.getAttribute("data-variant")).toBe("danger");
     expect(submit).toBeDisabled();
     // Wrong text — case-sensitive — must keep the button disabled.
     const confirmInput = screen.getByTestId("admin-backup-restore-confirm");
@@ -203,10 +235,56 @@ describe("AdminBackupPage", () => {
       expect(mockedUpload).toHaveBeenCalledTimes(1);
     });
     expect(mockedUpload.mock.calls[0]?.[0]).toBeInstanceOf(File);
-    // Persistent banner appears after success.
+    // Persistent banner appears after success, and the dialog closes.
     await waitFor(() => {
       expect(screen.getByTestId("admin-backup-restore-queued")).toBeInTheDocument();
     });
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("Cancel closes the restore dialog without uploading, and the same file can be picked again", async () => {
+    mockedList.mockResolvedValue(listResponse([]));
+    renderPage();
+    const input = screen.getByTestId(
+      "admin-backup-file-input",
+    ) as HTMLInputElement;
+    const file = new File(["payload"], "snap.tar.gz", {
+      type: "application/gzip",
+    });
+    await userEvent.upload(input, file);
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.type(
+      within(dialog).getByTestId("admin-backup-restore-confirm"),
+      "restore",
+    );
+    await userEvent.click(within(dialog).getByTestId("admin-backup-restore-cancel"));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(input.value).toBe("");
+    expect(mockedUpload).not.toHaveBeenCalled();
+
+    // Reopening starts from an empty gate, not the token typed before.
+    await userEvent.upload(input, file);
+    const reopened = await screen.findByRole("dialog");
+    expect(within(reopened).getByTestId("admin-backup-restore-confirm")).toHaveValue("");
+    expect(within(reopened).getByTestId("admin-backup-restore-submit")).toBeDisabled();
+  });
+
+  it("Escape closes the restore dialog without uploading", async () => {
+    mockedList.mockResolvedValue(listResponse([]));
+    renderPage();
+    const input = screen.getByTestId(
+      "admin-backup-file-input",
+    ) as HTMLInputElement;
+    await userEvent.upload(
+      input,
+      new File(["payload"], "snap.tar.gz", { type: "application/gzip" }),
+    );
+    await screen.findByRole("dialog");
+    await userEvent.keyboard("{Escape}");
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
+    expect(mockedUpload).not.toHaveBeenCalled();
   });
 
   it("Download triggers downloadBackup with the row's name", async () => {

@@ -3,12 +3,13 @@
 /**
  * AdminBackupPage — Phase 6 PR #19 chore D.
  *
- * Top action bar:
- *   - "Run manual backup now" → triggers a Celery task that writes
+ * Page header actions (the page's main action sits rightmost, as on the
+ * other admin lists):
+ *   - "Run manual backup now" (primary) triggers a Celery task that writes
  *     `manual-<timestamp>.tar.gz` into the backup volume.
- *   - File input + restore flow: when a file is selected the page renders a
- *     warning banner and a typing-gate text input. The user must type
- *     "restore" exactly (case-sensitive) to enable the destructive action.
+ *   - "Upload and restore…" picks a file and opens a confirmation dialog
+ *     with a danger button. The user must type "restore" exactly
+ *     (case-sensitive) inside the dialog to enable it.
  *
  * Compact 40px-row table mirroring `AdminUsersPage`:
  *   name (mono) | kind badge | created_at (relative + ISO tooltip) | size
@@ -38,6 +39,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { EmptyState } from "@/components/EmptyState";
 import { PageHeader } from "@/components/PageHeader";
 import { Spinner } from "@/components/primer/Spinner";
 import { Alert, AlertDescription } from "@/components/primer/alert";
@@ -45,6 +47,8 @@ import { Badge } from "@/components/primer/badge";
 import { Button } from "@/components/primer/Button";
 import { Input } from "@/components/primer/Input";
 import { Label } from "@/components/primer/Label";
+import { Notice } from "@/components/primer/Notice";
+import { PrimerDialog } from "@/components/primer/PrimerDialog";
 import { Skeleton } from "@/components/primer/Skeleton";
 import { useToast } from "@/components/primer/toast";
 import {
@@ -202,48 +206,37 @@ export function AdminBackupPage() {
     );
   }, [restoreFile, restoreConfirmInput, uploadMut.isPending]);
 
+  const isEmpty =
+    !backupsQuery.isLoading && !backupsQuery.isError && items.length === 0;
+
   return (
     <div className="flex h-full flex-col" data-testid="admin-backup-page">
       <PageHeader
         title={t("admin.backup.title")}
         description={t("admin.backup.subtitle")}
-      />
-
-      {restoreQueued ? (
-        <div className="border-b bg-status-warning-subtle px-6 py-3" data-testid="admin-backup-restore-queued">
-          <Alert className="border-status-warning-border bg-status-warning-subtle text-status-warning-foreground">
-            <AlertDescription>
-              {t("admin.backup.restore.queued_banner")}
-            </AlertDescription>
-          </Alert>
-        </div>
-      ) : null}
-
-      <div
-        className="flex flex-wrap items-center justify-between gap-3 border-b bg-card px-6 py-3"
-        data-testid="admin-backup-toolbar"
-      >
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            size="sm"
-            onClick={handleManualTrigger}
-            disabled={triggerManual.isPending}
-            data-testid="admin-backup-manual-trigger"
-          >
-            {triggerManual.isPending ? (
-              <Spinner size="small" />
-            ) : (
-              <DatabaseIcon size={16} />
-            )}
-            {t("admin.backup.actions.manual_trigger")}
-          </Button>
-          <label className="inline-flex items-center gap-2">
+        actions={
+          <>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => backupsQuery.refetch()}
+              disabled={backupsQuery.isFetching}
+              data-testid="admin-backup-refresh"
+            >
+              <SyncIcon
+                size={16}
+                className={cn(backupsQuery.isFetching && "animate-spin")}
+              />
+              {t("admin.backup.actions.refresh")}
+            </Button>
             <input
               ref={fileInputRef}
               type="file"
               accept=".tar.gz,application/gzip,application/x-tar"
               onChange={handleFilePick}
               className="sr-only"
+              tabIndex={-1}
+              aria-hidden="true"
               data-testid="admin-backup-file-input"
             />
             <Button
@@ -256,85 +249,120 @@ export function AdminBackupPage() {
               <UploadIcon size={16} />
               {t("admin.backup.actions.choose_file")}
             </Button>
-            {restoreFile ? (
-              <span
-                className="font-mono text-xs text-muted-foreground"
-                data-testid="admin-backup-file-name"
-              >
-                {restoreFile.name}
-              </span>
-            ) : null}
-          </label>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => backupsQuery.refetch()}
-            disabled={backupsQuery.isFetching}
-            data-testid="admin-backup-refresh"
-          >
-            <SyncIcon className={cn( "h-4 w-4", backupsQuery.isFetching && "animate-spin", )} />
-            {t("admin.backup.actions.refresh")}
-          </Button>
-        </div>
-      </div>
+            <Button
+              size="sm"
+              onClick={handleManualTrigger}
+              disabled={triggerManual.isPending}
+              data-testid="admin-backup-manual-trigger"
+            >
+              {triggerManual.isPending ? (
+                <Spinner size="small" />
+              ) : (
+                <DatabaseIcon size={16} />
+              )}
+              {t("admin.backup.actions.manual_trigger")}
+            </Button>
+          </>
+        }
+      />
 
-      {restoreFile ? (
-        <div
-          className="border-b bg-status-warning-subtle px-6 py-3"
-          data-testid="admin-backup-restore-strip"
-        >
+      {restoreQueued ? (
+        <div className="border-b bg-status-warning-subtle px-6 py-3" data-testid="admin-backup-restore-queued">
           <Alert className="border-status-warning-border bg-status-warning-subtle text-status-warning-foreground">
-            <AlertDescription className="space-y-3">
-              <p data-testid="admin-backup-restore-warning">
-                {t("admin.backup.restore.warning")}
-              </p>
-              <div className="flex flex-wrap items-center gap-3">
-                <Label
-                  htmlFor="admin-backup-restore-confirm"
-                  className="text-xs text-status-warning-foreground"
-                >
-                  {t("admin.backup.restore.type_to_confirm", {
-                    token: RESTORE_CONFIRM_TOKEN,
-                  })}
-                </Label>
-                <Input
-                  id="admin-backup-restore-confirm"
-                  data-testid="admin-backup-restore-confirm"
-                  value={restoreConfirmInput}
-                  onChange={(e) => setRestoreConfirmInput(e.target.value)}
-                  className="h-8 w-40 font-mono text-xs"
-                  autoComplete="off"
-                  spellCheck={false}
-                />
-                <Button
-                  size="sm"
-                  variant="destructive"
-                  onClick={handleRestore}
-                  disabled={!restoreEnabled}
-                  data-testid="admin-backup-restore-submit"
-                >
-                  {uploadMut.isPending ? (
-                    <Spinner size="small" />
-                  ) : null}
-                  {t("admin.backup.actions.restore")}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={clearRestoreSelection}
-                  data-testid="admin-backup-restore-cancel"
-                >
-                  {t("admin.actions.cancel")}
-                </Button>
-              </div>
+            <AlertDescription>
+              {t("admin.backup.restore.queued_banner")}
             </AlertDescription>
           </Alert>
         </div>
       ) : null}
 
-      <div className="flex-1 overflow-y-auto">
+      {/*
+        Restoring replaces every row in the database, so it asks in a modal
+        rather than an inline strip: the reader cannot scroll past it or keep
+        working beside it. The typed token stays as the second gate.
+      */}
+      <PrimerDialog
+        open={restoreFile != null}
+        onOpenChange={(open) => {
+          if (!open) clearRestoreSelection();
+        }}
+        title={t("admin.backup.restore.dialog_title")}
+        dismissible={!uploadMut.isPending}
+        testId="admin-backup-restore-dialog"
+        footer={
+          <>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={clearRestoreSelection}
+              disabled={uploadMut.isPending}
+              data-testid="admin-backup-restore-cancel"
+            >
+              {t("admin.actions.cancel")}
+            </Button>
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={handleRestore}
+              disabled={!restoreEnabled}
+              data-testid="admin-backup-restore-submit"
+            >
+              {uploadMut.isPending ? <Spinner size="small" /> : null}
+              {t("admin.backup.actions.restore")}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <Notice tone="error" data-testid="admin-backup-restore-warning">
+            {t("admin.backup.restore.warning")}
+          </Notice>
+          <div className="space-y-1 text-sm">
+            <p className="text-muted-foreground">
+              {t("admin.backup.restore.file_label")}
+            </p>
+            <p
+              className="break-all font-mono text-xs"
+              data-testid="admin-backup-file-name"
+            >
+              {restoreFile?.name}
+            </p>
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="admin-backup-restore-confirm" className="text-sm">
+              {t("admin.backup.restore.type_to_confirm", {
+                token: RESTORE_CONFIRM_TOKEN,
+              })}
+            </Label>
+            <Input
+              id="admin-backup-restore-confirm"
+              data-testid="admin-backup-restore-confirm"
+              value={restoreConfirmInput}
+              onChange={(e) => setRestoreConfirmInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && restoreEnabled) {
+                  e.preventDefault();
+                  void handleRestore();
+                }
+              }}
+              className="font-mono text-xs"
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </div>
+        </div>
+      </PrimerDialog>
+
+      {/*
+        The test id and aria-busy sit on the scroll region rather than the
+        <table>: an empty list replaces the table with an empty state, and
+        harnesses wait on this attribute either way.
+      */}
+      <div
+        className="flex-1 overflow-y-auto"
+        data-testid="admin-backup-table"
+        aria-busy={backupsQuery.isLoading}
+      >
         {backupsQuery.isError ? (
           <div className="px-6 py-4">
             <Alert variant="destructive" data-testid="admin-backup-error">
@@ -345,11 +373,15 @@ export function AdminBackupPage() {
           </div>
         ) : null}
 
-        <table
-          className="w-full text-sm"
-          data-testid="admin-backup-table"
-          aria-busy={backupsQuery.isLoading}
-        >
+        {isEmpty ? (
+          <EmptyState
+            icon={<DatabaseIcon size={24} />}
+            title={t("admin.backup.empty_title")}
+            description={t("admin.backup.empty")}
+            data-testid="admin-backup-empty"
+          />
+        ) : (
+        <table className="w-full text-sm">
           <thead className="sticky top-0 bg-card">
             <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
               <th className="px-6 py-2">{t("admin.backup.column.name")}</th>
@@ -359,7 +391,7 @@ export function AdminBackupPage() {
                 {t("admin.backup.column.size")}
               </th>
               <th className="px-3 py-2">{t("admin.backup.column.db_revision")}</th>
-              <th className="px-3 py-2 text-right">
+              <th className="py-2 pl-3 pr-6 text-right">
                 {t("admin.backup.column.actions")}
               </th>
             </tr>
@@ -373,16 +405,6 @@ export function AdminBackupPage() {
                   </td>
                 </tr>
               ))
-            ) : items.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={6}
-                  className="px-6 py-12 text-center text-sm text-muted-foreground"
-                  data-testid="admin-backup-empty"
-                >
-                  {t("admin.backup.empty")}
-                </td>
-              </tr>
             ) : (
               items.map((item) => (
                 <BackupRow
@@ -401,6 +423,7 @@ export function AdminBackupPage() {
             )}
           </tbody>
         </table>
+        )}
       </div>
 
     </div>
@@ -476,7 +499,7 @@ function BackupRow({
         <td className="px-3 font-mono text-xs text-muted-foreground">
           {shortRevision(item.db_revision)}
         </td>
-        <td className="px-3">
+        <td className="pl-3 pr-6">
           <div className="flex items-center justify-end gap-2">
             <Button
               size="sm"

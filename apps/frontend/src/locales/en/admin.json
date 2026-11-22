@@ -129,7 +129,8 @@
       "export": {
         "action": "Export",
         "failed": "Could not export the roster."
-      }
+      },
+      "empty_title": "No users found"
     },
     "teams": {
       "title": "Teams",
@@ -190,7 +191,8 @@
         "moved": "Team moved.",
         "subgroup_created": "Subgroup created."
       },
-      "empty": "No teams match the current filters."
+      "empty": "No teams match the current filters.",
+      "empty_title": "No teams found"
     },
     "scans": {
       "title": "Scan queue",
@@ -251,7 +253,8 @@
       "toast": {
         "cancelled": "Scan cancelled."
       },
-      "empty": "No scans match the current filter."
+      "empty": "No scans match the current filter.",
+      "empty_title": "No scans found"
     },
     "disk": {
       "title": "Disk",
@@ -290,16 +293,22 @@
       "title": "Audit log",
       "subtitle": "Search every audited mutation across the portal. Sensitive columns (email, name) appear as sha256 fingerprints.",
       "filter": {
-        "actor_user_id": "Actor user ID",
         "target_table_label": "Target table",
         "target_table_all": "All tables",
         "action_label": "Action",
-        "action_placeholder": "create / update / delete …",
         "from_label": "From",
         "to_label": "To",
         "q_label": "Diff search",
         "q_placeholder": "Substring match against the diff JSON",
-        "q_pii_hint": "PII columns are stored as sha256 fingerprints. Plain-text search will not match emails or names."
+        "q_pii_hint": "PII columns are stored as sha256 fingerprints. Plain-text search will not match emails or names.",
+        "actor_label": "Actor",
+        "actor_all": "All actors",
+        "actor_search_placeholder": "Search by name or email",
+        "actor_loading": "Loading users…",
+        "actor_empty": "No users match.",
+        "actor_load_failed": "Users could not be loaded.",
+        "actor_truncated": "Showing the first {{count}}. Type to narrow the list.",
+        "action_all": "All actions"
       },
       "column": {
         "created_at": "When",
@@ -323,7 +332,8 @@
       "empty": "No audit rows match the current filters.",
       "toast": {
         "csv_started": "CSV export started."
-      }
+      },
+      "empty_title": "No audit entries found"
     },
     "health": {
       "title": "System health",
@@ -478,7 +488,9 @@
       "restore": {
         "warning": "Restoring will overwrite ALL data including users, projects, and scans. This is irreversible.",
         "type_to_confirm": "Type '{{token}}' to confirm",
-        "queued_banner": "Restore queued. The backend will pause; reload after 30 seconds."
+        "queued_banner": "Restore queued. The backend will pause; reload after 30 seconds.",
+        "dialog_title": "Restore from this backup?",
+        "file_label": "Backup file"
       },
       "toast": {
         "manual_triggered": "Manual backup queued.",
@@ -486,7 +498,8 @@
         "download_started": "Download started.",
         "restore_queued": "Restore queued."
       },
-      "empty": "No backups yet. Trigger a manual backup or wait for the nightly job."
+      "empty": "Run a manual backup now or wait for the nightly job.",
+      "empty_title": "No backups yet"
     },
     "errors": {
       "last_super_admin_protected": "You cannot demote or deactivate the only Super Admin.",

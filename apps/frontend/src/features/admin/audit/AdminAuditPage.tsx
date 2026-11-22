@@ -4,9 +4,10 @@
  * AdminAuditPage — Phase 4 PR #14 §4.7.
  *
  * Inline filter toolbar (no modal) over a compact 40px-row table. Filters:
- *   - actor_user_id     — UUID free-text input.
- *   - target_table      — closed-enum select (matches AuditTargetTable).
- *   - action            — free-text input (max 64 chars, validated server side).
+ *   - actor_user_id     - user picker by name or email (AuditActorCombobox).
+ *   - target_table      - closed-enum select (matches AuditTargetTable).
+ *   - action            - select over AUDIT_ACTIONS (pinned to the backend by
+ *                         tests/unit/contracts/auditActions.test.ts).
  *   - from / to         — datetime-local inputs.
  *   - q                 — diff substring search (300ms debounce).
  *
@@ -14,13 +15,14 @@
  * pattern) so a filtered view survives reload and can be shared. Params:
  * actor / target_table / action / from / to / q / page / page_size.
  * Defaults DELETE the param so the URL stays clean; unknown or invalid
- * values fall back to the default. Text inputs keep a local mirror and
- * commit to the URL after a 300ms debounce so typing doesn't spam history.
+ * values fall back to the default. The diff search keeps a local mirror and
+ * commits to the URL after a 300ms debounce so typing doesn't spam history.
  *
  * L-15: the list auto-refreshes every 2.5s (see useAdminAudit) so writes
  * show up without pressing Refresh.
  *
- * The "Export CSV" button runs an authenticated fetch + blob download so
+ * Export CSV sits in the page header as a secondary button: this page is
+ * read-only, so nothing on it is a primary action. It runs an authenticated fetch + blob download so
  * the bearer token stays in the Authorization header (out of URL / history).
  *
  * PII columns (email / full_name) are sha256-fingerprinted at write time
@@ -29,6 +31,7 @@
  */
 import {
   DownloadIcon,
+  HistoryIcon,
   SyncIcon,
 } from "@primer/octicons-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -36,6 +39,7 @@ import { Select } from "@primer/react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 
+import { EmptyState } from "@/components/EmptyState";
 import { PageHeader } from "@/components/PageHeader";
 import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Button } from "@/components/primer/Button";
@@ -44,7 +48,9 @@ import { Label } from "@/components/primer/Label";
 import { Skeleton } from "@/components/primer/Skeleton";
 import RelativeTime from "@/components/RelativeTime";
 import { AdminAuditDrawer } from "@/features/admin/audit/AdminAuditDrawer";
+import { AuditActorCombobox } from "@/features/admin/audit/AuditActorCombobox";
 import {
+  AUDIT_ACTIONS,
   AUDIT_TARGET_TABLES,
   downloadAdminAuditCsv,
   type AuditLogItem,
@@ -170,21 +176,15 @@ export function AdminAuditPage() {
     [updateFilterParam],
   );
 
-  const commitActor = useCallback(
-    (next: string | null) => updateFilterParam("actor", next),
-    [updateFilterParam],
-  );
-  const [actorInput, setActorInput] = useDebouncedFilterInput(
-    actorParam,
-    commitActor,
-  );
-  const commitAction = useCallback(
-    (next: string | null) => updateFilterParam("action", next),
-    [updateFilterParam],
-  );
-  const [actionInput, setActionInput] = useDebouncedFilterInput(
-    actionParam,
-    commitAction,
+  // A hand-edited or older link can name an action this build does not
+  // list. Keep it selectable rather than silently showing "All actions"
+  // over a filtered table.
+  const actionOptions = useMemo<readonly string[]>(
+    () =>
+      actionParam && !(AUDIT_ACTIONS as readonly string[]).includes(actionParam)
+        ? [...AUDIT_ACTIONS, actionParam]
+        : AUDIT_ACTIONS,
+    [actionParam],
   );
   const commitQ = useCallback(
     (next: string | null) => updateFilterParam("q", next),
@@ -262,34 +262,60 @@ export function AdminAuditPage() {
     }
   }
 
+  const isEmpty = !auditQuery.isLoading && !auditQuery.isError && items.length === 0;
+
   return (
     <div className="flex h-full flex-col" data-testid="admin-audit-page">
       <PageHeader
         title={t("admin.audit.title")}
         description={t("admin.audit.subtitle")}
+        actions={
+          <>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => auditQuery.refetch()}
+              disabled={auditQuery.isFetching}
+              data-testid="admin-audit-refresh"
+            >
+              <SyncIcon
+                size={16}
+                className={cn(auditQuery.isFetching && "animate-spin")}
+              />
+              {t("admin.audit.actions.refresh")}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleExport}
+              disabled={exporting}
+              data-testid="admin-audit-export-csv"
+            >
+              <DownloadIcon size={16} />
+              {t("admin.audit.actions.export_csv")}
+            </Button>
+          </>
+        }
       />
 
       <div
-        className="grid grid-cols-1 gap-3 border-b bg-card px-6 py-3 sm:grid-cols-2 lg:grid-cols-6"
+        className="flex flex-wrap items-end gap-3 border-b bg-card px-6 py-3"
         data-testid="admin-audit-toolbar"
       >
-        <div>
+        <div className="w-52">
           <Label
             htmlFor="admin-audit-actor"
             className="text-xs text-muted-foreground"
           >
-            {t("admin.audit.filter.actor_user_id")}
+            {t("admin.audit.filter.actor_label")}
           </Label>
-          <Input
-            id="admin-audit-actor"
-            data-testid="admin-audit-actor"
-            value={actorInput}
-            onChange={(e) => setActorInput(e.target.value)}
-            className="h-8 font-mono text-xs"
-            maxLength={255}
+          <AuditActorCombobox
+            triggerId="admin-audit-actor"
+            selectedId={actorParam}
+            onSelect={(id) => updateFilterParam("actor", id)}
           />
         </div>
-        <div>
+        <div className="w-40">
           <Label
             htmlFor="admin-audit-target-table"
             className="text-xs text-muted-foreground"
@@ -317,24 +343,33 @@ export function AdminAuditPage() {
             ))}
           </Select>
         </div>
-        <div>
+        <div className="w-44">
           <Label
             htmlFor="admin-audit-action"
             className="text-xs text-muted-foreground"
           >
             {t("admin.audit.filter.action_label")}
           </Label>
-          <Input
+          <Select block
             id="admin-audit-action"
             data-testid="admin-audit-action"
-            value={actionInput}
-            placeholder={t("admin.audit.filter.action_placeholder")}
-            onChange={(e) => setActionInput(e.target.value)}
-            className="h-8 font-mono text-xs"
-            maxLength={64}
-          />
+            value={actionParam || "all"}
+            onChange={(e) =>
+              updateFilterParam(
+                "action",
+                e.target.value === "all" ? null : e.target.value,
+              )
+            }
+          >
+            <option value="all">{t("admin.audit.filter.action_all")}</option>
+            {actionOptions.map((value) => (
+              <option key={value} value={value}>
+                {value}
+              </option>
+            ))}
+          </Select>
         </div>
-        <div>
+        <div className="w-44">
           <Label
             htmlFor="admin-audit-from"
             className="text-xs text-muted-foreground"
@@ -350,7 +385,7 @@ export function AdminAuditPage() {
             className="h-8 font-mono text-xs"
           />
         </div>
-        <div>
+        <div className="w-44">
           <Label
             htmlFor="admin-audit-to"
             className="text-xs text-muted-foreground"
@@ -366,7 +401,7 @@ export function AdminAuditPage() {
             className="h-8 font-mono text-xs"
           />
         </div>
-        <div>
+        <div className="min-w-40 flex-1">
           <Label
             htmlFor="admin-audit-q"
             className="text-xs text-muted-foreground"
@@ -385,34 +420,22 @@ export function AdminAuditPage() {
         </div>
       </div>
 
-      <div className="flex items-center justify-between gap-2 border-b bg-card px-6 py-2 text-xs text-muted-foreground">
+      <div className="border-b bg-card px-6 py-2 text-xs text-muted-foreground">
         <span data-testid="admin-audit-pii-hint">
           {t("admin.audit.filter.q_pii_hint")}
         </span>
-        <div className="flex items-center gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => auditQuery.refetch()}
-            disabled={auditQuery.isFetching}
-            data-testid="admin-audit-refresh"
-          >
-            <SyncIcon className={cn( "h-4 w-4", auditQuery.isFetching && "animate-spin", )} />
-            {t("admin.audit.actions.refresh")}
-          </Button>
-          <Button
-            size="sm"
-            onClick={handleExport}
-            disabled={exporting}
-            data-testid="admin-audit-export-csv"
-          >
-            <DownloadIcon size={16} />
-            {t("admin.audit.actions.export_csv")}
-          </Button>
-        </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      {/*
+        The test id and aria-busy sit on the scroll region rather than the
+        <table>: an empty result replaces the table with an empty state, and
+        harnesses wait on this attribute either way.
+      */}
+      <div
+        className="flex-1 overflow-y-auto"
+        data-testid="admin-audit-table"
+        aria-busy={auditQuery.isLoading}
+      >
         {auditQuery.isError ? (
           <div className="px-6 py-4">
             <Alert variant="destructive" data-testid="admin-audit-error">
@@ -421,11 +444,15 @@ export function AdminAuditPage() {
           </div>
         ) : null}
 
-        <table
-          className="w-full text-sm"
-          data-testid="admin-audit-table"
-          aria-busy={auditQuery.isLoading}
-        >
+        {isEmpty ? (
+          <EmptyState
+            icon={<HistoryIcon size={24} />}
+            title={t("admin.audit.empty_title")}
+            description={t("admin.audit.empty")}
+            data-testid="admin-audit-empty"
+          />
+        ) : (
+        <table className="w-full text-sm">
           <thead className="sticky top-0 bg-card">
             <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
               <th className="px-6 py-2">{t("admin.audit.column.created_at")}</th>
@@ -433,7 +460,7 @@ export function AdminAuditPage() {
               <th className="px-3 py-2">{t("admin.audit.column.target_table")}</th>
               <th className="px-3 py-2">{t("admin.audit.column.action")}</th>
               <th className="px-3 py-2">{t("admin.audit.column.target_id")}</th>
-              <th className="px-3 py-2">{t("admin.audit.column.request_id")}</th>
+              <th className="py-2 pl-3 pr-6">{t("admin.audit.column.request_id")}</th>
             </tr>
           </thead>
           <tbody data-testid="admin-audit-tbody">
@@ -501,26 +528,16 @@ export function AdminAuditPage() {
                       {entry.target_id ?? "—"}
                     </td>
                     <td
-                      className="truncate px-3 font-mono text-[11px] text-muted-foreground"
+                      className="truncate pl-3 pr-6 font-mono text-[11px] text-muted-foreground"
                       title={entry.request_id ?? undefined}
                     >
                       {entry.request_id ?? "—"}
                     </td>
                   </tr>
                 ))}
-            {!auditQuery.isLoading && items.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={6}
-                  className="px-6 py-12 text-center text-sm text-muted-foreground"
-                  data-testid="admin-audit-empty"
-                >
-                  {t("admin.audit.empty")}
-                </td>
-              </tr>
-            ) : null}
           </tbody>
         </table>
+        )}
       </div>
 
       <footer

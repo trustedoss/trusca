@@ -15,13 +15,12 @@
  * future PR (the existing `useScanWebSocket` hook is per-scan and the
  * cross-team queue would require a fan-out we don't ship yet).
  */
-import {
-  SyncIcon,
-} from "@primer/octicons-react";
+import { PulseIcon, SyncIcon } from "@primer/octicons-react";
 import { useEffect, useMemo, useState } from "react";
 import { Select } from "@primer/react";
 import { useTranslation } from "react-i18next";
 
+import { EmptyState } from "@/components/EmptyState";
 import { PageHeader } from "@/components/PageHeader";
 import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Badge } from "@/components/primer/badge";
@@ -165,6 +164,9 @@ export function AdminScansPage() {
     else setOpenScan((current) => (current?.id === openScanId ? current : null));
   }, [openScanId, items]);
 
+  const isEmpty =
+    !scansQuery.isLoading && !scansQuery.isError && items.length === 0;
+
   return (
     <div className="flex h-full flex-col" data-testid="admin-scans-page">
       <PageHeader
@@ -234,7 +236,16 @@ export function AdminScansPage() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      {/*
+        The test id and aria-busy sit on the scroll region rather than the
+        <table>: an empty list replaces the table with an empty state, and
+        harnesses wait on this attribute either way.
+      */}
+      <div
+        className="flex-1 overflow-y-auto"
+        data-testid="admin-scans-table"
+        aria-busy={scansQuery.isLoading}
+      >
         {scansQuery.isError ? (
           <div className="px-6 py-4">
             <Alert variant="destructive" data-testid="admin-scans-error">
@@ -243,11 +254,15 @@ export function AdminScansPage() {
           </div>
         ) : null}
 
-        <table
-          className="w-full text-sm"
-          data-testid="admin-scans-table"
-          aria-busy={scansQuery.isLoading}
-        >
+        {isEmpty ? (
+          <EmptyState
+            icon={<PulseIcon size={24} />}
+            title={t("admin.scans.empty_title")}
+            description={t("admin.scans.empty")}
+            data-testid="admin-scans-empty"
+          />
+        ) : (
+        <table className="w-full text-sm">
           <thead className="sticky top-0 bg-card">
             <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
               <th className="px-6 py-2">{t("admin.scans.column.id")}</th>
@@ -256,7 +271,7 @@ export function AdminScansPage() {
               <th className="px-3 py-2">{t("admin.scans.column.status")}</th>
               <th className="px-3 py-2">{t("admin.scans.column.kind")}</th>
               <th className="px-3 py-2">{t("admin.scans.column.started_at")}</th>
-              <th className="px-3 py-2 text-right">
+              <th className="py-2 pl-3 pr-6 text-right">
                 {t("admin.scans.column.duration")}
               </th>
             </tr>
@@ -320,26 +335,16 @@ export function AdminScansPage() {
                         "—"
                       )}
                     </td>
-                    <td className="px-3 text-right text-xs text-muted-foreground">
+                    <td className="pl-3 pr-6 text-right text-xs text-muted-foreground">
                       {scan.duration_seconds == null
                         ? "—"
                         : `${scan.duration_seconds.toFixed(1)}s`}
                     </td>
                   </tr>
                 ))}
-            {!scansQuery.isLoading && items.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={7}
-                  className="px-6 py-12 text-center text-sm text-muted-foreground"
-                  data-testid="admin-scans-empty"
-                >
-                  {t("admin.scans.empty")}
-                </td>
-              </tr>
-            ) : null}
           </tbody>
         </table>
+        )}
       </div>
 
       <footer

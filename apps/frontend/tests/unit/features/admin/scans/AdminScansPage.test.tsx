@@ -126,9 +126,14 @@ describe("AdminScansPage", () => {
   it("renders the empty state when no rows match", async () => {
     mockedList.mockResolvedValue(pageResponse([]));
     renderPage();
-    await waitFor(() => {
-      expect(screen.getByTestId("admin-scans-empty")).toBeInTheDocument();
-    });
+    const empty = await screen.findByTestId("admin-scans-empty");
+    expect(empty).toHaveTextContent("No scans found");
+    // The empty state stands in for the table rather than sitting in a row.
+    expect(screen.queryByRole("table")).toBeNull();
+    expect(screen.getByTestId("admin-scans-table")).toHaveAttribute(
+      "aria-busy",
+      "false",
+    );
   });
 
   it("'all' tab clears the status filter on the next call", async () => {

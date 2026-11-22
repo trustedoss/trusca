@@ -56,9 +56,28 @@ export class AdminAuditHarness {
     await this.expectMounted();
   }
 
+  /** `action` must be one of AUDIT_ACTIONS: the filter is a select. */
   async filterByAction(action: string): Promise<void> {
-    await this.page.getByTestId("admin-audit-action").fill(action);
-    // Action input has no debounce — wait for the table aria-busy round-trip.
+    await this.page.getByTestId("admin-audit-action").selectOption(action);
+    await this.expectMounted();
+  }
+
+  /**
+   * Pick the actor in the user picker by typing part of their email and
+   * choosing the matching option. The URL keeps the user's id.
+   */
+  async filterByActorEmail(email: string): Promise<void> {
+    await this.page.getByTestId("admin-audit-actor").click();
+    await this.page.getByTestId("admin-audit-actor-search").fill(email);
+    await this.page
+      .getByTestId("admin-audit-actor-option")
+      .filter({ hasText: email })
+      .first()
+      .click();
+    await expect(this.page.getByTestId("admin-audit-actor")).toContainText(
+      email,
+      { timeout: DEFAULT_TIMEOUT_MS },
+    );
     await this.expectMounted();
   }
 
