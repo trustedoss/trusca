@@ -283,7 +283,10 @@ class _Containers:
 
 def _spec(component: str) -> Any:
     return SimpleNamespace(
-        component=f"engine-{component}", image="img@sha256:" + "0" * 64, network="none"
+        name=f"bomlens-0123abcd-1-{component}",
+        component=f"engine-{component}",
+        image="img@sha256:" + "0" * 64,
+        network="none",
     )
 
 
@@ -549,3 +552,33 @@ def test_inspect_asks_for_a_container_only() -> None:
         ["container", "inspect", "abc"],
         ["ps", "--all", "--quiet"],
     ]
+
+
+def test_every_container_logs_its_start_and_exit_for_the_comparison_report(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """tests/e2e/golden/shadow_report.py reads these two events (and the scan id
+    and time the log adds) to say how long each container ran."""
+    import structlog
+
+    from tests.e2e.golden import shadow_report
+
+    monkeypatch.setattr(
+        engine, "run_source_scan", _containers_then(_result(), "plan", "stage1", "stage2")
+    )
+    monkeypatch.setattr(engine, "DockerBackend", lambda options, cli=None: _Containers())
+    with structlog.testing.capture_logs() as captured:
+        _run_source(scan_dir=tmp_path)
+    events = [e for e in captured if e["event"].startswith("bomlens_container_")]
+    assert [(e["event"], e["stage"]) for e in events] == [
+        ("bomlens_container_start", "plan"),
+        ("bomlens_container_exit", "plan"),
+        ("bomlens_container_start", "stage1"),
+        ("bomlens_container_exit", "stage1"),
+        ("bomlens_container_start", "stage2"),
+        ("bomlens_container_exit", "stage2"),
+    ]
+    assert all(e["exit_code"] == 0 for e in events if e["event"].endswith("exit"))
+    # The report finds the container's label in the name the package gives.
+    label = shadow_report._CONTAINER_LABEL.search("bomlens-0123abcd-2-stage1")
+    assert label is not None and label.group(1) == "stage1"

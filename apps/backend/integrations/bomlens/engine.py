@@ -545,6 +545,14 @@ class _RecordingBackend:
         started = datetime.now(UTC)
         stage = _Stage(image=spec.image, started=started, ended=started)
         self.stages[key] = stage
+        # The events the golden comparison report reads for its container table.
+        log.info(
+            "bomlens_container_start",
+            stage=key,
+            image=spec.image,
+            network=spec.network,
+            container=spec.name,
+        )
         try:
             outcome = self._inner.run(spec, on_line, cancelled)
         finally:
@@ -553,6 +561,13 @@ class _RecordingBackend:
         stage.oom_killed = bool(outcome.oom_killed)
         stage.timed_out = bool(outcome.timed_out)
         stage.start_error = outcome.start_error
+        log.info(
+            "bomlens_container_exit",
+            stage=key,
+            exit_code=stage.exit_code,
+            oom_killed=stage.oom_killed,
+            timed_out=stage.timed_out,
+        )
         return outcome
 
 
