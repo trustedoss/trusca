@@ -92,6 +92,12 @@ def _install(monkeypatch: pytest.MonkeyPatch, docker: FakeBackend) -> None:
     install_backend(monkeypatch, docker)
 
 
+def _by_digest(reference: str) -> str:
+    """``repo@digest``, how the package names an image it runs (no tag)."""
+    ref, _, digest = reference.partition("@")
+    return f"{ref.rsplit(':', 1)[0]}@{digest}"
+
+
 def _clean_docker() -> FakeBackend:
     return FakeBackend().behave("image", Behaviour(effect=write_result(CASE)))
 
@@ -257,7 +263,7 @@ def test_the_engine_task_scans_the_image_and_persists_what_the_engine_found(
     assert run["mode"] == "image"
     assert run["image_target"] == f"registry:{ALPINE}"
     assert run["exit_code"] == 0
-    assert run["engine_image"] == captured_images()
+    assert run["engine_image"] == _by_digest(captured_images())
     kinds = set(
         sync_session.execute(
             select(ScanArtifact.kind).where(ScanArtifact.scan_id == scan_id)
@@ -288,7 +294,7 @@ def test_the_engine_container_gets_the_hardened_run_and_nothing_more(
     assert env["TRIVY_SKIP_DB_UPDATE"] == "true"
     assert env["BOMLENS_TRIVY_DB_MAX_AGE_DAYS"] == str(engine_mod.trivy_db_max_age_days())
     # The image TRUSCA pins, by digest.
-    assert run.image == captured_images()
+    assert run.image == _by_digest(captured_images())
     # Non-root (the worker's own user), read-only root, no capability added
     # (the package drops every one and adds back only what a root stage needs).
     spec = run.spec
