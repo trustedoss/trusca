@@ -1641,6 +1641,85 @@ def trusca_instance_id() -> str:
     return os.getenv("TRUSCA_INSTANCE_ID", "").strip() or "default"
 
 
+# ---------------------------------------------------------------------------
+# Where the BomLens engine's containers run (SCAN_ENGINE_BACKEND).
+#
+# ``docker`` (the default) runs them through the Docker API behind the
+# docker-socket-proxy (compose). ``kubernetes`` runs each one as a Job in the
+# engine worker's namespace (Helm). The Kubernetes settings below name the
+# claims and the objects the chart creates; they are read per call.
+# ---------------------------------------------------------------------------
+
+
+def scan_engine_backend() -> str:
+    """``docker`` or ``kubernetes``; anything else reads as ``docker``."""
+    value = os.getenv("SCAN_ENGINE_BACKEND", "").strip().lower()
+    return value if value in ("docker", "kubernetes") else "docker"
+
+
+def engine_k8s_namespace() -> str:
+    """Namespace of the engine Jobs; empty reads the pod's own (service account file)."""
+    return os.getenv("SCAN_ENGINE_K8S_NAMESPACE", "").strip()
+
+
+def engine_k8s_workspace_claim() -> str:
+    """The PersistentVolumeClaim holding the scan workspaces, mounted by the worker."""
+    return os.getenv("SCAN_ENGINE_K8S_WORKSPACE_CLAIM", "").strip()
+
+
+def engine_k8s_trivy_claim() -> str:
+    """The PersistentVolumeClaim holding the worker's Trivy database (its cache root)."""
+    return os.getenv("SCAN_ENGINE_K8S_TRIVY_CLAIM", "").strip()
+
+
+def engine_k8s_service_account() -> str:
+    """Service account of the engine Pods. Empty is the namespace default.
+
+    It needs no permission: the package gives the Pods no token, and the chart
+    creates one without a Role.
+    """
+    return os.getenv("SCAN_ENGINE_K8S_SERVICE_ACCOUNT", "").strip()
+
+
+def engine_k8s_image_pull_secrets() -> tuple[str, ...]:
+    """Names of the Secrets the engine Pods pull images with (comma separated)."""
+    raw = os.getenv("SCAN_ENGINE_K8S_IMAGE_PULL_SECRETS", "")
+    return tuple(part.strip() for part in raw.split(",") if part.strip())
+
+
+def engine_k8s_node_selector() -> dict[str, str]:
+    """``key=value`` pairs (comma separated) the engine Pods must match on a node."""
+    found: dict[str, str] = {}
+    for part in os.getenv("SCAN_ENGINE_K8S_NODE_SELECTOR", "").split(","):
+        key, sep, value = part.partition("=")
+        if sep and key.strip():
+            found[key.strip()] = value.strip()
+    return found
+
+
+def engine_k8s_priority_class() -> str:
+    return os.getenv("SCAN_ENGINE_K8S_PRIORITY_CLASS", "").strip()
+
+
+def engine_k8s_fs_group() -> int | None:
+    """``fsGroup`` of the engine Pods, so they can write the worker's volume.
+
+    Unset: the worker's group.
+    """
+    raw = os.getenv("SCAN_ENGINE_K8S_FS_GROUP", "").strip()
+    return int(raw) if raw.isdigit() else None
+
+
+def engine_k8s_secret_name() -> str:
+    """The Secret whose keys hold the engine's credentials (a proxy address with a login).
+
+    A key is named after the variable it fills (``HTTPS_PROXY``). Empty means
+    there is none, and a proxy address with a login is then refused rather than
+    handed to a Pod as a reference to a Secret that does not exist.
+    """
+    return os.getenv("SCAN_ENGINE_K8S_SECRET_NAME", "").strip()
+
+
 def bomlens_trivy_cache_volume() -> str:
     """Named volume holding the worker's Trivy database (``named`` strategy).
 

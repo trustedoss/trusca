@@ -43,7 +43,7 @@ from typing import Any
 import structlog
 from sqlalchemy import select
 
-from core.config import trusca_instance_id
+from core.config import scan_engine_backend, trusca_instance_id
 from core.db import sync_session_scope
 from integrations.bomlens import engine
 from models import Scan
@@ -160,7 +160,9 @@ def reap_engine_containers(
 def bomlens_engine_reaper_task() -> dict[str, Any]:
     """Celery entry point (engine queue, see ``tasks.celery_app``)."""
     counts = reap_engine_containers()
-    return {**(counts or {}), "legacy_removed": remove_legacy_containers()}
+    # The containers of the runner before the package were Docker containers.
+    legacy = remove_legacy_containers() if scan_engine_backend() == "docker" else 0
+    return {**(counts or {}), "legacy_removed": legacy}
 
 
 def enqueue_reap(app: Any | None = None) -> None:
