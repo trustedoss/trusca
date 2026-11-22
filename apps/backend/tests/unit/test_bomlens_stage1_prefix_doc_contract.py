@@ -23,7 +23,7 @@ from pathlib import Path
 
 import pytest
 
-from integrations.bomlens.runner import BomLensEngineError, stage1_image_prefix
+from integrations.bomlens.engine_util import BomLensEngineError, stage1_image_prefix
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 PLAN_FIXTURES = REPO_ROOT / "apps" / "backend" / "tests" / "fixtures" / "bomlens-plan"

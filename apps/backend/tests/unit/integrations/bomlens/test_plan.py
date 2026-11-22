@@ -1,10 +1,13 @@
-"""The BomLens execution plan reader treats the plan as untrusted input.
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 TRUSCA contributors
+"""The execution plans the published BomLens image writes, read by the runner package.
 
-Every case starts from a plan the published BomLens image wrote
-(``tests/fixtures/bomlens-plan/``, see ``PROVENANCE.md`` there) and changes one
-thing in a copy. A mutation test first asserts the copy really differs from
-the captured plan where it should, so a mutation that missed its target
-cannot pass as a refusal.
+The package checks every plan before it starts a container (``bomlens_runner.plan``).
+What it checks is its own to test; these tests keep what TRUSCA needs to know:
+that the plans captured from the pinned image still read, that the package's
+vocabulary is the contract's (``engine-plan-1.json``), and that a plan asking
+for something TRUSCA must not run is refused. Each refusal is a mutation of a
+captured plan, so the test fails when the check goes, not when the plan changes.
 """
 
 from __future__ import annotations
@@ -15,9 +18,9 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-
-from integrations.bomlens import plan as plan_mod
-from integrations.bomlens.plan import BomLensPlanRejected, load_plan, parse_plan
+from bomlens_runner import PlanRejected, load_plan
+from bomlens_runner import plan as package_plan
+from bomlens_runner.plan import parse_plan
 
 PLAN_DIR = Path(__file__).resolve().parents[3] / "fixtures" / "bomlens-plan"
 
@@ -35,6 +38,20 @@ def _mount(stage: dict[str, Any], role: str) -> dict[str, Any]:
     return next(m for m in stage["mounts"] if m["role"] == role)
 
 
+def _mutated(mutate: Any) -> dict[str, Any]:
+    document = _captured()
+    changed = copy.deepcopy(document)
+    mutate(changed)
+    assert changed != document, "the mutation did not change the plan"
+    return changed
+
+
+def _refused(document: dict[str, Any], fragment: str) -> None:
+    with pytest.raises(PlanRejected) as caught:
+        parse_plan(document)
+    assert fragment in str(caught.value)
+
+
 # ---------------------------------------------------------------------------
 # The captured plans read as BomLens wrote them
 # ---------------------------------------------------------------------------
@@ -46,115 +63,57 @@ def test_the_captured_npm_plan_reads_as_two_pinned_stages() -> None:
     assert plan.detected_ecosystem == "node"
     generate, postprocess = plan.stages
     assert (generate.id, generate.stage) == ("generate", 1)
-    assert generate.image.startswith("ghcr.io/cdxgen/")
-    assert plan_mod.DIGEST_RE.match(generate.image_digest)
-    assert generate.user == "0:0"
-    assert generate.entrypoint == "sh"
-    assert generate.network_required is True
-    assert {m.role for m in generate.mounts} == {
-        "source",
-        "output",
-        "plan-file",
-        "guard-state",
-        "cache-maven",
-        "cache-gradle",
-        *plan_mod.SETTINGS_ROLES,
-    }
-    assert generate.dropped_env == ()
     assert (postprocess.id, postprocess.stage) == ("postprocess", 2)
-    assert postprocess.env["MODE"] == "POSTPROCESS"
-    assert postprocess.env["BOMLENS_RUN_INPUT"] == plan.output_file
+    assert generate.image.startswith("ghcr.io/cdxgen/")
+    assert generate.image_digest.startswith("sha256:")
+    assert generate.network_required is True
     assert postprocess.network_required is False
-    assert postprocess.mount("source") is not None
-    assert postprocess.mount("source").mode == "ro"  # type: ignore[union-attr]
 
 
-@pytest.mark.parametrize("case", ["node-ok", "node-mirror-prefix", "android-unsupported"])
-def test_the_captured_plans_come_from_the_pinned_image(case: str) -> None:
-    """A version bump that forgets to recapture the plans shows up here. Since
-    BomLens #208 a plan carries the engine contract version, 1.3.0 for the
-    pinned image (before it, plans said 1.0.0 whatever the image)."""
-    from core.config import BOMLENS_IMAGE_DEFAULT
-
-    pinned_ref, pinned_digest = BOMLENS_IMAGE_DEFAULT.split("@", 1)
-    plan = load_plan(PLAN_DIR / case)
-    assert (plan.engine_image, plan.engine_image_digest) == (pinned_ref, pinned_digest)
-    assert plan.contract_version == "1.4.0"
+@pytest.mark.parametrize("case", ["node-ok", "node-mirror-prefix"])
+def test_every_captured_supported_plan_reads(case: str) -> None:
+    plan = parse_plan(_captured(case))
+    assert plan.supported and len(plan.stages) == 2
 
 
-def test_the_captured_unsupported_plan_has_no_stages() -> None:
-    plan = load_plan(PLAN_DIR / "android-unsupported")
+def test_the_captured_android_plan_is_unsupported_with_its_reason_and_no_stage() -> None:
+    plan = parse_plan(_captured("android-unsupported"))
     assert not plan.supported
-    assert plan.status == "unsupported"
     assert plan.reason == "android-sdk-image"
     assert plan.stages == ()
 
 
-def test_the_vocabulary_matches_the_schema_bomlens_publishes() -> None:
-    """``engine-plan-1.json`` is copied from BomLens beside the captures; every
-    enum this reader hard-codes must be the schema's (rule: one vocabulary in
-    two places needs a consistency test)."""
+# ---------------------------------------------------------------------------
+# One vocabulary in two places (hardening rule 2)
+# ---------------------------------------------------------------------------
+
+
+def test_the_package_vocabulary_is_the_contract_schemas() -> None:
+    """The package's enums are the ones the plan schema BomLens publishes lists. A
+    BomLens upgrade that adds a mount role or a status fails here, not as a plan
+    that is refused in production."""
     schema = json.loads((PLAN_DIR / "engine-plan-1.json").read_text())
     props = schema["properties"]
     stage_props = props["stages"]["items"]["properties"]
     mount_props = stage_props["mounts"]["items"]["properties"]
-    assert set(props["status"]["enum"]) == set(plan_mod.PLAN_STATUSES)
-    assert set(props["reason"]["enum"]) - {None} == set(plan_mod.PLAN_REASONS)
-    assert set(stage_props["id"]["enum"]) == {i for i, _ in plan_mod.STAGE_IDS}
-    assert set(stage_props["stage"]["enum"]) == {n for _, n in plan_mod.STAGE_IDS}
-    assert set(mount_props["role"]["enum"]) == set(plan_mod.MOUNT_ROLES)
-    assert set(mount_props["mode"]["enum"]) == set(plan_mod.MOUNT_MODES)
-    assert props["contract"]["properties"]["name"]["const"] == plan_mod.PLAN_CONTRACT_NAME
-
-
-def test_every_env_name_the_captured_plan_sets_is_on_the_allow_list() -> None:
-    """A BomLens upgrade that adds a variable shows up here, not as a silently
-    dropped setting in production."""
-    document = _captured()
-    for stage in document["stages"]:
-        allowed = plan_mod.STAGE_ENV_ALLOWED[stage["stage"]]
-        assert set(stage["env"]) <= allowed, stage["id"]
-
-
-def test_the_go_cache_variables_of_bomlens_1_13_5_are_kept_for_stage_1() -> None:
-    kept, dropped = plan_mod._parse_env(
-        {
-            "GOPATH": "/tmp/sbomhome/go",
-            "GOMODCACHE": "/tmp/sbomhome/go/pkg/mod",
-            "GOCACHE": "/tmp/sbomhome/go-build",
-            "LD_PRELOAD": "/x",
-        },
-        1,
-        "env",
-    )
-    assert set(kept) == {"GOPATH", "GOMODCACHE", "GOCACHE"}
-    assert dropped == ("LD_PRELOAD",)
+    assert set(props["status"]["enum"]) == set(package_plan.PLAN_STATUSES)
+    assert set(props["reason"]["enum"]) - {None} == set(package_plan.PLAN_REASONS)
+    assert set(stage_props["id"]["enum"]) == {i for i, _ in package_plan.STAGE_ORDER}
+    assert set(mount_props["role"]["enum"]) == set(package_plan.MOUNT_ROLES)
+    assert set(mount_props["mode"]["enum"]) == {"ro", "rw"}
+    assert props["contract"]["properties"]["name"]["const"] == package_plan.CONTRACT_NAME
 
 
 # ---------------------------------------------------------------------------
-# Hostile plans
+# Plans TRUSCA must not run
 # ---------------------------------------------------------------------------
-
-
-def _mutated(mutate: Any) -> dict[str, Any]:
-    document = _captured()
-    changed = copy.deepcopy(document)
-    mutate(changed)
-    assert changed != document, "the mutation did not change the plan"
-    return changed
-
-
-def _refused(document: dict[str, Any], fragment: str) -> None:
-    with pytest.raises(BomLensPlanRejected) as caught:
-        parse_plan(document)
-    assert fragment in str(caught.value)
 
 
 def test_a_host_path_on_a_folder_mount_is_refused() -> None:
     def mutate(d: dict[str, Any]) -> None:
         _mount(_stage(d, "generate"), "source")["source"] = "/etc"
 
-    _refused(_mutated(mutate), "names a source path")
+    _refused(_mutated(mutate), "only a plan file mount may name a source")
 
 
 @pytest.mark.parametrize("source", ["../../../etc/passwd", "/etc/shadow", "bomlens-plan/../x"])
@@ -164,7 +123,7 @@ def test_a_plan_file_outside_the_plan_folder_is_refused(source: str) -> None:
             source
         )
 
-    _refused(_mutated(mutate), "is not a file in bomlens-plan/")
+    _refused(_mutated(mutate), "plan file is not under bomlens-plan/")
 
 
 @pytest.mark.parametrize(
@@ -174,500 +133,100 @@ def test_a_mount_over_a_system_path_or_the_docker_socket_is_refused(target: str)
     def mutate(d: dict[str, Any]) -> None:
         _mount(_stage(d, "generate"), "output")["target"] = target
 
-    with pytest.raises(BomLensPlanRejected):
+    with pytest.raises(PlanRejected, match="mount target"):
         parse_plan(_mutated(mutate))
 
 
-def test_a_docker_socket_mount_anywhere_is_refused() -> None:
-    def mutate(d: dict[str, Any]) -> None:
-        _mount(_stage(d, "generate"), "output")["target"] = "/srv/docker.sock"
-
-    _refused(_mutated(mutate), "names the Docker socket")
-
-
-def test_an_unknown_mount_role_is_refused() -> None:
-    def mutate(d: dict[str, Any]) -> None:
-        _stage(d, "generate")["mounts"].append(
-            {"role": "docker-socket", "target": "/sock", "mode": "rw"}
-        )
-
-    _refused(_mutated(mutate), "is not a mount role")
-
-
-def test_a_writable_source_in_stage_2_is_refused() -> None:
-    def mutate(d: dict[str, Any]) -> None:
-        _mount(_stage(d, "postprocess"), "source")["mode"] = "rw"
-
-    _refused(_mutated(mutate), "writable in stage 2")
-
-
-def test_a_writable_plan_file_is_refused() -> None:
-    def mutate(d: dict[str, Any]) -> None:
-        next(m for m in _stage(d, "generate")["mounts"] if m["role"] == "plan-file")["mode"] = "rw"
-
-    _refused(_mutated(mutate), "plan file writable")
-
-
-def test_a_required_cache_mount_trusca_does_not_provide_is_refused() -> None:
-    def mutate(d: dict[str, Any]) -> None:
-        _mount(_stage(d, "generate"), "cache-maven")["optional"] = False
-
-    _refused(_mutated(mutate), "TRUSCA does not provide")
-
-
-def test_the_guard_state_in_stage_2_is_refused() -> None:
-    def mutate(d: dict[str, Any]) -> None:
-        _stage(d, "postprocess")["mounts"].append(
-            {"role": "guard-state", "target": "/bomlens-state", "mode": "rw"}
-        )
-
-    _refused(_mutated(mutate), "not allowed in stage 2")
-
-
-def test_nested_folder_mounts_are_refused() -> None:
-    def mutate(d: dict[str, Any]) -> None:
-        _mount(_stage(d, "generate"), "output")["target"] = "/app/out"
-
-    _refused(_mutated(mutate), "nests the 'output' mount")
-
-
 @pytest.mark.parametrize(
-    ("field", "value", "fragment"),
-    [
-        ("image_digest", None, "not pinned by a sha256 digest"),
-        ("image_digest", "sha256:abc", "not pinned by a sha256 digest"),
-        ("image", "ghcr.io/cdxgen/cdxgen-alpine-node24:latest", "tagged latest"),
-        ("image", "ghcr.io/cdxgen/x:1 --privileged", "is not an image name"),
-        ("image", "ghcr.io/cdxgen/x@sha256:" + "0" * 64, "is not an image name"),
-        # A final newline: ``$`` alone would let these through.
-        ("image", "ghcr.io/cdxgen/cdxgen-alpine-node24:13.2.0\n", "is not an image name"),
-        ("image_digest", "sha256:" + "0" * 64 + "\n", "not pinned by a sha256 digest"),
-    ],
+    "role",
+    ["maven-settings", "maven-repository", "gradle-cache", "gradle-wrapper", "cache-gradle"],
 )
-def test_an_unpinned_or_malformed_stage_image_is_refused(
-    field: str, value: Any, fragment: str
-) -> None:
-    def mutate(d: dict[str, Any]) -> None:
-        _stage(d, "generate")[field] = value
+def test_a_required_mount_of_a_role_the_caller_provides_is_refused(role: str) -> None:
+    """TRUSCA provides none of the caches and settings folders, so a plan that
+    needs one cannot be run."""
 
-    _refused(_mutated(mutate), fragment)
-
-
-@pytest.mark.parametrize("user", ["root", "0:0 --privileged", "-1", ""])
-def test_a_user_that_is_not_numeric_is_refused(user: str) -> None:
-    def mutate(d: dict[str, Any]) -> None:
-        _stage(d, "generate")["user"] = user
-
-    _refused(_mutated(mutate), "is not a numeric uid[:gid]")
-
-
-@pytest.mark.parametrize("entrypoint", [["/bin/rm"], ["sh", "-c"], ["python3"], "sh"])
-def test_an_entrypoint_that_is_not_a_shell_is_refused(entrypoint: Any) -> None:
-    def mutate(d: dict[str, Any]) -> None:
-        _stage(d, "generate")["entrypoint"] = entrypoint
-
-    _refused(_mutated(mutate), "is not a shell")
-
-
-@pytest.mark.parametrize("output_file", ["../x_bom.json", "/tmp/x_bom.json", "a/b_bom.json"])
-def test_an_output_file_outside_the_output_folder_is_refused(output_file: str) -> None:
-    def mutate(d: dict[str, Any]) -> None:
-        d["output_file"] = output_file
-
-    _refused(_mutated(mutate), "is not a plain SBOM file name")
-
-
-def test_a_workdir_outside_the_stage_mounts_is_refused() -> None:
-    def mutate(d: dict[str, Any]) -> None:
-        _stage(d, "postprocess")["workdir"] = "/root"
-
-    _refused(_mutated(mutate), "is not its source or output folder")
-
-
-@pytest.mark.parametrize(
-    ("name", "value"),
-    [("MODE", "UI"), ("UPLOAD_ENABLED", "true"), ("BOMLENS_RUN_INPUT", "../../x")],
-)
-def test_stage_2_values_trusca_relies_on_cannot_change(name: str, value: str) -> None:
-    def mutate(d: dict[str, Any]) -> None:
-        _stage(d, "postprocess")["env"][name] = value
-
-    _refused(_mutated(mutate), f"stage 2 sets {name}=")
-
-
-def test_env_names_off_the_allow_list_are_dropped_not_passed() -> None:
-    def mutate(d: dict[str, Any]) -> None:
-        env = _stage(d, "generate")["env"]
-        env["LD_PRELOAD"] = "/tmp/evil.so"
-        env["PGPASSWORD"] = "x"
-
-    plan = parse_plan(_mutated(mutate))
-    assert "LD_PRELOAD" not in plan.generate.env
-    assert "PGPASSWORD" not in plan.generate.env
-    assert set(plan.generate.dropped_env) == {"LD_PRELOAD", "PGPASSWORD"}
-
-
-def test_passthrough_names_off_the_allow_list_are_ignored() -> None:
-    def mutate(d: dict[str, Any]) -> None:
-        _stage(d, "generate")["env_passthrough"] += ["SECRET_KEY", "DATABASE_URL", "HOST_UID"]
-
-    plan = parse_plan(_mutated(mutate))
-    assert not {"SECRET_KEY", "DATABASE_URL", "HOST_UID"} & set(plan.generate.env_passthrough)
-
-
-@pytest.mark.parametrize("value", ["a\nb", "a\x00b", "x" * 5000])
-def test_an_env_value_that_is_not_plain_is_refused(value: str) -> None:
-    def mutate(d: dict[str, Any]) -> None:
-        _stage(d, "generate")["env"]["HOME"] = value
-
-    _refused(_mutated(mutate), "is not a plain value")
-
-
-def test_fields_the_plan_cannot_ask_for_are_never_read() -> None:
-    """``privileged``, capabilities, devices and a network name are not plan
-    fields; a plan that carries them parses, and nothing of them survives."""
-
-    def mutate(d: dict[str, Any]) -> None:
-        stage = _stage(d, "generate")
-        stage["privileged"] = True
-        stage["cap_add"] = ["SYS_ADMIN"]
-        stage["devices"] = ["/dev/kmsg"]
-        stage["network"]["name"] = "host"
-
-    plan = parse_plan(_mutated(mutate))
-    rendered = repr(plan.generate)
-    for word in ("privileged", "SYS_ADMIN", "/dev/kmsg", "'host'"):
-        assert word not in rendered
-
-
-def test_a_later_major_contract_is_refused() -> None:
-    def mutate(d: dict[str, Any]) -> None:
-        d["contract"]["version"] = "2.0.0"
-
-    _refused(_mutated(mutate), "reads 1.x only")
-
-
-def test_an_unsupported_plan_with_stages_is_refused() -> None:
-    def mutate(d: dict[str, Any]) -> None:
-        d["status"] = "unsupported"
-        d["reason"] = "android-sdk-image"
-
-    _refused(_mutated(mutate), "an unsupported plan lists stages")
-
-
-def test_a_plan_file_that_is_a_symbolic_link_is_refused(tmp_path: Path) -> None:
-    real = tmp_path / "elsewhere.json"
-    real.write_text((PLAN_DIR / "node-ok" / "bomlens-plan.json").read_text())
-    (tmp_path / "plan").mkdir()
-    (tmp_path / "plan" / "bomlens-plan.json").symlink_to(real)
-    with pytest.raises(BomLensPlanRejected, match="wrote no plan file"):
-        load_plan(tmp_path / "plan")
-
-
-def test_an_oversized_plan_is_refused(tmp_path: Path) -> None:
-    (tmp_path / "bomlens-plan.json").write_text(" " * (plan_mod.MAX_PLAN_BYTES + 1) + "{}")
-    with pytest.raises(BomLensPlanRejected, match="larger than any plan"):
-        load_plan(tmp_path)
-
-
-# ---------------------------------------------------------------------------
-# The Trivy database role (BomLens #203) and the 1.2.0 allow lists
-# ---------------------------------------------------------------------------
-
-
-def test_the_captured_plan_asks_for_the_trivy_database_read_only() -> None:
-    plan = load_plan(PLAN_DIR / "node-ok")
-    mount = plan.postprocess.mount("trivy-db")
-    assert mount == plan_mod.Mount(role="trivy-db", target="/trivy-db", mode="ro", optional=True)
-    assert plan.generate.mount("trivy-db") is None
-
-
-def test_a_required_trivy_database_mount_is_accepted() -> None:
-    """TRUSCA always provides the database, so a plan that requires it is fine."""
-
-    def mutate(d: dict[str, Any]) -> None:
-        _mount(_stage(d, "postprocess"), "trivy-db")["optional"] = False
-
-    mount = parse_plan(_mutated(mutate)).postprocess.mount("trivy-db")
-    assert mount is not None and not mount.optional
-
-
-def _set_trivy_mount(**fields: Any) -> Any:
-    def mutate(d: dict[str, Any]) -> None:
-        _mount(_stage(d, "postprocess"), "trivy-db").update(fields)
-
-    return mutate
-
-
-def _add_mount(stage_id: str, entry: dict[str, Any]) -> Any:
-    def mutate(d: dict[str, Any]) -> None:
-        _stage(d, stage_id)["mounts"].append(entry)
-
-    return mutate
-
-
-def _set_stage_1_cache(**fields: Any) -> Any:
-    def mutate(d: dict[str, Any]) -> None:
-        _mount(_stage(d, "generate"), "cache-maven").update(fields)
-
-    return mutate
-
-
-def _replace_trivy_mount(entry: dict[str, Any]) -> Any:
-    def mutate(d: dict[str, Any]) -> None:
-        stage = _stage(d, "postprocess")
-        stage["mounts"] = [m for m in stage["mounts"] if m["role"] != "trivy-db"] + [entry]
-
-    return mutate
-
-
-@pytest.mark.parametrize(
-    ("mutate", "fragment"),
-    [
-        # The role, writable.
-        (_set_trivy_mount(mode="rw"), "mounts the Trivy database writable"),
-        # The role at another path, below it, or beside it.
-        (_set_trivy_mount(target="/trivy"), "mounts the Trivy database at '/trivy'"),
-        (_set_trivy_mount(target="/trivy-db/db"), "mounts the Trivy database at '/trivy-db/db'"),
-        (_set_trivy_mount(target="/data/trivy-db"), "mounts the Trivy database at"),
-        (_set_trivy_mount(target="/trivy-dbx"), "mounts the Trivy database at"),
-        # The role with a host path of the plan's choosing.
-        (_set_trivy_mount(source="bomlens-plan/build-prep.sh"), "names a source path"),
-        # The role forged: a near spelling, or in stage 1.
-        (
-            _replace_trivy_mount({"role": "trivy_db", "target": "/trivy-db", "mode": "ro"}),
-            "is not a mount role",
-        ),
-        (
-            _replace_trivy_mount({"role": "Trivy-DB", "target": "/trivy-db", "mode": "ro"}),
-            "is not a mount role",
-        ),
-        (
-            _add_mount("generate", {"role": "trivy-db", "target": "/trivy-db", "mode": "ro"}),
-            "'trivy-db' is not allowed in stage 1",
-        ),
-        # Another role at the database path, or below it.
-        (
-            _replace_trivy_mount({"role": "output", "target": "/trivy-db", "mode": "rw"}),
-            "which TRUSCA mounts",
-        ),
-        (
-            _add_mount("postprocess", {"role": "cache-maven", "target": "/trivy-db", "mode": "rw"}),
-            "'cache-maven' is not allowed in stage 2",
-        ),
-        (
-            _add_mount("generate", {"role": "cache-maven", "target": "/trivy-db/m2", "mode": "rw"}),
-            "which TRUSCA mounts",
-        ),
-        # Exactly at the path, by an optional role nothing else checks: only
-        # the reserved-path rule stands between it and the database's place.
-        (_set_stage_1_cache(target="/trivy-db"), "which TRUSCA mounts"),
-        # Two of them.
-        (
-            _add_mount("postprocess", {"role": "trivy-db", "target": "/trivy-db", "mode": "ro"}),
-            "mounts two things at one container path",
-        ),
-    ],
-    ids=[
-        "rw",
-        "other-path",
-        "sub-path",
-        "nested-elsewhere",
-        "prefix-lookalike",
-        "host-source",
-        "underscore-role",
-        "case-role",
-        "stage-1",
-        "output-at-path",
-        "cache-at-path",
-        "stage-1-below-path",
-        "stage-1-cache-at-path",
-        "twice",
-    ],
-)
-def test_only_the_trivy_database_role_read_only_at_its_path_is_accepted(
-    mutate: Any, fragment: str
-) -> None:
-    _refused(_mutated(mutate), fragment)
-
-
-def test_the_captured_stage_2_env_and_passthrough_are_what_trusca_keeps() -> None:
-    """The plan lists the proxy, TRIVY_*, EPSS and KEV names for stage 2.
-    Stage 2 runs offline on the worker's database, so of those only the
-    database age is kept (TRUSCA sets its value). Stage 1 keeps the proxy."""
-    plan = load_plan(PLAN_DIR / "node-ok")
-    document = _captured()
-    assert plan.postprocess.dropped_env == ()
-    assert plan.postprocess.env["SECURITY_ENRICH"] == "false"
-    assert set(plan.postprocess.env_passthrough) == {
-        "BOMLENS_INCLUDE_NON_SHIPPED",
-        "SRC_TREE_EXCLUDE",
-        "BOMLENS_TRIVY_DB_MAX_AGE_DAYS",
-    }
-    left_out = set(_stage(document, "postprocess")["env_passthrough"]) - set(
-        plan.postprocess.env_passthrough
-    )
-    assert left_out == {
-        "HOST_UID",
-        "HOST_GID",
-        *plan_mod.PROXY_ENV_NAMES,
-        # Contract 1.3.0 lists stage 1's settings for stage 2 as well, and the
-        # NVD key of the CPE match TRUSCA does not run.
-        "NVD_API_KEY",
-        # Contract 1.4.0 adds the AI usage options, the extra CA bundle, the
-        # grype and Go vulnerability database options and Gradle's full graph.
-        # TRUSCA sets none of them, and mounts no CA bundle.
-        "BOMLENS_GRADLE_FULL_GRAPH",
-        "BOMLENS_NO_AI_USAGE",
-        "BOMLENS_AI_USAGE_TIMEOUT",
-        "BOMLENS_EXTRA_CA_CERTS",
-        "BOMLENS_GRYPE_DB_MAX_AGE_DAYS",
-        "GRYPE_DB_UPDATE_URL",
-        "BOMLENS_GO_VULNDB",
-        "BOMLENS_GO_VULNDB_PATH",
-        "BOMLENS_GO_VULNDB_MAX_AGE_DAYS",
-        "BOMLENS_GO_VULNDB_URL",
-        # BomLens v1.15.1 adds the build tool choice, the installed Maven
-        # repository, Gradle cache and Python environment, the Node.js
-        # installed lock file, the registry probe and license fetch timeouts
-        # and the CocoaPods license lookup. TRUSCA sets none of them.
-        "BOMLENS_BUILD_TOOL",
-        "BOMLENS_MAVEN_USER_REPOSITORY",
-        "BOMLENS_MAVEN_PROBE_TIMEOUT",
-        "BOMLENS_GRADLE_USER_CACHE",
-        "BOMLENS_PYTHON_VENV",
-        "BOMLENS_NODE_INSTALLED_LOCK",
-        "BOMLENS_LICENSE_PROBE_TIMEOUT",
-        "BOMLENS_LICENSE_FETCH_TIMEOUT",
-        "COCOAPODS_CDN_URL",
-        "COCOAPODS_LICENSE_BUDGET",
-        "BOMLENS_KEEP_BUILD_OUTPUT",
-        "BOMLENS_MAVEN_FULL_GRAPH",
-        "BOMLENS_ANDROID_FULL_GRAPH",
-        "BOMLENS_NODE_FULL_GRAPH",
-        "BOMLENS_PHP_FULL_GRAPH",
-        "BOMLENS_INCLUDE_DEV_DEPENDENCIES",
-        "BOMLENS_NO_COPYRIGHT",
-        "BOMLENS_NO_CARGO_LICENSE",
-        "BOMLENS_PREP_TIMEOUT",
-        "TRIVY_DB_REPOSITORY",
-        "TRIVY_JAVA_DB_REPOSITORY",
-        "TRIVY_SKIP_DB_UPDATE",
-        "TRIVY_SKIP_JAVA_DB_UPDATE",
-        "TRIVY_OFFLINE_SCAN",
-        "TRIVY_USERNAME",
-        "TRIVY_PASSWORD",
-        "TRIVY_REGISTRY_TOKEN",
-        "TRIVY_INSECURE",
-        "KEV_URL",
-        "EPSS_API",
-    }
-    assert set(plan_mod.PROXY_ENV_NAMES) <= set(plan.generate.env_passthrough)
-    stage1_left_out = set(_stage(document, "generate")["env_passthrough"]) - set(
-        plan.generate.env_passthrough
-    )
-    assert stage1_left_out == {
-        "HOST_UID",
-        "HOST_GID",
-        "BOMLENS_INCLUDE_DEV_DEPENDENCIES",
-        "BOMLENS_GRADLE_FULL_GRAPH",
-        "BOMLENS_NO_AI_USAGE",
-        "BOMLENS_AI_USAGE_TIMEOUT",
-        "BOMLENS_EXTRA_CA_CERTS",
-        # BomLens v1.15.1, as for stage 2 above.
-        "BOMLENS_BUILD_TOOL",
-        "BOMLENS_MAVEN_USER_REPOSITORY",
-        "BOMLENS_MAVEN_PROBE_TIMEOUT",
-        "BOMLENS_GRADLE_USER_CACHE",
-        "BOMLENS_PYTHON_VENV",
-        "BOMLENS_NODE_INSTALLED_LOCK",
-        "BOMLENS_LICENSE_PROBE_TIMEOUT",
-        "BOMLENS_LICENSE_FETCH_TIMEOUT",
-    }
-
-
-# ---------------------------------------------------------------------------
-# Contract 1.3.0: the Maven and Gradle settings roles, and the cache under /tmp
-# ---------------------------------------------------------------------------
-
-
-def test_the_captured_plan_lists_every_settings_role_read_only_and_optional() -> None:
-    """BomLens v1.13.3 added six settings files to stage 1 and moved
-    ``cache-maven`` under ``/tmp``. Until this reader knew them, every plan
-    from that image was refused."""
-    plan = load_plan(PLAN_DIR / "node-ok")
-    settings = {m.role: m for m in plan.generate.mounts if m.role in plan_mod.SETTINGS_ROLES}
-    assert set(settings) == set(plan_mod.SETTINGS_ROLES)
-    for mount in settings.values():
-        assert mount.optional and mount.mode == "ro", mount
-        # BomLens v1.15.1 put the Gradle cache and wrapper folders under
-        # /bomlens-user-cache/, the settings files and the Maven repository
-        # under /bomlens-settings/.
-        assert mount.target.startswith(("/bomlens-settings/", "/bomlens-user-cache/")), mount
-    assert plan.generate.mount("cache-maven") == plan_mod.Mount(
-        role="cache-maven", target="/tmp/sbomhome/.m2", mode="rw", optional=True
-    )
-    assert not set(plan_mod.SETTINGS_ROLES) & {m.role for m in plan.postprocess.mounts}
-    assert not set(plan_mod.SETTINGS_ROLES) & plan_mod.PROVIDED_ROLES
-
-
-@pytest.mark.parametrize("role", plan_mod.SETTINGS_ROLES)
-def test_a_required_settings_mount_is_refused(role: str) -> None:
     def mutate(d: dict[str, Any]) -> None:
         _mount(_stage(d, "generate"), role)["optional"] = False
 
-    _refused(_mutated(mutate), f"requires a {role!r} mount TRUSCA does not provide")
+    _refused(_mutated(mutate), "must be optional")
 
 
-@pytest.mark.parametrize("role", plan_mod.SETTINGS_ROLES)
-def test_a_settings_mount_in_stage_2_is_refused(role: str) -> None:
+@pytest.mark.parametrize("role", ["maven-settings", "gradle-cache", "cache-maven"])
+def test_a_cache_or_settings_mount_in_stage_2_is_refused(role: str) -> None:
     def mutate(d: dict[str, Any]) -> None:
         mount = dict(_mount(_stage(d, "generate"), role))
         _stage(d, "postprocess")["mounts"].append(mount)
 
-    _refused(_mutated(mutate), f"{role!r} is not allowed in stage 2")
+    _refused(_mutated(mutate), "not allowed in stage 2")
 
 
-@pytest.mark.parametrize(
-    ("role", "target"),
-    [
-        ("cache-gradle", "/tmp/sbomhome/.gradle"),
-        ("maven-settings", "/tmp/settings/settings.xml"),
-        ("gradle-init", "/tmp/init.d"),
-    ],
-)
-def test_a_role_trusca_never_mounts_may_sit_under_its_scratch(role: str, target: str) -> None:
-    """The runner leaves these mounts out, so a target under ``/tmp`` covers
-    nothing of TRUSCA's."""
+def test_the_trivy_database_is_read_only_and_only_in_stage_2() -> None:
+    def writable(d: dict[str, Any]) -> None:
+        _mount(_stage(d, "postprocess"), "trivy-db")["mode"] = "rw"
 
+    _refused(_mutated(writable), "must be read-only")
+
+    def in_stage_1(d: dict[str, Any]) -> None:
+        _stage(d, "generate")["mounts"].append(dict(_mount(_stage(d, "postprocess"), "trivy-db")))
+
+    _refused(_mutated(in_stage_1), "not allowed in stage 1")
+
+    def elsewhere(d: dict[str, Any]) -> None:
+        _mount(_stage(d, "postprocess"), "trivy-db")["target"] = "/data"
+
+    _refused(_mutated(elsewhere), "/trivy-db")
+
+
+def test_stage_2_may_not_write_the_source() -> None:
     def mutate(d: dict[str, Any]) -> None:
-        _mount(_stage(d, "generate"), role)["target"] = target
+        _mount(_stage(d, "postprocess"), "source")["mode"] = "rw"
 
-    mount = parse_plan(_mutated(mutate)).generate.mount(role)
-    assert mount is not None and mount.target == target
+    _refused(_mutated(mutate), "stage 2 source must be read-only")
 
 
-@pytest.mark.parametrize(
-    ("stage_id", "role", "target"),
-    [
-        ("generate", "guard-state", "/tmp/bomlens-state"),
-        ("generate", "output", "/tmp/out"),
-        ("generate", "source", "/tmp/app"),
-        ("postprocess", "output", "/tmp/host-output"),
-        ("postprocess", "source", "/tmp/src"),
-    ],
-)
-def test_a_role_trusca_mounts_may_not_sit_under_its_scratch(
-    stage_id: str, role: str, target: str
-) -> None:
+def test_a_stage_that_runs_something_other_than_a_shell_is_refused() -> None:
     def mutate(d: dict[str, Any]) -> None:
-        stage = _stage(d, stage_id)
-        _mount(stage, role)["target"] = target
-        if stage["workdir"] is not None and role == "output":
-            stage["workdir"] = target
+        _stage(d, "generate")["entrypoint"] = ["/usr/bin/curl"]
 
-    _refused(_mutated(mutate), "is under /tmp, which TRUSCA mounts")
+    _refused(_mutated(mutate), "entrypoint is not a shell")
 
 
-def test_a_role_trusca_never_mounts_may_not_be_its_scratch_itself() -> None:
-    _refused(_mutated(_set_stage_1_cache(target="/tmp")), "is under /tmp, which TRUSCA mounts")
+def test_a_stage_that_runs_as_a_named_user_is_refused() -> None:
+    def mutate(d: dict[str, Any]) -> None:
+        _stage(d, "generate")["user"] = "root"
+
+    _refused(_mutated(mutate), "numeric uid")
+
+
+def test_stage_2_with_other_values_than_the_postprocess_ones_is_refused() -> None:
+    def mutate(d: dict[str, Any]) -> None:
+        _stage(d, "postprocess")["env"]["UPLOAD_ENABLED"] = "true"
+
+    _refused(_mutated(mutate), "stage 2 env does not hold its required values")
+
+
+def test_an_env_name_or_pass_through_the_package_does_not_know_is_dropped_not_run() -> None:
+    def mutate(d: dict[str, Any]) -> None:
+        _stage(d, "generate")["env"]["LD_PRELOAD"] = "/tmp/x.so"
+        _stage(d, "generate")["env_passthrough"].append("DATABASE_URL")
+
+    plan = parse_plan(_mutated(mutate))
+    assert set(plan.dropped_env) >= {"LD_PRELOAD", "DATABASE_URL"}
+    generate = plan.stage(1)
+    assert "LD_PRELOAD" not in generate.env
+    assert "DATABASE_URL" not in generate.env_passthrough
+
+
+def test_a_plan_whose_stage_1_image_is_not_pinned_is_refused() -> None:
+    def mutate(d: dict[str, Any]) -> None:
+        _stage(d, "generate")["image_digest"] = None
+
+    _refused(_mutated(mutate), "not pinned by digest")
+
+
+def test_the_stage_1_tag_latest_is_refused() -> None:
+    def mutate(d: dict[str, Any]) -> None:
+        stage = _stage(d, "generate")
+        stage["image"] = stage["image"].rsplit(":", 1)[0] + ":latest"
+
+    _refused(_mutated(mutate), "latest")

@@ -1,12 +1,10 @@
-# SPDX-License-Identifier: Apache-2.0
-# Copyright 2026 TRUSCA contributors
 """SCAN_BOMLENS_STAGE1_IMAGE_PREFIX: stage 1's cdxgen images from a mirror.
 
-The runner hands the setting to ``MODE=PLAN`` as BomLens's
+The adapter hands the setting to ``MODE=PLAN`` as BomLens's
 ``CDXGEN_IMAGE_PREFIX``, and the plan then names its stage 1 image under it
 (``fixtures/bomlens-plan/node-mirror-prefix`` is the published image's own
-answer). Same harness as ``test_runner.py``: containers are played by
-:class:`tests._bomlens_engine.FakeDocker`, and the PLAN container copies the
+answer). The package's orchestrator runs for real here: containers are played
+by :class:`tests._bomlens_engine.FakeBackend`, and the PLAN container copies the
 capture the real image writes for the env the runner gave it.
 """
 
@@ -19,21 +17,17 @@ from pathlib import Path
 import pytest
 
 from core.config import bomlens_stage1_repositories
+from integrations.bomlens import engine
 from integrations.bomlens.contract import BomLensError
-from integrations.bomlens.runner import (
-    BomLensEngineError,
-    BomLensRunner,
-    EngineLayout,
-    resolve_images,
-    stage1_image_prefix,
-)
+from integrations.bomlens.engine_util import BomLensEngineError, stage1_image_prefix
 from tests._bomlens_engine import (
     NO_DIGEST,
     PLAN_FIXTURES,
     Behaviour,
     Effect,
-    FakeDocker,
+    FakeBackend,
     captured_images,
+    install_backend,
     plan_as_published,
     write_plan,
     write_sbom,
@@ -72,24 +66,37 @@ def workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     return scan_dir
 
 
-def _docker(plan_effect: Effect | None = None) -> FakeDocker:
+def _docker(plan_effect: Effect | None = None) -> FakeBackend:
     return (
-        FakeDocker()
+        FakeBackend()
         .behave("plan", Behaviour(effect=plan_effect or plan_as_published()))
         .behave("stage1", Behaviour(effect=write_sbom(OUTPUT_FILE)))
     )
 
 
-def _runner(workspace: Path, docker: FakeDocker) -> BomLensRunner:
-    return BomLensRunner(
-        scan_uuid=uuid.UUID(int=11),
-        layout=EngineLayout(scan_dir=workspace, source=workspace / "source" / "repo"),
-        images=resolve_images(deep_license=False),
-        project_name="app",
-        project_version="1.0",
-        fetch_license=False,
-        docker=docker,
-    )
+def _run(workspace: Path, backend: FakeBackend, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Run the engine on the fixture project, stopping where the stage 2 container would be."""
+    install_backend(monkeypatch, backend)
+    try:
+        engine.run_source(
+            scan_uuid=uuid.UUID(int=11),
+            scan_dir=workspace,
+            source=workspace / "source" / "repo",
+            project="app",
+            version="1.0",
+            fetch_license=False,
+            deep_license=False,
+            include_non_shipped=False,
+        )
+    except engine.EngineWroteNoResult:
+        # No stage 2 effect is scripted: the run ends without a result, which
+        # is after the plan and stage 1 these tests are about.
+        pass
+
+
+def _by_digest(image: str, digest: str) -> str:
+    """How the package names an image it runs: the repository and the digest."""
+    return f"{image.rsplit(':', 1)[0]}@{digest}"
 
 
 # ---------------------------------------------------------------------------
@@ -114,17 +121,14 @@ def test_the_prefix_reaches_the_plan_and_stage_1_pulls_from_the_mirror(
 ) -> None:
     monkeypatch.setenv("SCAN_BOMLENS_STAGE1_IMAGE_PREFIX", value)
     docker = _docker()
-    runner = _runner(workspace, docker)
-    runner.run()
+    _run(workspace, docker, monkeypatch)
 
     (plan,) = docker.runs_of("plan")
     assert plan.env["CDXGEN_IMAGE_PREFIX"] == MIRROR
     (stage1,) = docker.runs_of("stage1")
-    expected = f"{MIRRORED['image']}@{MIRRORED['digest']}"
+    expected = _by_digest(MIRRORED["image"], MIRRORED["digest"])
     assert stage1.image == expected
-    assert expected in docker.pulled
-    assert not any(ref.startswith("ghcr.io/cdxgen/") for ref in docker.pulled)
-    assert runner.report.stage1_image == expected
+    assert not any(run.image.startswith("ghcr.io/cdxgen/") for run in docker.runs)
 
 
 @pytest.mark.parametrize("value", [None, "", "   "])
@@ -134,13 +138,12 @@ def test_without_a_prefix_the_plan_gets_no_variable_and_stage_1_is_the_published
     if value is not None:
         monkeypatch.setenv("SCAN_BOMLENS_STAGE1_IMAGE_PREFIX", value)
     docker = _docker()
-    _runner(workspace, docker).run()
+    _run(workspace, docker, monkeypatch)
 
     (plan,) = docker.runs_of("plan")
     assert "CDXGEN_IMAGE_PREFIX" not in plan.env
-    assert "CDXGEN_IMAGE_PREFIX" not in plan.by_name
     (stage1,) = docker.runs_of("stage1")
-    assert stage1.image == f"{PUBLISHED['image']}@{PUBLISHED['digest']}"
+    assert stage1.image == _by_digest(PUBLISHED["image"], PUBLISHED["digest"])
 
 
 # ---------------------------------------------------------------------------
@@ -237,8 +240,10 @@ def test_a_bad_prefix_refuses_the_run_before_any_container(
     workspace: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("SCAN_BOMLENS_STAGE1_IMAGE_PREFIX", "https://registry.example/mirror/")
+    docker = _docker()
     with pytest.raises(BomLensEngineError, match="SCAN_BOMLENS_STAGE1_IMAGE_PREFIX"):
-        resolve_images(deep_license=False)
+        _run(workspace, docker, monkeypatch)
+    assert docker.runs == []
 
 
 # ---------------------------------------------------------------------------
@@ -267,9 +272,9 @@ def test_with_a_mirror_a_plan_naming_ghcr_is_refused(
     monkeypatch.setenv("SCAN_BOMLENS_STAGE1_IMAGE_PREFIX", MIRROR)
     docker = _docker(write_plan("node-ok"))
     with pytest.raises(BomLensEngineError, match="not from an allowed repository"):
-        _runner(workspace, docker).run()
+        _run(workspace, docker, monkeypatch)
     assert not docker.runs_of("stage1")
-    assert not any(ref.startswith("ghcr.io/cdxgen/") for ref in docker.pulled)
+    assert not any(run.image.startswith("ghcr.io/cdxgen/") for run in docker.runs)
 
 
 def test_a_listed_repository_stays_allowed_next_to_the_prefix(
@@ -278,7 +283,7 @@ def test_a_listed_repository_stays_allowed_next_to_the_prefix(
     monkeypatch.setenv("SCAN_BOMLENS_STAGE1_IMAGE_PREFIX", MIRROR)
     monkeypatch.setenv("SCAN_BOMLENS_STAGE1_REPOSITORIES", "ghcr.io/cdxgen/")
     docker = _docker(write_plan("node-ok"))
-    _runner(workspace, docker).run()
+    _run(workspace, docker, monkeypatch)
     (stage1,) = docker.runs_of("stage1")
     assert stage1.image.startswith("ghcr.io/cdxgen/")
 
@@ -306,15 +311,18 @@ def test_a_plan_image_outside_the_prefix_is_refused(
     monkeypatch.setenv("SCAN_BOMLENS_STAGE1_IMAGE_PREFIX", MIRROR)
     docker = _docker(write_plan("node-mirror-prefix", stage1_image=image))
     with pytest.raises(BomLensEngineError, match="not from an allowed repository"):
-        _runner(workspace, docker).run()
+        _run(workspace, docker, monkeypatch)
     assert not docker.runs_of("stage1")
-    assert docker.pulled == [captured_images()]
+    # The package hands the folders back to the worker after a failed run.
+    assert [run.label for run in docker.runs if run.label != "chown"] == ["plan"]
 
 
-def test_without_a_prefix_the_default_path_itself_is_not_under_it(workspace: Path) -> None:
+def test_without_a_prefix_the_default_path_itself_is_not_under_it(
+    workspace: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     docker = _docker(write_plan("node-ok", stage1_image="ghcr.io/cdxgen:13.2.0"))
     with pytest.raises(BomLensEngineError, match="not from an allowed repository"):
-        _runner(workspace, docker).run()
+        _run(workspace, docker, monkeypatch)
     assert not docker.runs_of("stage1")
 
 
@@ -323,6 +331,6 @@ def test_a_mirrored_image_without_its_digest_is_refused(
 ) -> None:
     monkeypatch.setenv("SCAN_BOMLENS_STAGE1_IMAGE_PREFIX", MIRROR)
     docker = _docker(write_plan("node-mirror-prefix", stage1_digest=NO_DIGEST))
-    with pytest.raises(BomLensError, match="not pinned by a sha256 digest"):
-        _runner(workspace, docker).run()
+    with pytest.raises(BomLensError, match="not pinned by digest"):
+        _run(workspace, docker, monkeypatch)
     assert not docker.runs_of("stage1")

@@ -760,7 +760,7 @@ def trivy_db_refresh_interval_hours() -> int:
     # (Trivy itself caps to 24h cadence in production guidance). There is no
     # upper bound here: the panel still surfaces "next refresh" for an
     # over-spaced cadence. The BomLens engine caps the database age it derives
-    # from this value on its own (integrations.bomlens.runner).
+    # from this value on its own (integrations.bomlens.engine).
     return max(1, value)
 
 

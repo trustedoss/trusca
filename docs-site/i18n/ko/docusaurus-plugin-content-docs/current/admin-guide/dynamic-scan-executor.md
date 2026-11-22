@@ -172,12 +172,12 @@ SCAN_ANDROID_IMAGE_TAG=v1.0.0                            # semver 또는 sha256:
 실행 계획은 스캔 대상 소스를 읽은 컨테이너가 만든 출력입니다. 그래서 워커는 계획을 신뢰하지 않는 입력으로 다루고, 각 컨테이너를 어떻게 실행할지는 워커가 정합니다.
 
 - **다이제스트로 고정한 이미지.** BomLens 이미지는 TRUSCA 릴리스에 고정되어 있습니다. 1단계 이미지는 `SCAN_BOMLENS_STAGE1_REPOSITORIES`에 있는 저장소에서, `SCAN_BOMLENS_STAGE1_IMAGE_PREFIX`를 설정했으면 그 접두사 아래에서 와야 하고 다이제스트가 있어야 합니다. `:latest`는 어디에서든 거부합니다. 2단계는 계획에서 이미지와 마운트 경로 두 개만 받고, 사용자, 진입점, 인자, 작업 디렉터리, 네트워크는 TRUSCA가 정합니다.
-- **스캔 워크스페이스 안의 마운트만 허용.** 계획은 마운트를 역할(소스, 출력, 보조 파일, 복원 상태)로만 지정하고 호스트 경로는 지정하지 못합니다. 워커가 역할마다 해당 스캔의 워크스페이스 아래 폴더를 연결하고, 워크스페이스를 벗어나거나 심볼릭 링크를 거치는 경로는 거부합니다. 시스템 경로, Docker 소켓, TRUSCA가 직접 마운트하는 경로(`/tmp`, `/trivy-db`) 위에 마운트하려는 계획도 거부합니다. 예외는 2단계의 Trivy 데이터베이스 역할 하나뿐이며, 정확히 `/trivy-db`에 읽기 전용일 때만 받습니다. 워커는 그 자리에 자기 Trivy 데이터베이스를 연결합니다. 컨테이너는 먼저 생성만 하고, Docker 데몬이 기록한 마운트가 요청한 것과 정확히 같을 때만 시작합니다.
+- **스캔 워크스페이스 안의 마운트만 허용.** 계획은 마운트를 역할(소스, 출력, 보조 파일, 복원 상태)로만 지정하고 호스트 경로는 지정하지 못합니다. 워커가 역할마다 해당 스캔의 워크스페이스 아래 폴더를 연결하고, 워크스페이스를 벗어나거나 심볼릭 링크를 거치는 경로는 거부합니다. 시스템 경로, Docker 소켓, TRUSCA가 직접 마운트하는 경로(`/tmp`, `/trivy-db`) 위에 마운트하려는 계획도 거부합니다. 예외는 2단계의 Trivy 데이터베이스 역할 하나뿐이며, 정확히 `/trivy-db`에 읽기 전용일 때만 받습니다. 워커는 그 자리에 자기 Trivy 데이터베이스를 연결합니다. 컨테이너는 먼저 생성만 하고, Docker 데몬이 기록한 마운트와 설정(사용자, 권한, 메모리, 네트워크, 특권 모드 없음, 장치 없음)이 요청한 것과 정확히 같을 때만 시작합니다.
 - **읽기 전용 루트 파일시스템.** `/tmp`만 워크스페이스의 임시 폴더로 씁니다. 1단계는 `SCAN_BOMLENS_STAGE1_READ_ONLY_ROOT=false`로 쓰기 가능한 루트를 줄 수 있습니다(아래 표 참고).
 - **위의 사이드카와 같은 격리.** `--cap-drop ALL` 뒤에 최소한의 권한만 다시 추가하고, `no-new-privileges`를 켜고, `SCAN_SIDECAR_PIDS_LIMIT`, `SCAN_SIDECAR_MEMORY`, `SCAN_SIDECAR_CPUS` 제한을 적용하며 스왑은 쓰지 않습니다.
-- **네트워크 없음.** 1단계만 `SCAN_BOMLENS_NETWORK`에 연결합니다. 워커는 `host`, compose 네트워크인 `trustedoss`와 `trustedoss-docker-api`, 워커 자신이 연결된 네트워크(이름과 ID 모두 비교)를 거부합니다. 워커가 자기 네트워크를 읽지 못하면 1단계를 아예 실행하지 않습니다. 2단계는 Trivy 데이터베이스를 내려받지 않고 워커의 데이터베이스를 읽기 전용으로 읽으므로, TRUSCA의 다른 기능과 같은 취약점 데이터를 씁니다.
-- **허용 목록에 있는 환경변수만 전달.** 워커의 환경변수는 넘기지 않습니다. `GOPROXY`, `GOSUMDB`, 그리고 1단계에만 넘기는 `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`(대소문자 모두) 같은 전달 대상 이름은 엔진 워커에 설정되어 있을 때 그 값을 그대로 넘깁니다. 워커 자신의 루프백 주소(`127.0.0.1`, `localhost`, `::1`)를 가리키는 프록시는 넘기지 않습니다. 컨테이너 안에서 그 주소는 컨테이너 자신이기 때문입니다. 프록시 URL에 인증 정보가 들어 있으면 스캔 대상 프로젝트의 코드를 실행하는 빌드에 그대로 전달되므로, 패키지 읽기 권한만 있는 인증 정보를 쓰십시오. 워커는 `docker create` 명령줄에 이 변수들의 이름만 적고, 값은 Docker CLI 프로세스의 환경변수로 넘기므로 프로세스 목록에는 값이 보이지 않습니다. 다만 값은 엔진 컨테이너의 환경변수에 남아, 컨테이너가 지워질 때까지 그 컨테이너에 `docker inspect`를 실행하면 보입니다.
-- **종료 기한.** 엔진 컨테이너마다 스캔 ID와 종료 기한을 레이블로 붙입니다. 스캔이 더 이상 실행 중이 아니거나 기한이 지나면 엔진 워커가 컨테이너를 제거합니다. 5분마다 확인하고, 스캔을 취소하면 바로 확인합니다. 그래서 워커가 강제 종료되어 남은 컨테이너도 몇 분 안에 제거됩니다.
+- **네트워크 없음.** 1단계만 `SCAN_BOMLENS_NETWORK`에 연결합니다. 워커는 `host`, `none`, `bridge`, `default`(기본 브리지에서는 컨테이너끼리 서로 접근할 수 있습니다), compose 네트워크인 `trustedoss`와 `trustedoss-docker-api`, 이름 대신 쓴 ID, 워커 자신이 연결된 네트워크(이름과 ID 모두 비교)를 거부합니다. `SCAN_BOMLENS_NETWORK`에는 아래 설명대로 별도 네트워크를 만들어 지정하십시오. 이전 릴리스에서 쓰던 `bridge` 값은 이제 거부됩니다. 워커가 자기 네트워크를 읽지 못하면 1단계를 아예 실행하지 않습니다. 2단계는 Trivy 데이터베이스를 내려받지 않고 워커의 데이터베이스를 읽기 전용으로 읽으므로, TRUSCA의 다른 기능과 같은 취약점 데이터를 씁니다.
+- **허용 목록에 있는 환경변수만 전달.** 워커의 환경변수는 넘기지 않습니다. `GOPROXY`, `GOSUMDB`, 그리고 1단계에만 넘기는 `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`(대소문자 모두) 같은 전달 대상 이름은 엔진 워커에 설정되어 있을 때 그 값을 그대로 넘깁니다. 워커 자신의 루프백 주소(`127.0.0.1`, `localhost`, `::1`)를 가리키는 프록시는 넘기지 않습니다. 컨테이너 안에서 그 주소는 컨테이너 자신이기 때문입니다. 프록시 URL에 인증 정보가 들어 있으면 스캔 대상 프로젝트의 코드를 실행하는 빌드에 그대로 전달되므로, 패키지 읽기 권한만 있는 인증 정보를 쓰십시오. 워커는 값을 소유자만 읽을 수 있는 파일로 Docker CLI에 넘기고, 컨테이너가 생성되는 즉시 그 파일을 지웁니다. 그래서 값이 명령줄에도 프로세스 목록에도 나타나지 않습니다. 다만 값은 엔진 컨테이너의 환경변수에 남아, 컨테이너가 지워질 때까지 그 컨테이너에 `docker inspect`를 실행하면 보입니다.
+- **종료 기한.** 엔진 컨테이너마다 스캔 ID와 종료 기한을 레이블로 붙입니다. 스캔이 더 이상 실행 중이 아니거나 기한이 지나면 엔진 워커가 컨테이너를 제거합니다(컨테이너를 시작한 것과 같은 러너 패키지로 제거합니다). 5분마다 확인하고, 스캔을 취소하면 바로 확인합니다. 그래서 워커가 강제 종료되어 남은 컨테이너도 몇 분 안에 제거됩니다.
 
 ### 워커별 실행 범위 {#engine-workers}
 
@@ -283,7 +283,7 @@ docker-compose up -d    # API, beat, 워커가 두 설정을 다시 읽음
 # 엔진 워커가 작업을 마친 뒤: 남은 엔진 컨테이너 제거(워커가 멈출 때 처리 중이던
 # 스캔의 컨테이너가 남을 수 있음). <instance>는 TRUSCA_INSTANCE_ID이며,
 # 지정하지 않았다면 default
-docker ps -aq --filter label=trusca.role=bomlens-engine \
+docker ps -aq --filter label=app.kubernetes.io/part-of=bomlens-engine \
   --filter label=trusca.instance=<instance> | xargs -r docker rm -f
 
 docker-compose --profile bomlens-engine stop worker-engine docker-socket-proxy
@@ -295,7 +295,7 @@ docker-compose --profile bomlens-engine rm -f worker-engine docker-socket-proxy
 ### 실행 확인 {#engine-verify}
 
 <!-- docs-uat: id=dynamic-scan-executor-engine-verify-log kind=manual tier=manual -->
-- `worker-engine` 로그에 감지한 생태계와 함께 `bomlens_plan`이 남고, 이어서 컨테이너마다 종료 코드와 함께 `bomlens_container_exit`가 남습니다.
+- `worker-engine` 로그에 `bomlens_engine_start`가 남고, 이어서 컨테이너마다 `bomlens_container_start`와 종료 코드가 담긴 `bomlens_container_exit`가 남습니다.
 
 <!-- docs-uat: id=dynamic-scan-executor-engine-verify-metadata kind=manual tier=manual -->
 - 스캔 메타데이터에 `scan_engine`(BomLens 버전, 이미지 다이제스트, 단계별 상태)과 `scan_engine_run`(계획 상태, 1단계 종료 코드, 강제 종료 여부, 소스 복원 여부)이 기록됩니다. 컨테이너 스캔이면 `scan_engine.input_kind`가 `image`이고, `scan_engine_run`에는 `mode` `image`, 엔진이 받은 참조, 종료 코드가 기록됩니다.
