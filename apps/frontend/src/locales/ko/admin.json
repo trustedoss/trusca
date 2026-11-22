@@ -129,7 +129,8 @@
       "export": {
         "action": "내보내기",
         "failed": "명단을 내보내지 못했습니다."
-      }
+      },
+      "empty_title": "사용자가 없습니다"
     },
     "teams": {
       "title": "팀",
@@ -190,7 +191,8 @@
         "moved": "팀이 이동되었습니다.",
         "subgroup_created": "하위 그룹이 생성되었습니다."
       },
-      "empty": "현재 필터에 해당하는 팀이 없습니다."
+      "empty": "현재 필터에 해당하는 팀이 없습니다.",
+      "empty_title": "팀이 없습니다"
     },
     "scans": {
       "title": "스캔 큐",
@@ -251,7 +253,8 @@
       "toast": {
         "cancelled": "스캔이 취소되었습니다."
       },
-      "empty": "현재 필터에 해당하는 스캔이 없습니다."
+      "empty": "현재 필터에 해당하는 스캔이 없습니다.",
+      "empty_title": "스캔이 없습니다"
     },
     "disk": {
       "title": "디스크",
@@ -290,16 +293,22 @@
       "title": "감사 로그",
       "subtitle": "포털 전체의 감사 대상 변경을 검색합니다. 민감 컬럼(이메일, 이름)은 sha256 지문으로 표시됩니다.",
       "filter": {
-        "actor_user_id": "행위자 사용자 ID",
         "target_table_label": "대상 테이블",
         "target_table_all": "모든 테이블",
         "action_label": "액션",
-        "action_placeholder": "create / update / delete …",
         "from_label": "시작",
         "to_label": "종료",
         "q_label": "diff 검색",
         "q_placeholder": "diff JSON의 부분 문자열 매칭",
-        "q_pii_hint": "PII 컬럼은 sha256 지문으로 저장됩니다. 평문 검색은 이메일이나 이름과 매칭되지 않습니다."
+        "q_pii_hint": "PII 컬럼은 sha256 지문으로 저장됩니다. 평문 검색은 이메일이나 이름과 매칭되지 않습니다.",
+        "actor_label": "행위자",
+        "actor_all": "모든 행위자",
+        "actor_search_placeholder": "이름 또는 이메일로 검색",
+        "actor_loading": "사용자를 불러오는 중…",
+        "actor_empty": "일치하는 사용자가 없습니다.",
+        "actor_load_failed": "사용자 목록을 불러오지 못했습니다.",
+        "actor_truncated": "처음 {{count}}명만 표시합니다. 검색어를 입력해 범위를 좁히세요.",
+        "action_all": "모든 액션"
       },
       "column": {
         "created_at": "시각",
@@ -323,7 +332,8 @@
       "empty": "현재 필터에 해당하는 감사 항목이 없습니다.",
       "toast": {
         "csv_started": "CSV 내보내기가 시작되었습니다."
-      }
+      },
+      "empty_title": "감사 항목이 없습니다"
     },
     "health": {
       "title": "시스템 상태",
@@ -478,7 +488,9 @@
       "restore": {
         "warning": "복원 시 사용자, 프로젝트, 스캔을 포함한 모든 데이터가 덮어써집니다. 되돌릴 수 없습니다.",
         "type_to_confirm": "확인하려면 '{{token}}' 을(를) 입력하세요",
-        "queued_banner": "복원이 큐에 등록되었습니다. 백엔드가 일시 중지됩니다. 30초 후 새로 고치세요."
+        "queued_banner": "복원이 큐에 등록되었습니다. 백엔드가 일시 중지됩니다. 30초 후 새로 고치세요.",
+        "dialog_title": "이 백업으로 복원할까요?",
+        "file_label": "백업 파일"
       },
       "toast": {
         "manual_triggered": "수동 백업이 큐에 등록되었습니다.",
@@ -486,7 +498,8 @@
         "download_started": "다운로드가 시작되었습니다.",
         "restore_queued": "복원이 큐에 등록되었습니다."
       },
-      "empty": "아직 백업이 없습니다. 수동 백업을 실행하거나 야간 작업을 기다리세요."
+      "empty": "지금 수동 백업을 실행하거나 야간 작업을 기다리세요.",
+      "empty_title": "아직 백업이 없습니다"
     },
     "errors": {
       "last_super_admin_protected": "마지막 슈퍼 관리자의 권한을 강등하거나 비활성화할 수 없습니다.",

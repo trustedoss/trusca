@@ -221,9 +221,14 @@ describe("AdminTeamsPage", () => {
   it("renders the empty state when no teams match", async () => {
     mockedList.mockResolvedValue(listResponse([]));
     renderPage();
-    await waitFor(() => {
-      expect(screen.getByTestId("admin-teams-empty")).toBeInTheDocument();
-    });
+    const empty = await screen.findByTestId("admin-teams-empty");
+    expect(empty).toHaveTextContent("No teams found");
+    // The empty state stands in for the table rather than sitting in a row.
+    expect(screen.queryByRole("table")).toBeNull();
+    expect(screen.getByTestId("admin-teams-table")).toHaveAttribute(
+      "aria-busy",
+      "false",
+    );
   });
 
   it("toggles the create form and posts a new team", async () => {
@@ -235,7 +240,12 @@ describe("AdminTeamsPage", () => {
     await waitFor(() => {
       expect(screen.getByTestId("admin-teams-empty")).toBeInTheDocument();
     });
-    await userEvent.click(screen.getByTestId("admin-teams-new-button"));
+    const newButton = screen.getByTestId("admin-teams-new-button");
+    // The page's main action sits in the page header, as on the other lists.
+    expect(newButton.closest("header")).not.toBeNull();
+    expect(newButton).toHaveAttribute("aria-expanded", "false");
+    await userEvent.click(newButton);
+    expect(newButton).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByTestId("admin-teams-create-form")).toBeInTheDocument();
     await userEvent.type(screen.getByTestId("admin-teams-new-name"), "Core");
     await userEvent.type(screen.getByTestId("admin-teams-new-slug"), "core");

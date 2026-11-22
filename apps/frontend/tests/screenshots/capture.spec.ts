@@ -54,7 +54,7 @@ test.describe.serial("@screenshots admin/backup", () => {
     await captureScreenshot(page, "admin-backup-trigger-toast");
   });
 
-  test("admin-backup-restore-modal — restore strip + warning panel", async ({
+  test("admin-backup-restore-modal - restore confirmation dialog", async ({
     page,
   }) => {
     const backup = new AdminBackupHarness(page);

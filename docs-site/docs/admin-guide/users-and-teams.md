@@ -346,9 +346,9 @@ Deactivation is the only off-boarding action available in this release — there
 
 `super_admin` only.
 
-1. **/admin/teams** → **New team**.
-2. Name, description, optional default visibility for new projects (`team_only` or `org_wide`).
-3. Submit.
+1. On **/admin/teams**, click **New team** at the right of the page header. The create form opens above the list.
+2. Enter a name, a slug and an optional description.
+3. Click **Create team**.
 
 The first member of the team is whoever you assign on the next screen.
 

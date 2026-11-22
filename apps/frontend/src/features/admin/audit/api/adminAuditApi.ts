@@ -45,6 +45,45 @@ export const AUDIT_TARGET_TABLES = [
 
 export type AuditTargetTable = (typeof AUDIT_TARGET_TABLES)[number];
 
+/**
+ * Every `action` value the backend writes into `audit_logs`.
+ *
+ * The backend has no single enum for this column: the flush listener
+ * (`core/audit.py`) writes the five generic verbs, and a handful of routes,
+ * tasks and scripts write their own dotted names. The filter offers this list
+ * so nobody has to guess a spelling. The parity test
+ * (`tests/unit/contracts/auditActions.test.ts`) reads the backend source and
+ * fails when a new action appears there without landing here, or when one
+ * listed here is no longer written anywhere.
+ *
+ * The listener verbs come first because they make up nearly every row.
+ */
+export const AUDIT_ACTIONS = [
+  "create",
+  "update",
+  "delete",
+  "archive",
+  "unarchive",
+  "anonymise",
+  "approvals.auto_enrolled",
+  "backup.completed",
+  "backup.deleted",
+  "backup.failed",
+  "backup.pruned",
+  "backup.requested",
+  "backup.restore_failed",
+  "backup.restore_requested",
+  "backup.restored",
+  "oauth.identity.unlinked",
+  "sca_pr_comment.posted",
+  "sca_pr_comment.updated",
+  "source_archive.uploaded",
+  "user.mfa_cleared",
+  "user.sign_in_unlocked",
+] as const;
+
+export type AuditAction = (typeof AUDIT_ACTIONS)[number];
+
 export interface AuditLogItem {
   id: string;
   created_at: string;

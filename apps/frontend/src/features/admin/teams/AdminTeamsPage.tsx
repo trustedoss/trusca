@@ -4,7 +4,8 @@
  * AdminTeamsPage — Phase 4 PR #13 §4.3.
  *
  * Same skeleton as AdminUsersPage:
- *   - Inline toolbar (search + "New team" button).
+ *   - "New team" at the right of the page header, where every admin list
+ *     keeps its main action; inline search toolbar below it.
  *   - Compact table (40px rows): name, slug, description, member_count,
  *     project_count.
  *   - Right drawer for detail.
@@ -12,13 +13,12 @@
  * "New team" expands an inline create form above the table. The form
  * collapses on success and a toast confirms.
  */
-import {
-  PlusIcon,
-} from "@primer/octicons-react";
+import { OrganizationIcon, PlusIcon } from "@primer/octicons-react";
 import { Select } from "@primer/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { EmptyState } from "@/components/EmptyState";
 import { PageHeader } from "@/components/PageHeader";
 import { Spinner } from "@/components/primer/Spinner";
 import { Alert, AlertDescription } from "@/components/primer/alert";
@@ -147,11 +147,25 @@ export function AdminTeamsPage() {
     }
   }
 
+  const isEmpty =
+    !teamsQuery.isLoading && !teamsQuery.isError && items.length === 0;
+
   return (
     <div className="flex h-full flex-col" data-testid="admin-teams-page">
       <PageHeader
         title={t("admin.teams.title")}
         description={t("admin.teams.subtitle")}
+        actions={
+          <Button
+            size="sm"
+            onClick={() => setShowCreateForm((s) => !s)}
+            aria-expanded={showCreateForm}
+            data-testid="admin-teams-new-button"
+          >
+            <PlusIcon size={16} />
+            {t("admin.teams.action.create")}
+          </Button>
+        }
       />
 
       <div
@@ -177,14 +191,6 @@ export function AdminTeamsPage() {
             className="h-8"
           />
         </div>
-        <Button
-          size="sm"
-          onClick={() => setShowCreateForm((s) => !s)}
-          data-testid="admin-teams-new-button"
-        >
-          <PlusIcon size={16} />
-          {t("admin.teams.action.create")}
-        </Button>
       </div>
 
       {showCreateForm ? (
@@ -257,7 +263,16 @@ export function AdminTeamsPage() {
         </section>
       ) : null}
 
-      <div className="flex-1 overflow-y-auto">
+      {/*
+        The test id and aria-busy sit on the scroll region rather than the
+        <table>: an empty list replaces the table with an empty state, and
+        harnesses wait on this attribute either way.
+      */}
+      <div
+        className="flex-1 overflow-y-auto"
+        data-testid="admin-teams-table"
+        aria-busy={teamsQuery.isLoading}
+      >
         {teamsQuery.isError ? (
           <div className="px-6 py-4">
             <Alert variant="destructive" data-testid="admin-teams-error">
@@ -266,11 +281,15 @@ export function AdminTeamsPage() {
           </div>
         ) : null}
 
-        <table
-          className="w-full text-sm"
-          data-testid="admin-teams-table"
-          aria-busy={teamsQuery.isLoading}
-        >
+        {isEmpty ? (
+          <EmptyState
+            icon={<OrganizationIcon size={24} />}
+            title={t("admin.teams.empty_title")}
+            description={t("admin.teams.empty")}
+            data-testid="admin-teams-empty"
+          />
+        ) : (
+        <table className="w-full text-sm">
           <thead className="sticky top-0 bg-card">
             <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
               <th className="px-6 py-2">{t("admin.teams.column.name")}</th>
@@ -279,7 +298,7 @@ export function AdminTeamsPage() {
               <th className="px-3 py-2 text-right">
                 {t("admin.teams.column.member_count")}
               </th>
-              <th className="px-3 py-2 text-right">
+              <th className="py-2 pl-3 pr-6 text-right">
                 {t("admin.teams.column.project_count")}
               </th>
             </tr>
@@ -327,22 +346,12 @@ export function AdminTeamsPage() {
                       {team.description ?? "—"}
                     </td>
                     <td className="px-3 text-right">{team.member_count}</td>
-                    <td className="px-3 text-right">{team.project_count}</td>
+                    <td className="pl-3 pr-6 text-right">{team.project_count}</td>
                   </tr>
                 ))}
-            {!teamsQuery.isLoading && items.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={5}
-                  className="px-6 py-12 text-center text-sm text-muted-foreground"
-                  data-testid="admin-teams-empty"
-                >
-                  {t("admin.teams.empty")}
-                </td>
-              </tr>
-            ) : null}
           </tbody>
         </table>
+        )}
       </div>
 
       <footer

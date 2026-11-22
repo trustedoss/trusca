@@ -83,9 +83,9 @@ The script prunes backups older than `BACKUP_RETENTION_DAYS` (default 7) at the 
 
 For operators who prefer the browser, `/admin/backup` exposes the same backup and restore flows without dropping to a shell.
 
-![Admin backup page on a fresh install — toolbar mounted, the list body shows the empty-state card until the first backup row arrives](/img/screenshots/admin-backup-list.png)
+![Admin backup page on a fresh install: the page header carries the actions, and an empty state stands in for the list until the first backup arrives](/img/screenshots/admin-backup-list.png)
 
-The list renders six columns: `NAME`, `KIND`, `CREATED`, `SIZE`, `DB REVISION`, `ACTIONS`. On a fresh install the body shows the inline empty card (*"No backups yet…"*); populate it via the toolbar (**Run manual backup now** or **Upload and restore…**) or wait for the nightly auto job.
+The page header carries the actions: **Refresh**, **Upload and restore…**, and the primary **Run manual backup now** at the right. The list renders six columns: `NAME`, `KIND`, `CREATED`, `SIZE`, `DB REVISION`, `ACTIONS`. On a fresh install an empty state (*"No backups yet"*) takes the place of the table; run a manual backup or wait for the nightly auto job.
 
 ### Trigger a backup
 
@@ -104,14 +104,14 @@ Daily backups at **00:00 UTC** are scheduled by default in `apps/backend/tasks/b
 
 ### Upload + restore from the UI
 
-The **Upload + Restore** section accepts a previously downloaded `.tar.gz` archive (the bundle that `scripts/backup.sh` produces).
+**Upload and restore…** accepts a previously downloaded `.tar.gz` archive (the bundle that `scripts/backup.sh` produces).
 
-1. Click **Choose file** and select the archive (max **10 GB** — larger backups must use the CLI restore path).
-2. Read the warning panel carefully. The restore overwrites the live database and workspace.
-3. Type the word **`restore`** (lower case, exact match) into the confirmation field. The **Restore** button stays disabled until the typing-gate matches.
-4. Click **Restore**.
+1. Click **Upload and restore…** in the page header and select the archive (max **10 GB**; larger backups must use the CLI restore path). A confirmation dialog opens.
+2. Read the warning in the dialog carefully. The restore overwrites the live database and workspace. The dialog also names the file you picked.
+3. Type the word **`restore`** (lower case, exact match) into the confirmation field. The red **Restore** button stays disabled until the typing-gate matches.
+4. Click **Restore**. **Cancel**, the close button or Escape closes the dialog without uploading anything.
 
-![Restore modal with warning panel and disabled Restore button (typing-gated to enable)](/img/screenshots/admin-backup-restore-modal.png)
+![Restore confirmation dialog with the warning and a disabled Restore button (typing-gated to enable)](/img/screenshots/admin-backup-restore-modal.png)
 
 Once the typing-gate matches, the destructive **Restore** button enables. The screenshot below captures the moment the gate unlocks — the typed `restore` token, the visible warning panel, and the now-actionable button:
 

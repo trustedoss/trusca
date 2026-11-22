@@ -101,9 +101,9 @@ Rows with table names outside this whitelist (e.g. `dt_orphans`,
 
 The inline filter bar in this release:
 
-- **Actor user ID** — exact UUID match.
+- **Actor**: a user picker. Type part of a name or email and choose the person; deactivated accounts are listed too. The URL carries the user's id (`actor=<uuid>`), so a shared link selects the same person. Choose **All actors** to clear it.
 - **Target table** — single-select from the enum (`projects`, `teams`, `users`, `vulnerability_findings`, …).
-- **Action** — free-text contains (case-insensitive — the server uses `ilike`, so `create` and `CREATE` match the same rows).
+- **Action**: a select over every action the portal writes: the generic verbs `create`, `update`, `delete`, `archive` and `unarchive`, followed by named events such as `backup.restore_requested`, `user.mfa_cleared` or `sca_pr_comment.posted`. The server still matches the value as a case-insensitive substring (`ilike`), so `archive` also returns `unarchive` rows and `update` also returns `sca_pr_comment.updated` rows; add the target table to narrow it.
 - **Date range** — `from` and `to` (custom).
 - **Search** — free-text query (`q`). Performs an `ilike` match against the JSON-encoded `diff` column. `action` and `target_table` are separate filter parameters (`action=`, `target_table=`); `q` does not match those columns.
 
@@ -119,7 +119,7 @@ The table is virtualized; 10k entries scroll smoothly.
 
 ## Export to CSV
 
-The **Export CSV** button on the toolbar exports the **currently filtered** result set, up to 100k rows per export. The CSV is UTF-8 with a leading byte-order mark (`EF BB BF`) so Excel on Korean / Japanese / Chinese locales auto-detects the encoding instead of falling back to CP949 / SJIS / GB18030 and rendering non-ASCII actor emails or audit row diffs as mojibake. Tools that already auto-detect UTF-8 (LibreOffice, awk, Python's `csv` / `utf-8-sig` codecs) silently strip the BOM.
+The **Export CSV** button at the right of the page header exports the **currently filtered** result set, up to 100k rows per export. The CSV is UTF-8 with a leading byte-order mark (`EF BB BF`) so Excel on Korean / Japanese / Chinese locales auto-detects the encoding instead of falling back to CP949 / SJIS / GB18030 and rendering non-ASCII actor emails or audit row diffs as mojibake. Tools that already auto-detect UTF-8 (LibreOffice, awk, Python's `csv` / `utf-8-sig` codecs) silently strip the BOM.
 
 For larger windows, paginate via the API:
 
@@ -141,7 +141,7 @@ Filter: `target_table=projects&action=archive&target_id=<project-uuid>`. There i
 
 ### "What did user Y do last week?"
 
-Filter: `actor=y@acme.com`, date range last 7 days. The actions list summarizes the activity.
+Filter: pick Y in **Actor** by their email, date range last 7 days. The actions list summarizes the activity.
 
 ### "Who suppressed CVE-2024-12345 across all projects?"
 

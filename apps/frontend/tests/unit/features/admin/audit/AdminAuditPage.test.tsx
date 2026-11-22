@@ -35,7 +35,22 @@ vi.mock("@/features/admin/audit/api/adminAuditApi", async () => {
   };
 });
 
+vi.mock("@/features/admin/api/adminUsersApi", async () => {
+  const actual = await vi.importActual<object>(
+    "@/features/admin/api/adminUsersApi",
+  );
+  return { ...actual, listAdminUsers: vi.fn(), getAdminUser: vi.fn() };
+});
+
 import {
+  getAdminUser,
+  listAdminUsers,
+  type AdminUserDetail,
+  type AdminUserListItem,
+} from "@/features/admin/api/adminUsersApi";
+
+import {
+  AUDIT_ACTIONS,
   downloadAdminAuditCsv,
   searchAdminAudit,
   type AuditLogItem,
@@ -44,6 +59,34 @@ import {
 
 const mockedSearch = vi.mocked(searchAdminAudit);
 const mockedExport = vi.mocked(downloadAdminAuditCsv);
+const mockedListUsers = vi.mocked(listAdminUsers);
+const mockedGetUser = vi.mocked(getAdminUser);
+
+const ALICE_ID = "11111111-2222-4333-8444-555555555555";
+const BOB_ID = "66666666-7777-4888-8999-000000000000";
+
+function userFixture(
+  id: string,
+  email: string,
+  fullName: string | null,
+): AdminUserListItem {
+  return {
+    id,
+    email,
+    full_name: fullName,
+    is_active: true,
+    is_superuser: false,
+    last_login_at: null,
+    created_at: "2026-05-01T00:00:00Z",
+  };
+}
+
+function dataVariant(el: HTMLElement): string | null | undefined {
+  return (
+    el.getAttribute("data-variant") ??
+    el.closest("[data-variant]")?.getAttribute("data-variant")
+  );
+}
 
 function entryFixture(
   id: string,
@@ -99,6 +142,8 @@ describe("AdminAuditPage", () => {
   beforeEach(() => {
     mockedSearch.mockReset();
     mockedExport.mockReset();
+    mockedListUsers.mockReset();
+    mockedGetUser.mockReset();
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -191,7 +236,11 @@ describe("AdminAuditPage", () => {
     });
     // The toolbar inputs reflect the URL too.
     expect(screen.getByTestId("admin-audit-q")).toHaveValue("alpha");
-    expect(screen.getByTestId("admin-audit-actor")).toHaveValue("actor-1");
+    expect(screen.getByTestId("admin-audit-actor")).toHaveAttribute(
+      "data-actor-id",
+      "actor-1",
+    );
+    expect(screen.getByTestId("admin-audit-action")).toHaveValue("create");
     expect(screen.getByTestId("admin-audit-target-table")).toHaveValue(
       "scans",
     );
@@ -384,5 +433,180 @@ describe("AdminAuditPage", () => {
         "audit_export_too_large",
       );
     });
+  });
+
+  describe("filter row", () => {
+    it("picks the actor by name and filters by that user's id", async () => {
+      mockedSearch.mockResolvedValue(pageResponse([]));
+      mockedListUsers.mockResolvedValue({
+        items: [
+          userFixture(ALICE_ID, "alice@example.com", "Alice Kim"),
+          userFixture(BOB_ID, "bob@example.com", null),
+        ],
+        total: 2,
+        page: 1,
+        page_size: 20,
+      });
+      mockedGetUser.mockResolvedValue({
+        ...userFixture(ALICE_ID, "alice@example.com", "Alice Kim"),
+        updated_at: "2026-05-01T00:00:00Z",
+        scan_count: 0,
+        mfa_enabled: false,
+        memberships: [],
+      } as AdminUserDetail);
+      renderPage();
+
+      // Nothing is listed until the picker opens.
+      expect(mockedListUsers).not.toHaveBeenCalled();
+      await userEvent.click(screen.getByTestId("admin-audit-actor"));
+      await userEvent.click(await screen.findByText("Alice Kim"));
+
+      await waitFor(() => {
+        expect(mockedSearch.mock.calls.at(-1)?.[0]).toMatchObject({
+          actor_user_id: ALICE_ID,
+        });
+      });
+      expect(screen.getByTestId("location-search")).toHaveTextContent(
+        `actor=${ALICE_ID}`,
+      );
+      // The trigger names the person, not the id.
+      await waitFor(() => {
+        expect(screen.getByTestId("admin-audit-actor")).toHaveTextContent(
+          "alice@example.com",
+        );
+      });
+      expect(mockedGetUser).toHaveBeenCalledWith(ALICE_ID);
+    });
+
+    it("sends the typed term to the users search rather than filtering one page", async () => {
+      mockedSearch.mockResolvedValue(pageResponse([]));
+      mockedListUsers.mockResolvedValue({
+        items: [userFixture(ALICE_ID, "alice@example.com", "Alice Kim")],
+        total: 1,
+        page: 1,
+        page_size: 20,
+      });
+      renderPage();
+      await userEvent.click(screen.getByTestId("admin-audit-actor"));
+      await screen.findByText("Alice Kim");
+      mockedListUsers.mockResolvedValue({
+        items: [userFixture(BOB_ID, "bob@example.com", "Bob Lee")],
+        total: 1,
+        page: 1,
+        page_size: 20,
+      });
+      await userEvent.type(screen.getByTestId("admin-audit-actor-search"), "bob");
+      expect(
+        await screen.findByText("Bob Lee", {}, { timeout: 2000 }),
+      ).toBeInTheDocument();
+      expect(mockedListUsers).toHaveBeenLastCalledWith(
+        expect.objectContaining({ search: "bob" }),
+      );
+    });
+
+    it("clears the actor from the picker", async () => {
+      mockedSearch.mockResolvedValue(pageResponse([]));
+      mockedListUsers.mockResolvedValue({
+        items: [],
+        total: 0,
+        page: 1,
+        page_size: 20,
+      });
+      mockedGetUser.mockRejectedValue(new Error("gone"));
+      renderPage(`/admin/audit?actor=${ALICE_ID}`);
+      // A deleted account cannot be looked up; the id is shown instead.
+      await waitFor(() => {
+        expect(screen.getByTestId("admin-audit-actor")).toHaveTextContent(
+          ALICE_ID,
+        );
+      });
+      await userEvent.click(screen.getByTestId("admin-audit-actor"));
+      await userEvent.click(await screen.findByTestId("admin-audit-actor-clear"));
+      await waitFor(() => {
+        expect(mockedSearch.mock.calls.at(-1)?.[0]).toMatchObject({
+          actor_user_id: null,
+        });
+      });
+      expect(screen.getByTestId("location-search")).not.toHaveTextContent(
+        "actor=",
+      );
+    });
+
+    it("says the user list is cut short, and says so when it fails to load", async () => {
+      mockedSearch.mockResolvedValue(pageResponse([]));
+      mockedListUsers.mockResolvedValue({
+        items: [userFixture(ALICE_ID, "alice@example.com", "Alice Kim")],
+        total: 45,
+        page: 1,
+        page_size: 20,
+      });
+      renderPage();
+      await userEvent.click(screen.getByTestId("admin-audit-actor"));
+      expect(
+        await screen.findByTestId("admin-audit-actor-truncated"),
+      ).toHaveTextContent("first 20");
+
+      mockedListUsers.mockRejectedValue(new Error("boom"));
+      await userEvent.type(screen.getByTestId("admin-audit-actor-search"), "zz");
+      expect(
+        await screen.findByTestId("admin-audit-actor-error", {}, { timeout: 2000 }),
+      ).toHaveTextContent("Users could not be loaded.");
+    });
+
+    it("offers the known actions as a select and filters by the chosen one", async () => {
+      mockedSearch.mockResolvedValue(pageResponse([]));
+      renderPage();
+      const select = screen.getByTestId("admin-audit-action");
+      const values = Array.from(
+        select.querySelectorAll("option"),
+        (o) => o.getAttribute("value"),
+      );
+      expect(values).toEqual(["all", ...AUDIT_ACTIONS]);
+
+      await userEvent.selectOptions(select, "backup.restored");
+      await waitFor(() => {
+        expect(mockedSearch.mock.calls.at(-1)?.[0]).toMatchObject({
+          action: "backup.restored",
+        });
+      });
+      await userEvent.selectOptions(select, "all");
+      await waitFor(() => {
+        expect(mockedSearch.mock.calls.at(-1)?.[0]).toMatchObject({
+          action: null,
+        });
+      });
+    });
+
+    it("keeps an action from the URL that the list does not know", async () => {
+      mockedSearch.mockResolvedValue(pageResponse([]));
+      renderPage("/admin/audit?action=legacy.verb");
+      expect(screen.getByTestId("admin-audit-action")).toHaveValue(
+        "legacy.verb",
+      );
+      expect(mockedSearch.mock.calls.at(-1)?.[0]).toMatchObject({
+        action: "legacy.verb",
+      });
+    });
+
+    it("keeps Export CSV secondary on this read-only page", async () => {
+      mockedSearch.mockResolvedValue(pageResponse([]));
+      renderPage();
+      const exportButton = screen.getByTestId("admin-audit-export-csv");
+      expect(dataVariant(exportButton)).toBe("default");
+      expect(exportButton.closest("header")).not.toBeNull();
+    });
+  });
+
+  it("replaces the table with an empty state when nothing matches", async () => {
+    mockedSearch.mockResolvedValue(pageResponse([]));
+    renderPage();
+    const empty = await screen.findByTestId("admin-audit-empty");
+    expect(empty).toHaveAttribute("role", "status");
+    expect(empty).toHaveTextContent("No audit entries found");
+    expect(screen.queryByRole("table")).toBeNull();
+    expect(screen.getByTestId("admin-audit-table")).toHaveAttribute(
+      "aria-busy",
+      "false",
+    );
   });
 });

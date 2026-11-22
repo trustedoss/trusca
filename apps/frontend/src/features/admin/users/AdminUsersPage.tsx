@@ -11,11 +11,13 @@
  * the same query cache so a successful mutation is reflected back into the
  * table without an extra round-trip beyond the invalidation.
  */
+import { PeopleIcon } from "@primer/octicons-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Select } from "@primer/react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 
+import { EmptyState } from "@/components/EmptyState";
 import { PageHeader } from "@/components/PageHeader";
 import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Badge } from "@/components/primer/badge";
@@ -226,6 +228,9 @@ export function AdminUsersPage() {
     }
   }
 
+  const isEmpty =
+    !usersQuery.isLoading && !usersQuery.isError && items.length === 0;
+
   return (
     <div className="flex h-full flex-col" data-testid="admin-users-page">
       <PageHeader
@@ -265,7 +270,16 @@ export function AdminUsersPage() {
         onActiveChange={setActiveFilter}
       />
 
-      <div className="flex-1 overflow-y-auto">
+      {/*
+        The test id and aria-busy sit on the scroll region rather than the
+        <table>: an empty list replaces the table with an empty state, and
+        harnesses wait on this attribute either way.
+      */}
+      <div
+        className="flex-1 overflow-y-auto"
+        data-testid="admin-users-table"
+        aria-busy={usersQuery.isLoading}
+      >
         {usersQuery.isError ? (
           <div className="px-6 py-4">
             <Alert variant="destructive" data-testid="admin-users-error">
@@ -274,11 +288,15 @@ export function AdminUsersPage() {
           </div>
         ) : null}
 
-        <table
-          className="w-full text-sm"
-          data-testid="admin-users-table"
-          aria-busy={usersQuery.isLoading}
-        >
+        {isEmpty ? (
+          <EmptyState
+            icon={<PeopleIcon size={24} />}
+            title={t("admin.users.empty_title")}
+            description={t("admin.users.empty")}
+            data-testid="admin-users-empty"
+          />
+        ) : (
+        <table className="w-full text-sm">
           <thead className="sticky top-0 bg-card">
             <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
               <th className="px-6 py-2">{t("admin.users.column.email")}</th>
@@ -288,7 +306,7 @@ export function AdminUsersPage() {
               <th className="px-3 py-2">
                 {t("admin.users.column.last_login_at")}
               </th>
-              <th className="px-3 py-2 text-right">
+              <th className="py-2 pl-3 pr-6 text-right">
                 {t("admin.users.column.team_count")}
               </th>
             </tr>
@@ -356,7 +374,7 @@ export function AdminUsersPage() {
                       )}
                     </td>
                     <td
-                      className="px-3 text-right text-xs text-muted-foreground"
+                      className="pl-3 pr-6 text-right text-xs text-muted-foreground"
                       data-testid="admin-users-team-count"
                     >
                       {/* H-2: membership rollup from the list payload. */}
@@ -364,19 +382,9 @@ export function AdminUsersPage() {
                     </td>
                   </tr>
                 ))}
-            {!usersQuery.isLoading && items.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={6}
-                  className="px-6 py-12 text-center text-sm text-muted-foreground"
-                  data-testid="admin-users-empty"
-                >
-                  {t("admin.users.empty")}
-                </td>
-              </tr>
-            ) : null}
           </tbody>
         </table>
+        )}
       </div>
 
       <footer

@@ -2,8 +2,8 @@
  * AdminBackupHarness — Phase 5 manual-aligned E2E.
  *
  * Domain verbs for the `/admin/backup` surface (manual trigger / list /
- * download / restore upload with type-to-confirm gate / delete with inline
- * confirm). Mirrors {@link AdminUsersHarness}: every selector is rooted in
+ * download / restore upload with a type-to-confirm gate in a confirmation
+ * dialog / delete with inline confirm). Mirrors {@link AdminUsersHarness}: every selector is rooted in
  * a `data-testid` the SPA emits verbatim, never a translated label.
  *
  * Hard rules (CLAUDE.md §품질·보안·운영 §2):
@@ -124,7 +124,7 @@ export class AdminBackupHarness {
   }
 
   /**
-   * Refresh the list manually (the toolbar Refresh button) and wait for
+   * Refresh the list manually (the header Refresh button) and wait for
    * the next fetch to settle.
    */
   async refresh(): Promise<void> {
@@ -170,9 +170,9 @@ export class AdminBackupHarness {
 
   // ───── restore upload + type-to-confirm gate ──────────────────────────
   /**
-   * Pick a file via the hidden `<input type="file">`. The page renders
-   * the warning strip + the type-to-confirm input only after the file is
-   * picked. Caller passes `{ name, mimeType, buffer }` (Playwright's
+   * Pick a file via the hidden `<input type="file">`. Picking opens the
+   * restore confirmation dialog (warning, file name, type-to-confirm input,
+   * danger button). Caller passes `{ name, mimeType, buffer }` (Playwright's
    * file payload shape).
    */
   async openRestoreModal(file: {
@@ -188,7 +188,7 @@ export class AdminBackupHarness {
       buffer: file.buffer,
     });
     await expect(
-      this.page.getByTestId("admin-backup-restore-strip"),
+      this.page.getByTestId("admin-backup-restore-dialog"),
     ).toBeVisible({ timeout: DEFAULT_TIMEOUT_MS });
     await expect(
       this.page.getByTestId("admin-backup-file-name"),
@@ -217,13 +217,13 @@ export class AdminBackupHarness {
   }
 
   /**
-   * Cancel the restore selection — clears the file input and unmounts
-   * the warning strip.
+   * Cancel the restore selection: clears the file input and closes the
+   * confirmation dialog.
    */
   async cancelRestore(): Promise<void> {
     await this.page.getByTestId("admin-backup-restore-cancel").click();
     await expect(
-      this.page.getByTestId("admin-backup-restore-strip"),
+      this.page.getByTestId("admin-backup-restore-dialog"),
     ).toHaveCount(0, { timeout: DEFAULT_TIMEOUT_MS });
   }
 
