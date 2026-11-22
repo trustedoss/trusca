@@ -133,8 +133,10 @@ export function ScansPage() {
 
       {/* A status filter, not tabs: it narrows one table rather than
           switching panels, so it is a segmented control (aria-pressed
-          buttons) and no option borrows the primary button's fill. */}
-      <div className="flex flex-wrap items-center gap-2 border-b bg-card px-6 py-2">
+          buttons) and no option borrows the primary button's fill. The
+          five options are wider than a 390 px phone and a segmented control
+          does not wrap, so the row scrolls sideways there. */}
+      <div className="flex items-center gap-2 overflow-x-auto border-b bg-card px-6 py-2">
         <SegmentedControl
           data-testid="scans-tabs"
           aria-label={t("page.status_filter_aria")}
