@@ -261,14 +261,20 @@ pytest --cov=. --cov-report=term-missing --cov-report=xml
 
 Aim for ≥ 80 % line coverage on **changed lines**. CI runs the two suites as separate jobs (`test (backend-unit)`, `test (backend-integration)`), and `coverage-gate (backend)` combines their data and judges both numbers: the whole tree against `fail_under = 80`, and the lines your branch changed against the same 80 % via `diff-cover`. Either one under threshold fails the job.
 
-### Integration shards and the per-test timeout
+### Shards and the per-test timeout
 
-CI splits `tests/integration` into shards, each a separate job with its own PostgreSQL and Redis. `pytest --shard K/N` runs whole files only, weighted by `tests/integration/shard_durations.json`, and the job named `test (backend-integration)` passes only when every shard passed and the shards between them ran every collected file exactly once. Two things follow for anyone writing an integration test:
+CI splits `tests/unit` and `tests/integration` into shards, each a separate job with its own PostgreSQL and Redis. `pytest --shard K/N` runs whole files only, weighted by `tests/unit/shard_durations.json` and `tests/integration/shard_durations.json`. The jobs named `test (backend-unit)` and `test (backend-integration)` collect their shards' results: each passes only when every shard passed and the shards between them ran every collected file exactly once. Two things follow for anyone writing a backend test:
 
 - A file must not depend on rows, keys or files that another file leaves behind, because the two may run in different shards. Order inside one file is unchanged.
-- A shard failure reproduces locally with the same flag, for example `pytest --shard 2/3 tests/integration`.
+- A shard failure reproduces locally with the same flag, for example `pytest --shard 2/3 tests/integration` or `pytest --shard 1/3 tests/unit`.
 
-To refresh the weights, download the `backend-integration-durations` artifact from a recent run and copy it over `tests/integration/shard_durations.json`. Stale weights only make the shards less even.
+To refresh the weights, download the `backend-unit-durations` and `backend-integration-durations` artifacts from a recent run and copy them over `tests/unit/shard_durations.json` and `tests/integration/shard_durations.json`. Stale weights only make the shards less even. A unit file missing from the weights gets the median weight of the files that are listed.
+
+### Frontend-only pull requests
+
+When every file a pull request changes is under `apps/frontend/`, CI skips the jobs that only read the backend: the backend legs of `lint` and `typecheck` (the leg starts and passes without running its steps), the integration shards, `postgres-init L1 role contract`, `image-scan (worker)` and `coverage-gate (backend)`. A skipped job counts as passing for branch protection, and `test (backend-integration)` passes with a notice saying the shards were skipped on purpose. The backend unit shards still run, because unit tests read files under `apps/frontend` (the catalog mirrors, the locale files and the license scan of `apps/frontend/src`). A change to `docs-site/` or to anything outside `apps/frontend/` runs every job, and so do pushes to `main`, the nightly schedule and a manual dispatch.
+
+If you add a backend test that reads `apps/frontend`, put it under `tests/unit`. A test under `tests/integration` does not run on a frontend-only pull request, so a frontend change that breaks it would merge.
 
 CI also runs every backend test under a per-test timeout (`--timeout`, pytest-timeout, thread method). A test that runs past it ends the run and prints every thread's stack; the main thread's stack is headed `MainThread running <test id>`, which names the test even when the hang is in a fixture.
 

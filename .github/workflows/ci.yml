@@ -64,21 +64,115 @@ concurrency:
 
 jobs:
   # -------------------------------------------------------------------------
+  # 0) Which parts of the tree this pull request touches.
+  #
+  #    Two things keep a pull request's wall clock down, and both keep every
+  #    required check name exactly as branch protection lists it.
+  #
+  #    a) The backend unit suite runs as shards (`test-unit-shards`), the way
+  #       the integration suite already did. On one job it took about 21
+  #       minutes and set the wall clock of every pull request. The required
+  #       check `test (backend-unit)` now belongs to the aggregate job
+  #       `test-unit`, which passes only when every shard passed and the
+  #       shards between them ran every collected file exactly once.
+  #
+  #    b) A pull request whose every changed file is under apps/frontend/
+  #       skips the jobs that only read the backend: the backend legs of lint
+  #       and typecheck, the integration shards, postgres-init L1, image-scan
+  #       and coverage-gate. Branch protection counts a job skipped by its
+  #       `if:` as passing, so the required checks still report. The skip is
+  #       decided per job (or per step, in the lint and typecheck matrices,
+  #       because a job-level `if:` cannot drop one matrix leg and a leg that
+  #       never starts never reports).
+  #
+  #    What is NOT skipped, and why:
+  #    - The backend unit shards. Unit tests read apps/frontend directly: the
+  #      catalog mirrors (test_catalog_contracts.py), the locale files, the
+  #      SPDX and vendored-code scan over apps/frontend/src and the frontend
+  #      lockfile (test_license_distribution.py). A frontend-only change can
+  #      fail them, so they run on every pull request. The integration suite
+  #      reads nothing under apps/frontend, which is what makes it skippable.
+  #    - docs-site changes. A backend test pins the copy the SBOM upload
+  #      guide quotes (see the push trigger above), so a pull request that
+  #      touches docs-site counts as a backend change.
+  #    - push, schedule and workflow_dispatch. `backend` is always true there,
+  #      so main, the nightly and the manual e2e dispatch run everything.
+  #
+  #    Failure direction: anything this job cannot decide (no merge commit,
+  #    a diff that fails, an empty diff) answers `backend=true`. The jobs that
+  #    depend on it use `!cancelled()`, so a failed `changes` job runs them
+  #    rather than skipping them, and the required `test (backend-unit)`
+  #    turns red when this job did not succeed, so a broken classifier cannot
+  #    quietly wave a pull request through.
+  #
+  #    Plain git rather than a paths-filter action: the pull_request checkout
+  #    is GitHub's merge commit, and its first parent is the base it merges
+  #    into, so `git diff HEAD^1 HEAD` is exactly what the merge would change.
+  #    `--no-renames` lists both sides of a rename, so moving a backend file
+  #    under apps/frontend still counts as a backend change.
+  # -------------------------------------------------------------------------
+  changes:
+    name: changes
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    outputs:
+      backend: ${{ steps.classify.outputs.backend }}
+    steps:
+      - uses: actions/checkout@v4
+        if: github.event_name == 'pull_request'
+        with:
+          fetch-depth: 2
+
+      - name: Classify the changed files
+        id: classify
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -uo pipefail
+          backend=true
+          if [ "$EVENT" = "pull_request" ]; then
+            if git rev-parse -q --verify 'HEAD^2' >/dev/null \
+                && files=$(git diff --name-only --no-renames 'HEAD^1' HEAD) \
+                && [ -n "$files" ]; then
+              printf 'changed files:\n%s\n' "$files"
+              outside=$(printf '%s\n' "$files" | grep -v '^apps/frontend/' || true)
+              if [ -z "$outside" ]; then
+                backend=false
+              fi
+            else
+              echo "::warning::could not list this pull request's changed files; running every backend job"
+            fi
+          fi
+          echo "backend=$backend" | tee -a "$GITHUB_OUTPUT"
+
+  # -------------------------------------------------------------------------
   # 1) Lint — ruff (backend) + eslint (frontend)
+  #
+  #    The backend leg's steps run when BACKEND_LEG is true. On a
+  #    frontend-only pull request the leg starts, skips them and passes, so
+  #    `lint (backend)` still reports (see the `changes` job).
   # -------------------------------------------------------------------------
   lint:
     name: lint (${{ matrix.target }})
+    needs: changes
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-22.04
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
         target: [backend, frontend]
+    env:
+      BACKEND_LEG: ${{ matrix.target == 'backend' && needs.changes.outputs.backend != 'false' }}
     steps:
+      - name: Backend unchanged, backend steps skipped
+        if: matrix.target == 'backend' && env.BACKEND_LEG != 'true'
+        run: echo "::notice::every changed file is under apps/frontend/; the backend steps of this leg are skipped"
+
       - uses: actions/checkout@v4
 
       - name: Setup Python
-        if: matrix.target == 'backend'
+        if: env.BACKEND_LEG == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -86,14 +180,14 @@ jobs:
           cache-dependency-path: apps/backend/requirements-dev.txt
 
       - name: Install backend dev deps
-        if: matrix.target == 'backend'
+        if: env.BACKEND_LEG == 'true'
         working-directory: apps/backend
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
 
       - name: Run ruff
-        if: matrix.target == 'backend'
+        if: env.BACKEND_LEG == 'true'
         working-directory: apps/backend
         run: ruff check .
 
@@ -107,7 +201,7 @@ jobs:
       # here and diffing against the committed file catches that the same
       # way scripts/dump_openapi.py --check catches a stale committed spec.
       - name: Install pip-tools
-        if: matrix.target == 'backend'
+        if: env.BACKEND_LEG == 'true'
         run: pip install pip-tools
       # Regenerated to the SAME --output-file name pip-compile stamps into its
       # own header comment (`pip-compile ... --output-file=requirements.lock
@@ -122,7 +216,7 @@ jobs:
       # That is metadata about how the lock was produced, not a claim about
       # what it locks, so it must not be able to fail this check on its own.
       - name: Check requirements.lock is up to date
-        if: matrix.target == 'backend'
+        if: env.BACKEND_LEG == 'true'
         working-directory: apps/backend
         run: |
           tail -n +7 requirements.lock > /tmp/requirements.lock.committed.body
@@ -133,7 +227,7 @@ jobs:
             exit 1
           }
       - name: Check requirements-dev.lock is up to date
-        if: matrix.target == 'backend'
+        if: env.BACKEND_LEG == 'true'
         working-directory: apps/backend
         run: |
           tail -n +7 requirements-dev.lock > /tmp/requirements-dev.lock.committed.body
@@ -156,7 +250,7 @@ jobs:
       # the reason the license-header steps give below: a new job is a new
       # check, and docs-only pull requests already stall on checks that skip.
       - name: Run ai-review selftest
-        if: matrix.target == 'backend'
+        if: env.BACKEND_LEG == 'true'
         run: python tools/ai-review/selftest.py
 
       # tools/mutate, same reasoning and the same job: standard library only,
@@ -166,14 +260,14 @@ jobs:
       # unapplied edits would hand out green runs as evidence, which is the
       # failure it exists to prevent.
       - name: Run mutate selftest
-        if: matrix.target == 'backend'
+        if: env.BACKEND_LEG == 'true'
         run: python tools/mutate/selftest.py
 
       # Same reasoning, for the whole-diff reviewer that external-pr-review.yml
       # calls. Its network hop is equally unverified until the same secret
       # exists; everything else is checked here.
       - name: Run external-pr-review selftest
-        if: matrix.target == 'backend'
+        if: env.BACKEND_LEG == 'true'
         run: python tools/ai-review/external_review_selftest.py
 
       - name: Setup Node
@@ -375,6 +469,10 @@ jobs:
   # -------------------------------------------------------------------------
   postgres-init-l1:
     name: postgres-init L1 role contract
+    # Skipped (reported as passing) on a frontend-only pull request; see the
+    # `changes` job.
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.backend != 'false' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -573,20 +671,30 @@ jobs:
 
   # -------------------------------------------------------------------------
   # 2) Typecheck — mypy (backend) + tsc (frontend)
+  #
+  #    BACKEND_LEG as in the lint job.
   # -------------------------------------------------------------------------
   typecheck:
     name: typecheck (${{ matrix.target }})
+    needs: changes
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-22.04
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
         target: [backend, frontend]
+    env:
+      BACKEND_LEG: ${{ matrix.target == 'backend' && needs.changes.outputs.backend != 'false' }}
     steps:
+      - name: Backend unchanged, backend steps skipped
+        if: matrix.target == 'backend' && env.BACKEND_LEG != 'true'
+        run: echo "::notice::every changed file is under apps/frontend/; the backend steps of this leg are skipped"
+
       - uses: actions/checkout@v4
 
       - name: Setup Python
-        if: matrix.target == 'backend'
+        if: env.BACKEND_LEG == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -594,14 +702,14 @@ jobs:
           cache-dependency-path: apps/backend/requirements-dev.txt
 
       - name: Install backend dev deps
-        if: matrix.target == 'backend'
+        if: env.BACKEND_LEG == 'true'
         working-directory: apps/backend
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
 
       - name: Run mypy
-        if: matrix.target == 'backend'
+        if: env.BACKEND_LEG == 'true'
         working-directory: apps/backend
         run: mypy .
 
@@ -625,18 +733,19 @@ jobs:
 
   # -------------------------------------------------------------------------
   # 3) Test — pytest (unit, integration) + vitest (with coverage)
-  #    Each backend leg spins up its own Postgres 17 + Redis 7 sidecars.
+  #    Each backend job spins up its own Postgres 17 + Redis 7 sidecars.
   #    CLAUDE.md §2 (품질·보안·운영 표준): PR 머지 게이트 = 신규/변경 코드
-  #    line coverage ≥ 80%. Neither leg judges coverage on its own — they
-  #    upload raw coverage data and `coverage-gate` combines it, because a
-  #    single leg's number is meaningless (unit alone never reaches 80%).
+  #    line coverage ≥ 80%. No backend job judges coverage on its own: each
+  #    uploads raw coverage data and `coverage-gate` combines it, because a
+  #    single job's number is meaningless (unit alone never reaches 80%).
   #
   #    The suites used to run in one 18-minute serial job, then as one job per
   #    directory. The integration directory grew to 22-37 minutes and became
-  #    the critical path of every pull request, so it now runs as shards (see
-  #    `test-integration-shards` below). Shards split by whole file, never
-  #    inside one: the suite carries state between tests in the same file, and
-  #    each shard gets a fresh database of its own.
+  #    the critical path of every pull request, so it was split into shards;
+  #    the unit directory then took about 21 minutes on one job and became the
+  #    critical path in turn, so it is sharded the same way. Shards split by
+  #    whole file, never inside one: the suite carries state between tests in
+  #    the same file, and each shard gets a fresh database of its own.
   #
   #    `--timeout` (pytest-timeout) fails a test that runs past it and prints
   #    every thread's stack, headed by the test's id (tests/conftest.py), so a
@@ -649,14 +758,62 @@ jobs:
   #    leaves room for a slow runner. `--durations` prints the slowest each
   #    run, so a test creeping towards the limit is visible before it trips.
   # -------------------------------------------------------------------------
-  test:
-    name: test (${{ matrix.target }})
+  test-frontend:
+    name: test (frontend)
     runs-on: ubuntu-22.04
     timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: apps/frontend/package-lock.json
+
+      - name: Install frontend deps
+        working-directory: apps/frontend
+        run: npm ci --no-audit --no-fund
+
+      - name: Run vitest (with coverage gate ≥ 80%)
+        working-directory: apps/frontend
+        run: npm run test:coverage
+
+      - name: Upload frontend coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          path: apps/frontend/coverage/
+          if-no-files-found: ignore
+          # Consumed by nothing after the run; kept for inspection.
+          retention-days: 7
+
+  # -------------------------------------------------------------------------
+  # 3a) Backend unit tests, split across jobs.
+  #
+  #     The same arrangement as `test-integration-shards` below: one job per
+  #     shard, each with its own Postgres and Redis, `--shard K/N` over whole
+  #     files, N read from `strategy.job-total`. Weights come from
+  #     tests/unit/shard_durations.json when it exists (tests/_shard.py);
+  #     without it every file weighs the same and the shards are only as even
+  #     as the file sizes allow. Three shards bring the 21-minute job to about
+  #     7 minutes of tests plus 2 of setup each, under the integration shards.
+  #
+  #     These run on every pull request, frontend-only ones included, because
+  #     unit tests read apps/frontend (see the `changes` job).
+  #
+  #     Branch protection requires `test (backend-unit)`. That name belongs to
+  #     the aggregate job `test-unit`, not to these.
+  # -------------------------------------------------------------------------
+  test-unit-shards:
+    name: test (backend-unit, shard ${{ matrix.shard }})
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        target: [backend-unit, frontend]
+        shard: [1, 2, 3]
     # Keep services and env identical to test-integration-shards;
     # tests/unit/test_shard_partition.py asserts they match.
     services:
@@ -699,7 +856,6 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Setup Python
-        if: startsWith(matrix.target, 'backend')
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -707,23 +863,20 @@ jobs:
           cache-dependency-path: apps/backend/requirements-dev.txt
 
       - name: Install backend dev deps
-        if: startsWith(matrix.target, 'backend')
         working-directory: apps/backend
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
 
-      # Marathon bundle 3 (D2) — the backup round-trip integration test
-      # (tests/integration/test_backup_task_round_trip.py) runs the real
+      # Marathon bundle 3 (D2): the backup round-trip tests run the real
       # ``pg_dump`` / ``psql`` binaries against the Postgres 17 service
       # container. Ubuntu 22.04 ships pg_dump 14, which refuses with
       # "server version mismatch" against a Postgres 17 server. Add the
       # PGDG apt repo (fingerprint-pinned, same as the worker / backend
       # Dockerfiles) and install postgresql-client-17 so pg_dump matches
-      # the server major version. Without this the round-trip test fails
+      # the server major version. Without this a round-trip test fails
       # in CI even though it passes locally inside the dev container.
       - name: Install postgresql-client-17 (matches Postgres service container)
-        if: startsWith(matrix.target, 'backend')
         run: |
           curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc -o /tmp/pgdg.asc
           gpg --show-keys --with-fingerprint --with-colons /tmp/pgdg.asc \
@@ -737,19 +890,26 @@ jobs:
           sudo apt-get install -y --no-install-recommends postgresql-client-17
           pg_dump --version
 
-      # No per-leg coverage verdict: `--cov-fail-under=0` disables the
-      # pyproject `fail_under` here so a leg cannot fail on a number that only
-      # means something once all legs are combined. `coverage-gate` does the
-      # judging. The data file is renamed to `.coverage.<leg>` so
-      # `coverage combine` picks every leg up without them colliding.
-      - name: Run pytest (${{ matrix.target }})
-        if: matrix.target == 'backend-unit'
+      # No per-shard coverage verdict: `--cov-fail-under=0` disables the
+      # pyproject `fail_under` here so a shard cannot fail on a number that
+      # only means something once every shard is combined. `coverage-gate`
+      # does the judging. The data file name carries K and N
+      # (`.coverage.backend-unit-K-of-N`) so `coverage combine` picks every
+      # shard up without collisions, and coverage-gate can tell whether every
+      # shard's file arrived without knowing N in advance.
+      - name: Run pytest (backend-unit, shard ${{ matrix.shard }})
         working-directory: apps/backend
+        env:
+          SHARD: ${{ matrix.shard }}
+          SHARDS: ${{ strategy.job-total }}
         run: |
           set -euo pipefail
           pytest --cov=. --cov-report= --cov-fail-under=0 \
-            --timeout=300 --timeout-method=thread --durations=15 tests/unit
-          mv .coverage ".coverage.${{ matrix.target }}"
+            --timeout=300 --timeout-method=thread --durations=15 \
+            --shard "$SHARD/$SHARDS" --shard-report shard-report.json \
+            tests/unit
+          mv .coverage ".coverage.backend-unit-$SHARD-of-$SHARDS"
+          mv shard-report.json "shard-report-$SHARD.json"
 
       # v2.1 Track B (B4) — NOTE: there is deliberately NO byte-exact OpenAPI
       # freshness gate here. A previous version ran
@@ -773,46 +933,86 @@ jobs:
       # with a dot, and upload-artifact v4 drops hidden files by default. Without
       # it the gate job downloads nothing and combines nothing.
       - name: Upload backend coverage data
-        if: matrix.target == 'backend-unit'
         uses: actions/upload-artifact@v4
         with:
-          name: backend-coverage-${{ matrix.target }}
-          path: apps/backend/.coverage.${{ matrix.target }}
+          name: backend-coverage-backend-unit-${{ matrix.shard }}
+          path: apps/backend/.coverage.backend-unit-*
           include-hidden-files: true
           if-no-files-found: error
           # Consumed by coverage-gate minutes later; nothing reads them after.
           retention-days: 7
 
-      - name: Setup Node
-        if: matrix.target == 'frontend'
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: npm
-          cache-dependency-path: apps/frontend/package-lock.json
-
-      - name: Install frontend deps
-        if: matrix.target == 'frontend'
-        working-directory: apps/frontend
-        run: npm ci --no-audit --no-fund
-
-      - name: Run vitest (with coverage gate ≥ 80%)
-        if: matrix.target == 'frontend'
-        working-directory: apps/frontend
-        run: npm run test:coverage
-
-      - name: Upload frontend coverage
-        if: matrix.target == 'frontend'
+      - name: Upload shard report
         uses: actions/upload-artifact@v4
         with:
-          name: frontend-coverage
-          path: apps/frontend/coverage/
-          if-no-files-found: ignore
-          # See backend-coverage above.
+          name: backend-unit-shard-report-${{ matrix.shard }}
+          path: apps/backend/shard-report-${{ matrix.shard }}.json
+          if-no-files-found: error
           retention-days: 7
 
   # -------------------------------------------------------------------------
-  # 3a) Backend integration tests, split across jobs (#575).
+  # 3a) The required check `test (backend-unit)`.
+  #
+  #     Green only when every shard succeeded and, between them, the shards
+  #     ran every collected file exactly once; `always()` and the reading of
+  #     anything but `success` as red are explained on `test-integration`.
+  #
+  #     It is also red when the `changes` job did not succeed. The jobs that
+  #     depend on `changes` run when it fails, but nothing else would say that
+  #     it failed, and `changes` is not a required check. This job always runs
+  #     and is required, so it carries that verdict.
+  # -------------------------------------------------------------------------
+  test-unit:
+    name: test (backend-unit)
+    needs: [changes, test-unit-shards]
+    if: always()
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - name: Every shard succeeded
+        env:
+          RESULT: ${{ needs.test-unit-shards.result }}
+          CHANGES: ${{ needs.changes.result }}
+        run: |
+          echo "test-unit-shards: $RESULT, changes: $CHANGES"
+          if [ "$CHANGES" != "success" ]; then
+            echo "::error::the 'changes' job ended '$CHANGES', so which backend jobs ran on this pull request was not decided by it"
+            exit 1
+          fi
+          if [ "$RESULT" != "success" ]; then
+            echo "::error::a backend unit shard ended '$RESULT'; see the 'test (backend-unit, shard K)' jobs"
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: apps/backend/tests
+
+      - name: Download shard reports
+        uses: actions/download-artifact@v4
+        with:
+          pattern: backend-unit-shard-report-*
+          path: /tmp/shard-reports
+          merge-multiple: true
+
+      # The same check the integration aggregate runs. Its durations output is
+      # what tests/unit/shard_durations.json is refreshed from.
+      - name: Every file ran in exactly one shard
+        working-directory: apps/backend
+        run: |
+          python3 -m tests._shard verify /tmp/shard-reports/shard-report-*.json \
+            --durations-out /tmp/shard_durations.json
+
+      - name: Upload measured durations
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-unit-durations
+          path: /tmp/shard_durations.json
+          if-no-files-found: error
+          retention-days: 30
+
+  # -------------------------------------------------------------------------
+  # 3b) Backend integration tests, split across jobs (#575).
   #
   #     Each shard is its own job, so each gets its own Postgres and Redis
   #     service containers: no shard sees another's rows or keys. `--shard K/N`
@@ -820,23 +1020,28 @@ jobs:
   #     tests/integration/shard_durations.json. N is the matrix size, read
   #     from `strategy.job-total`, so adding a shard is one more list entry.
   #     Three was chosen from measured durations: the directory took 22 to 37
-  #     minutes in one job (its tests add up to about 34 minutes) and the unit
-  #     leg takes 12 to 21. Three shards of about 11 minutes of tests plus 2
-  #     of setup each finish before the unit leg, which is then the critical
-  #     path. More shards would cost runners without shortening the run.
+  #     minutes in one job (its tests add up to about 34 minutes). Three
+  #     shards of about 11 minutes of tests plus 2 of setup each are now the
+  #     critical path of a backend pull request; more shards would shorten it
+  #     at the cost of one more runner each.
+  #
+  #     Skipped on a frontend-only pull request: nothing under
+  #     tests/integration reads apps/frontend (see the `changes` job).
   #
   #     Branch protection requires `test (backend-integration)`. That name
   #     belongs to the aggregate job below, not to these.
   # -------------------------------------------------------------------------
   test-integration-shards:
     name: test (backend-integration, shard ${{ matrix.shard }})
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.backend != 'false' }}
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
         shard: [1, 2, 3]
-    # Keep services and env identical to the `test` job;
+    # Keep services and env identical to test-unit-shards;
     # tests/unit/test_shard_partition.py asserts they match.
     services:
       postgres:
@@ -865,7 +1070,7 @@ jobs:
       DATABASE_URL: postgresql+asyncpg://trustedoss:trustedoss@localhost:5432/trustedoss
       REDIS_URL: redis://localhost:6379/0
       SECRET_KEY: ci-fixture-secret-key-for-workflow-runs
-      # See the `test` job.
+      # See test-unit-shards.
       TRUSCA_TESTS_REQUIRE_DB: "1"
     steps:
       - uses: actions/checkout@v4
@@ -883,7 +1088,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
 
-      # See the same step in the `test` job.
+      # See the same step in test-unit-shards.
       - name: Install postgresql-client-17 (matches Postgres service container)
         run: |
           curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc -o /tmp/pgdg.asc
@@ -912,7 +1117,7 @@ jobs:
         with:
           version: v3.16.3
 
-      # Coverage as in the `test` job. The data file name carries K and N
+      # Coverage as in test-unit-shards. The data file name carries K and N
       # (`.coverage.backend-integration-K-of-N`) so coverage-gate can tell
       # whether every shard's file arrived without knowing N in advance.
       - name: Run pytest (backend-integration, shard ${{ matrix.shard }})
@@ -947,7 +1152,7 @@ jobs:
           retention-days: 7
 
   # -------------------------------------------------------------------------
-  # 3a) The required check `test (backend-integration)`.
+  # 3b) The required check `test (backend-integration)`.
   #
   #     Green only when every shard succeeded and, between them, the shards
   #     ran every collected file exactly once. `always()` matters: without it
@@ -956,29 +1161,44 @@ jobs:
   #     `timeout-minutes` ends as cancelled, not failed, so anything other
   #     than `success` is red here. A cancelled workflow run also turns this
   #     red rather than green; that run has been superseded anyway.
+  #
+  #     The one exception: on a frontend-only pull request the shards are
+  #     skipped on purpose, and this job passes saying so. A skip is accepted
+  #     only when `changes` answered `backend=false`; with any other answer
+  #     (including none, when `changes` failed) a skipped shard is red.
   # -------------------------------------------------------------------------
   test-integration:
     name: test (backend-integration)
-    needs: test-integration-shards
+    needs: [changes, test-integration-shards]
     if: always()
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     steps:
       - name: Every shard succeeded
+        id: shards
         env:
           RESULT: ${{ needs.test-integration-shards.result }}
+          BACKEND: ${{ needs.changes.outputs.backend }}
         run: |
-          echo "test-integration-shards: $RESULT"
+          echo "test-integration-shards: $RESULT, backend changed: ${BACKEND:-unknown}"
+          if [ "$BACKEND" = "false" ] && [ "$RESULT" = "skipped" ]; then
+            echo "::notice::every changed file is under apps/frontend/; the integration shards were skipped on purpose"
+            echo "verify=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           if [ "$RESULT" != "success" ]; then
             echo "::error::a backend integration shard ended '$RESULT'; see the 'test (backend-integration, shard K)' jobs"
             exit 1
           fi
+          echo "verify=true" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@v4
+        if: steps.shards.outputs.verify == 'true'
         with:
           sparse-checkout: apps/backend/tests
 
       - name: Download shard reports
+        if: steps.shards.outputs.verify == 'true'
         uses: actions/download-artifact@v4
         with:
           pattern: backend-integration-shard-report-*
@@ -989,12 +1209,14 @@ jobs:
       # each shard's time in tests and its slowest tests, and writes the
       # measured durations for refreshing tests/integration/shard_durations.json.
       - name: Every file ran in exactly one shard
+        if: steps.shards.outputs.verify == 'true'
         working-directory: apps/backend
         run: |
           python3 -m tests._shard verify /tmp/shard-reports/shard-report-*.json \
             --durations-out /tmp/shard_durations.json
 
       - name: Upload measured durations
+        if: steps.shards.outputs.verify == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: backend-integration-durations
@@ -1003,7 +1225,7 @@ jobs:
           retention-days: 30
 
   # -------------------------------------------------------------------------
-  # 3b) Coverage gate — combine the backend legs and judge two thresholds.
+  # 3c) Coverage gate: combine the backend jobs and judge two thresholds.
   #
   #     Global: `coverage report` applies pyproject's `fail_under = 80`, the
   #     same number the single pytest job enforced before the split. Nothing
@@ -1019,10 +1241,17 @@ jobs:
   #     legs write the data files with that version and this job reads them,
   #     so the two pins move together or `combine` fails on a format it does
   #     not recognise.
+  #
+  #     Skipped (reported as passing) on a frontend-only pull request: no
+  #     backend line changed, so there is nothing for diff-cover to score, and
+  #     without the integration shards the global number would be meaningless.
+  #     The `if:` has no status function, so `success()` is implied and the
+  #     gate still waits for every backend test job to pass first.
   # -------------------------------------------------------------------------
   coverage-gate:
     name: coverage-gate (backend)
-    needs: [test, test-integration]
+    needs: [changes, test-unit, test-integration]
+    if: needs.changes.outputs.backend != 'false'
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     steps:
@@ -1040,7 +1269,7 @@ jobs:
       - name: Install coverage tooling
         run: pip install "coverage[toml]==7.15.0" "diff-cover==10.4.1"
 
-      - name: Download coverage data from every leg
+      - name: Download coverage data from every shard
         uses: actions/download-artifact@v4
         with:
           pattern: backend-coverage-*
@@ -1055,19 +1284,29 @@ jobs:
         run: |
           set -euo pipefail
           cp /tmp/coverage-data/.coverage.* .
-          # The unit leg plus integration shards 1..N, each exactly once. N comes
-          # from the file names, so this needs no copy of the matrix size.
+          # Unit shards 1..N and integration shards 1..M, each exactly once. N
+          # and M come from the file names, so this needs no copy of either
+          # matrix size. Any other .coverage.* file is an error too, so nothing
+          # this check did not account for reaches the combine.
           python3 - <<'PY'
           import glob, re, sys
-          names = sorted(glob.glob(".coverage.backend-integration-*"))
-          found = [re.fullmatch(r"\.coverage\.backend-integration-(\d+)-of-(\d+)", n) for n in names]
-          totals = {int(m.group(2)) for m in found if m}
-          ids = sorted(int(m.group(1)) for m in found if m)
-          ok = glob.glob(".coverage.backend-unit") and None not in found and len(totals) == 1
-          if not ok or ids != list(range(1, max(totals) + 1)):
-              sys.exit(f"::error::expected .coverage.backend-unit and one file per integration shard, got {names}")
+          names = sorted(glob.glob(".coverage.*"))
+          problems = []
+          for suite in ("unit", "integration"):
+              pattern = re.compile(rf"\.coverage\.backend-{suite}-(\d+)-of-(\d+)")
+              found = [m for m in map(pattern.fullmatch, names) if m]
+              totals = {int(m.group(2)) for m in found}
+              ids = sorted(int(m.group(1)) for m in found)
+              if len(totals) != 1 or ids != list(range(1, max(totals) + 1)):
+                  problems.append(f"backend-{suite}: expected one file per shard")
+          known = re.compile(r"\.coverage\.backend-(unit|integration)-\d+-of-\d+")
+          strays = [n for n in names if not known.fullmatch(n)]
+          if strays:
+              problems.append(f"unexpected coverage files {strays}")
+          if problems:
+              sys.exit(f"::error::{'; '.join(problems)}; got {names}")
           PY
-          coverage combine .coverage.backend-unit .coverage.backend-integration-*
+          coverage combine .coverage.backend-unit-* .coverage.backend-integration-*
           coverage xml --fail-under=0
           coverage report --show-missing --skip-covered
 
@@ -1102,6 +1341,11 @@ jobs:
   # -------------------------------------------------------------------------
   image-scan:
     name: image-scan (worker)
+    # The build context is apps/backend, so a frontend-only pull request
+    # cannot change the image. Skipped (reported as passing) then; see the
+    # `changes` job.
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.backend != 'false' }}
     runs-on: ubuntu-22.04
     timeout-minutes: 30
     # Chore P (Phase 8 worker-image refresh): HIGH is now HARD FAIL alongside
@@ -1653,11 +1897,14 @@ jobs:
     name: nightly-alert
     if: ${{ always() && github.event_name == 'schedule' }}
     needs:
+      - changes
       - lint
       - shellcheck
       - postgres-init-l1
       - typecheck
-      - test
+      - test-frontend
+      - test-unit-shards
+      - test-unit
       - test-integration-shards
       - test-integration
       - coverage-gate
@@ -1683,11 +1930,14 @@ jobs:
           # something superseded the run, not that a gate found a defect.
           failed: ${{ contains(needs.*.result, 'failure') && 'true' || 'false' }}
           details: |
-            Job results: lint=${{ needs.lint.result }},
+            Job results: changes=${{ needs.changes.result }},
+            lint=${{ needs.lint.result }},
             shellcheck=${{ needs.shellcheck.result }},
             postgres-init-l1=${{ needs.postgres-init-l1.result }},
             typecheck=${{ needs.typecheck.result }},
-            test=${{ needs.test.result }},
+            test-frontend=${{ needs.test-frontend.result }},
+            test-unit-shards=${{ needs.test-unit-shards.result }},
+            test-unit=${{ needs.test-unit.result }},
             test-integration-shards=${{ needs.test-integration-shards.result }},
             test-integration=${{ needs.test-integration.result }},
             coverage-gate=${{ needs.coverage-gate.result }},

@@ -55,6 +55,8 @@ STEPS_NOT_RUN_LOCALLY: dict[str, str] = {
     "and covers the others too",
     "Fetch the base branch for the em-dash diff": "deepens the CI clone; a "
     "local checkout already has the history the diff needs",
+    "Backend unchanged, backend steps skipped": "prints a notice on a "
+    "frontend-only pull request; locally the scope is chosen with --scope",
 }
 
 
