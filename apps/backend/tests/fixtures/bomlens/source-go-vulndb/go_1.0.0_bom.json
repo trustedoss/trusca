@@ -1,0 +1,360 @@
+{
+  "annotations": [
+    {
+      "annotator": {
+        "component": {
+          "authors": [
+            {
+              "name": "OWASP Foundation"
+            }
+          ],
+          "bom-ref": "pkg:npm/@cdxgen/cdxgen@13.5.0",
+          "group": "@cdxgen",
+          "name": "cdxgen",
+          "publisher": "OWASP Foundation",
+          "purl": "pkg:npm/%40cdxgen/cdxgen@13.5.0",
+          "type": "application",
+          "version": "13.5.0"
+        }
+      },
+      "bom-ref": "metadata-annotations",
+      "subjects": [
+        "library:baseline-go-vuln:"
+      ],
+      "text": "This Software Bill-of-Materials (SBOM) document was created on Sunday, November 22, 2026 with cdxgen. The data was captured during the build lifecycle phase. The document describes an application named 'baseline-go-vuln'. The package type in this SBOM is golang with a single purl namespace 'golang.org/x' described under components. The components were identified from the source files: go.mod.",
+      "timestamp": "2026-11-22T04:03:43Z"
+    }
+  ],
+  "bomFormat": "CycloneDX",
+  "components": [
+    {
+      "bom-ref": "pkg:golang/golang.org/x/net@v0.17.0",
+      "copyright": "Copyright (c) 2009 The Go Authors. All rights reserved.",
+      "evidence": {
+        "identity": [
+          {
+            "concludedValue": "go.mod",
+            "confidence": 0.7,
+            "field": "purl",
+            "methods": [
+              {
+                "confidence": 0.7,
+                "technique": "manifest-analysis",
+                "value": "go.mod"
+              }
+            ]
+          }
+        ]
+      },
+      "group": "",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "a5569771cbb6a333e30977b07ebd52ef1cdaff37174e2b72f5c09d5d06128c83"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause",
+            "properties": [
+              {
+                "name": "cdx:license:category",
+                "value": "Permissive"
+              },
+              {
+                "name": "cdx:license:foss",
+                "value": "true"
+              },
+              {
+                "name": "cdx:license:osiApproved",
+                "value": "true"
+              },
+              {
+                "name": "cdx:license:fsfLibre",
+                "value": "true"
+              },
+              {
+                "name": "cdx:license:deprecated",
+                "value": "false"
+              }
+            ],
+            "text": {
+              "content": "Copyright (c) 2009 The Go Authors. All rights reserved.\n\nRedistribution and use in source and binary forms, with or without\nmodification, are permitted provided that the following conditions are\nmet:\n\n   * Redistributions of source code must retain the above copyright\nnotice, this list of conditions and the following disclaimer.\n   * Redistributions in binary form must reproduce the above\ncopyright notice, this list of conditions and the following disclaimer\nin the documentation and/or other materials provided with the\ndistribution.\n   * Neither the name of Google Inc. nor the names of its\ncontributors may be used to endorse or promote products derived from\nthis software without specific prior written permission.\n\nTHIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS\n\"AS IS\" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT\nLIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR\nA PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT\nOWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,\nSPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT\nLIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,\nDATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY\nTHEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT\n(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE\nOF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\n",
+              "contentType": "text/plain"
+            },
+            "url": "https://opensource.org/licenses/BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "golang.org/x/net",
+      "properties": [
+        {
+          "name": "cdx:go:creation_time",
+          "value": "2023-10-10 15:45:19 +0000 UTC"
+        },
+        {
+          "name": "cdx:go:indirect",
+          "value": "false"
+        },
+        {
+          "name": "cdx:license:category",
+          "value": "Permissive"
+        },
+        {
+          "name": "internal:ModuleGoVersion",
+          "value": "1.17"
+        },
+        {
+          "name": "internal:SrcFile",
+          "value": "go.mod"
+        },
+        {
+          "name": "internal:SrcGoMod",
+          "value": "/tmp/sbomhome/go/pkg/mod/cache/download/golang.org/x/net/@v/v0.17.0.mod"
+        },
+        {
+          "name": "bomlens:copyrightSource",
+          "value": "installed license file"
+        },
+        {
+          "name": "bomlens:licenseClass",
+          "value": "permissive"
+        }
+      ],
+      "purl": "pkg:golang/golang.org/x/net@v0.17.0",
+      "scope": "required",
+      "type": "library",
+      "version": "v0.17.0"
+    },
+    {
+      "bom-ref": "pkg:golang/golang.org/x/text@v0.13.0",
+      "copyright": "Copyright (c) 2009 The Go Authors. All rights reserved.",
+      "evidence": {
+        "identity": [
+          {
+            "concludedValue": "go.mod",
+            "confidence": 0.5,
+            "field": "purl",
+            "methods": [
+              {
+                "confidence": 0.5,
+                "technique": "manifest-analysis",
+                "value": "go.mod"
+              }
+            ]
+          }
+        ]
+      },
+      "group": "",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "69b950a1251dd2d45d2b165ec0ff3407e05aa9e289b9586e4718ff764aee9f79"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause",
+            "properties": [
+              {
+                "name": "cdx:license:category",
+                "value": "Permissive"
+              },
+              {
+                "name": "cdx:license:foss",
+                "value": "true"
+              },
+              {
+                "name": "cdx:license:osiApproved",
+                "value": "true"
+              },
+              {
+                "name": "cdx:license:fsfLibre",
+                "value": "true"
+              },
+              {
+                "name": "cdx:license:deprecated",
+                "value": "false"
+              }
+            ],
+            "text": {
+              "content": "Copyright (c) 2009 The Go Authors. All rights reserved.\n\nRedistribution and use in source and binary forms, with or without\nmodification, are permitted provided that the following conditions are\nmet:\n\n   * Redistributions of source code must retain the above copyright\nnotice, this list of conditions and the following disclaimer.\n   * Redistributions in binary form must reproduce the above\ncopyright notice, this list of conditions and the following disclaimer\nin the documentation and/or other materials provided with the\ndistribution.\n   * Neither the name of Google Inc. nor the names of its\ncontributors may be used to endorse or promote products derived from\nthis software without specific prior written permission.\n\nTHIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS\n\"AS IS\" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT\nLIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR\nA PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT\nOWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,\nSPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT\nLIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,\nDATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY\nTHEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT\n(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE\nOF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\n",
+              "contentType": "text/plain"
+            },
+            "url": "https://opensource.org/licenses/BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "golang.org/x/text",
+      "properties": [
+        {
+          "name": "cdx:go:creation_time",
+          "value": "2023-08-28 17:26:32 +0000 UTC"
+        },
+        {
+          "name": "cdx:go:indirect",
+          "value": "true"
+        },
+        {
+          "name": "cdx:license:category",
+          "value": "Permissive"
+        },
+        {
+          "name": "internal:ModuleGoVersion",
+          "value": "1.17"
+        },
+        {
+          "name": "internal:SrcFile",
+          "value": "go.mod"
+        },
+        {
+          "name": "internal:SrcGoMod",
+          "value": "/tmp/sbomhome/go/pkg/mod/cache/download/golang.org/x/text/@v/v0.13.0.mod"
+        },
+        {
+          "name": "bomlens:copyrightSource",
+          "value": "installed license file"
+        },
+        {
+          "name": "bomlens:licenseClass",
+          "value": "permissive"
+        }
+      ],
+      "purl": "pkg:golang/golang.org/x/text@v0.13.0",
+      "scope": "required",
+      "type": "library",
+      "version": "v0.13.0"
+    }
+  ],
+  "dependencies": [
+    {
+      "dependsOn": [
+        "pkg:golang/golang.org/x/text@v0.13.0"
+      ],
+      "ref": "pkg:golang/golang.org/x/net@v0.17.0"
+    },
+    {
+      "dependsOn": [],
+      "ref": "pkg:golang/golang.org/x/text@v0.13.0"
+    },
+    {
+      "dependsOn": [
+        "pkg:golang/golang.org/x/net@v0.17.0"
+      ],
+      "ref": "library:baseline-go-vuln:"
+    }
+  ],
+  "metadata": {
+    "authors": [
+      {
+        "name": "BomLens 1.15.1"
+      }
+    ],
+    "component": {
+      "bom-ref": "library:baseline-go-vuln:",
+      "group": "",
+      "name": "go",
+      "properties": [
+        {
+          "name": "cdx:go:indirect",
+          "value": "false"
+        },
+        {
+          "name": "internal:ModuleGoVersion",
+          "value": "1.21"
+        },
+        {
+          "name": "internal:SrcGoMod",
+          "value": "/app/go.mod"
+        },
+        {
+          "name": "bomlens:source:versionPinning",
+          "value": "pinned"
+        }
+      ],
+      "scope": "required",
+      "type": "application",
+      "version": "1.0.0"
+    },
+    "lifecycles": [
+      {
+        "phase": "pre-build"
+      }
+    ],
+    "properties": [
+      {
+        "name": "cdx:bom:componentNamespaces",
+        "value": "golang.org/x"
+      },
+      {
+        "name": "cdx:bom:componentSrcFiles",
+        "value": "go.mod"
+      },
+      {
+        "name": "cdx:bom:componentTypes",
+        "value": "golang"
+      },
+      {
+        "name": "cdx:bom:inferredRootDependencies",
+        "value": "1"
+      },
+      {
+        "name": "bomlens:prep-step-applied",
+        "value": "go-mod-tidy"
+      },
+      {
+        "name": "bomlens:excluded-paths",
+        "value": "**/test/**, **/tests/**, **/spec/**, **/fixtures/**, **/testdata/**, **/__tests__/**, **/e2e/**, **/example/**, **/examples/**, **/sample/**, **/samples/**, **/bench/**, **/benches/**, **/benchmark/**, **/benchmarks/**, **/demo/**, **/demos/**, **/playground/**, **/.github/workflows/**, **/gradle/wrapper/**, **/vendor/**/package-lock.json"
+      },
+      {
+        "name": "bomlens:undeclared-fields",
+        "value": "unknown-to-author"
+      },
+      {
+        "name": "bomlens:sbom-author-source",
+        "value": "tool"
+      }
+    ],
+    "timestamp": "2026-11-22T04:03:43Z",
+    "tools": {
+      "components": [
+        {
+          "authors": [
+            {
+              "name": "OWASP Foundation"
+            }
+          ],
+          "bom-ref": "pkg:npm/@cdxgen/cdxgen@13.5.0",
+          "group": "@cdxgen",
+          "name": "cdxgen",
+          "publisher": "OWASP Foundation",
+          "purl": "pkg:npm/%40cdxgen/cdxgen@13.5.0",
+          "type": "application",
+          "version": "13.5.0"
+        },
+        {
+          "name": "BomLens",
+          "publisher": "SK Telecom",
+          "type": "application",
+          "version": "1.15.1"
+        }
+      ]
+    }
+  },
+  "serialNumber": "urn:uuid:843aaadf-d2fe-4fce-a08e-4117e78ff39e",
+  "services": [],
+  "specVersion": "1.6",
+  "version": 1,
+  "compositions": [
+    {
+      "aggregate": "complete",
+      "dependencies": [
+        "library:baseline-go-vuln:",
+        "pkg:golang/golang.org/x/net@v0.17.0",
+        "pkg:golang/golang.org/x/text@v0.13.0"
+      ]
+    }
+  ]
+}
