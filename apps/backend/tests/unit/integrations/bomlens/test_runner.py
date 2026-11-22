@@ -227,6 +227,7 @@ def test_stage_1_mounts_only_the_roles_trusca_provides(workspace: Path) -> None:
         "/out",
         "/tmp/build-prep.sh",
         "/tmp/identify-conda.py",
+        "/tmp/read-python-venv.py",
         "/bomlens-state",
         runner_mod.SCRATCH_TARGET,
     }
