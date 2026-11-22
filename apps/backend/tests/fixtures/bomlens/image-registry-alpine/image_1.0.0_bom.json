@@ -3471,9 +3471,14 @@
     }
   ],
   "metadata": {
+    "authors": [
+      {
+        "name": "BomLens 1.15.1"
+      }
+    ],
     "component": {
       "bom-ref": "a17401e89848f647",
-      "name": "docker.io/library/alpine",
+      "name": "alpine",
       "type": "container",
       "version": "3.19.0"
     },
@@ -3486,9 +3491,13 @@
       {
         "name": "bomlens:undeclared-fields",
         "value": "unknown-to-author"
+      },
+      {
+        "name": "bomlens:sbom-author-source",
+        "value": "tool"
       }
     ],
-    "timestamp": "2026-11-20T23:10:43Z",
+    "timestamp": "2026-11-22T02:26:11Z",
     "tools": {
       "components": [
         {
@@ -3501,12 +3510,12 @@
           "name": "BomLens",
           "publisher": "SK Telecom",
           "type": "application",
-          "version": "1.15.0"
+          "version": "1.15.1"
         }
       ]
     }
   },
-  "serialNumber": "urn:uuid:a0e2bb58-53ca-4239-b284-efb1473944da",
+  "serialNumber": "urn:uuid:681fe636-6fd4-44b0-9535-207acc9d572a",
   "specVersion": "1.6",
   "version": 1,
   "compositions": [
