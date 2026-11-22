@@ -465,7 +465,7 @@ def _clean_params(params: dict[str, Any] | None) -> dict[str, Any] | None:
             continue
         if isinstance(value, bool) or value is None:
             cleaned[name] = value
-        elif isinstance(value, (int, float)):
+        elif isinstance(value, int | float):
             cleaned[name] = value
         elif isinstance(value, str):
             cleaned[name] = _truncate(value, _MAX_PARAM_STR)
