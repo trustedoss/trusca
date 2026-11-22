@@ -1,8 +1,9 @@
 """Split a test run across CI jobs, one whole file per job.
 
-CI runs ``tests/integration`` as several jobs (``--shard K/N``), each with its
-own Postgres and Redis. This module decides which files each job runs and,
-afterwards, checks that the jobs between them ran every file exactly once.
+CI runs ``tests/unit`` and ``tests/integration`` each as several jobs
+(``--shard K/N``), each job with its own Postgres and Redis. This module
+decides which files each job runs and, afterwards, checks that the jobs
+between them ran every file exactly once.
 
 Why whole files, rather than individual tests:
 
@@ -15,15 +16,19 @@ Why whole files, rather than individual tests:
   next. A split by test id would assign such tests differently in each job
   and run some twice and others never.
 
-Files are weighted by how long they took (``integration/shard_durations.json``)
-and handed out longest first to the least loaded job. A file missing from the
-durations file gets the median weight, so new files are placed sensibly until
-the next refresh. Within a job, files run in normal collection order.
+Files are weighted by how long they took (``integration/shard_durations.json``
+and ``unit/shard_durations.json``) and handed out longest first to the least
+loaded job. A file missing from the durations files gets the median weight of
+the files that are there, so new files are placed sensibly until the next
+refresh; with no weights at all every file weighs the same. Within a job,
+files run in normal collection order.
 
 Refreshing the weights: every CI run uploads ``backend-integration-durations``
-from the ``test (backend-integration)`` job. Download it and copy it over
-``tests/integration/shard_durations.json``. Stale weights only make the jobs
-less even; they cannot make a file run twice or not at all.
+from the ``test (backend-integration)`` job and ``backend-unit-durations`` from
+the ``test (backend-unit)`` job. Download them and copy them over
+``tests/integration/shard_durations.json`` and
+``tests/unit/shard_durations.json``. Stale weights only make the jobs less
+even; they cannot make a file run twice or not at all.
 
 ``python -m tests._shard verify REPORT...`` is what the aggregate job runs. It
 is standard library only so that job needs no dependencies installed.
@@ -40,6 +45,11 @@ from pathlib import Path
 from typing import Any
 
 DURATIONS_PATH = Path(__file__).resolve().parent / "integration" / "shard_durations.json"
+#: The unit suite's weights. Optional: without it every unit file weighs the
+#: same. Keys are paths from apps/backend, so the two files never collide and
+#: are simply merged.
+UNIT_DURATIONS_PATH = Path(__file__).resolve().parent / "unit" / "shard_durations.json"
+DURATIONS_PATHS: tuple[Path, ...] = (DURATIONS_PATH, UNIT_DURATIONS_PATH)
 
 
 def parse_shard(value: str) -> tuple[int, int]:
@@ -54,11 +64,15 @@ def parse_shard(value: str) -> tuple[int, int]:
     return shard, total
 
 
-def load_durations(path: Path = DURATIONS_PATH) -> dict[str, float]:
-    if not path.is_file():
-        return {}
-    data = json.loads(path.read_text(encoding="utf-8"))
-    return {str(k): float(v) for k, v in data.items()}
+def load_durations(path: Path | None = None) -> dict[str, float]:
+    """Weights from ``path``, or from every file in ``DURATIONS_PATHS``."""
+    paths: tuple[Path, ...] = DURATIONS_PATHS if path is None else (path,)
+    merged: dict[str, float] = {}
+    for candidate in paths:
+        if candidate.is_file():
+            data = json.loads(candidate.read_text(encoding="utf-8"))
+            merged.update({str(k): float(v) for k, v in data.items()})
+    return merged
 
 
 def partition(files: Sequence[str], durations: Mapping[str, float], total: int) -> list[list[str]]:

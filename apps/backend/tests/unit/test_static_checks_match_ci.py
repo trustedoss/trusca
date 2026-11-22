@@ -39,10 +39,16 @@ COVERED_JOBS = ("lint", "typecheck", "shellcheck")
 #: asserts these two lists together account for EVERY job, so adding a job to
 #: ci.yml fails until somebody says which side it belongs on.
 NOT_COVERED_JOBS = {
-    "test": "needs a database and roughly 25 minutes; reproducing it is the "
-    "false confidence this tool exists to avoid",
+    "changes": "decides from the pull request's diff which backend jobs run; "
+    "there is no pull request locally",
+    "test-frontend": "the vitest suite with its coverage threshold, which "
+    "takes minutes and is a test run rather than a static check",
+    "test-unit-shards": "the unit suite split across jobs; needs a database "
+    "each and roughly 20 minutes in total; reproducing it is the false "
+    "confidence this tool exists to avoid",
+    "test-unit": "only aggregates the unit shards' results and reports",
     "test-integration-shards": "the integration suite split across jobs; "
-    "needs a database each, same reason as test",
+    "needs a database each, same reason as test-unit-shards",
     "test-integration": "only aggregates the shards' results and reports",
     "coverage-gate": "consumes the coverage artifacts the test job uploads, so "
     "it cannot run without that job",

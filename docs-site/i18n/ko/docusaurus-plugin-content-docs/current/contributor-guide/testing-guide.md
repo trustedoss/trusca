@@ -144,14 +144,20 @@ pytest --cov=. --cov-report=term-missing --cov-report=xml
 
 **변경된 라인** 기준 line coverage ≥ 80 %를 목표로 합니다. CI는 두 스위트를 별도 잡(`test (backend-unit)`, `test (backend-integration)`)으로 돌리고, `coverage-gate (backend)`가 두 잡의 커버리지 데이터를 합쳐 두 가지를 판정합니다. 전체 트리는 `fail_under = 80`으로, 브랜치가 바꾼 라인은 `diff-cover`로 같은 80 % 기준을 적용합니다. 둘 중 하나라도 미달이면 잡이 실패합니다.
 
-### 통합 테스트 샤드와 테스트별 시간 제한
+### 샤드와 테스트별 시간 제한
 
-CI는 `tests/integration`을 여러 샤드로 나눠 돌립니다. 샤드마다 별도 잡이고, PostgreSQL과 Redis도 각자 따로 씁니다. `pytest --shard K/N`은 파일 단위로만 나누며 `tests/integration/shard_durations.json`의 소요 시간을 가중치로 씁니다. `test (backend-integration)` 잡은 모든 샤드가 성공하고, 수집된 파일이 모든 샤드를 통틀어 정확히 한 번씩 실행됐을 때만 통과합니다. 통합 테스트를 작성할 때는 다음 두 가지를 지킵니다.
+CI는 `tests/unit`과 `tests/integration`을 각각 여러 샤드로 나눠 돌립니다. 샤드마다 별도 잡이고, PostgreSQL과 Redis도 각자 따로 씁니다. `pytest --shard K/N`은 파일 단위로만 나누며 `tests/unit/shard_durations.json`과 `tests/integration/shard_durations.json`의 소요 시간을 가중치로 씁니다. `test (backend-unit)`과 `test (backend-integration)` 잡이 각 샤드의 결과를 모읍니다. 두 잡은 모든 샤드가 성공하고, 수집된 파일이 모든 샤드를 통틀어 정확히 한 번씩 실행됐을 때만 통과합니다. 백엔드 테스트를 작성할 때는 다음 두 가지를 지킵니다.
 
 - 다른 파일이 남긴 행, 키, 파일에 의존하지 않습니다. 두 파일이 서로 다른 샤드에서 실행될 수 있습니다. 한 파일 안의 실행 순서는 이전과 같습니다.
-- 샤드 실패는 같은 옵션으로 로컬에서 재현합니다. 예: `pytest --shard 2/3 tests/integration`.
+- 샤드 실패는 같은 옵션으로 로컬에서 재현합니다. 예: `pytest --shard 2/3 tests/integration`, `pytest --shard 1/3 tests/unit`.
 
-가중치를 갱신하려면 최근 실행의 `backend-integration-durations` 아티팩트를 내려받아 `tests/integration/shard_durations.json`에 덮어씁니다. 가중치가 오래되면 샤드 간 시간 차이가 커질 뿐, 파일이 빠지거나 두 번 실행되지는 않습니다.
+가중치를 갱신하려면 최근 실행의 `backend-unit-durations`와 `backend-integration-durations` 아티팩트를 내려받아 `tests/unit/shard_durations.json`과 `tests/integration/shard_durations.json`에 덮어씁니다. 가중치가 오래되면 샤드 간 시간 차이가 커질 뿐, 파일이 빠지거나 두 번 실행되지는 않습니다. 가중치 파일에 없는 단위 테스트 파일에는 목록에 있는 파일들의 중앙값을 가중치로 씁니다.
+
+### 프런트엔드만 바꾼 풀 리퀘스트
+
+풀 리퀘스트가 바꾼 파일이 모두 `apps/frontend/` 아래에 있으면, CI는 백엔드만 읽는 잡을 건너뜁니다. 대상은 `lint`와 `typecheck`의 백엔드 잡(잡은 시작하지만 단계를 실행하지 않고 통과합니다), 통합 테스트 샤드, `postgres-init L1 role contract`, `image-scan (worker)`, `coverage-gate (backend)`입니다. 브랜치 보호 규칙은 건너뛴 잡을 통과로 봅니다. `test (backend-integration)`은 샤드를 의도적으로 건너뛰었다는 안내를 남기고 통과합니다. 백엔드 단위 테스트 샤드는 그대로 실행합니다. 단위 테스트가 `apps/frontend` 아래 파일(카탈로그 미러, 로캘 파일, `apps/frontend/src` 라이선스 검사)을 읽기 때문입니다. `docs-site/`나 `apps/frontend/` 밖의 파일을 바꾸면 모든 잡이 실행되고, `main` 푸시, 야간 정기 실행, 수동 실행도 마찬가지입니다.
+
+`apps/frontend`를 읽는 백엔드 테스트를 새로 추가한다면 `tests/unit` 아래에 둡니다. `tests/integration` 아래의 테스트는 프런트엔드만 바꾼 풀 리퀘스트에서 실행되지 않으므로, 그 테스트를 깨뜨리는 프런트엔드 변경이 그대로 머지될 수 있습니다.
 
 CI는 모든 백엔드 테스트에 테스트별 시간 제한(`--timeout`, pytest-timeout의 thread 방식)을 겁니다. 제한을 넘긴 테스트가 있으면 실행이 끝나고 모든 스레드의 스택이 출력됩니다. 메인 스레드 스택의 제목이 `MainThread running <테스트 ID>`이므로, 픽스처에서 멈춘 경우에도 어느 테스트인지 알 수 있습니다.
 

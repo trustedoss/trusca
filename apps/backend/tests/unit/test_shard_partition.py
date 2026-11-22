@@ -158,11 +158,32 @@ def test_verify_cli_exit_code_and_durations(tmp_path: Path) -> None:
 
 
 def test_committed_durations_file_parses() -> None:
-    durations = _shard.load_durations()
+    durations = _shard.load_durations(_shard.DURATIONS_PATH)
     assert durations, "tests/integration/shard_durations.json is missing or empty"
     for path, seconds in durations.items():
         assert path.startswith("tests/integration/") and path.endswith(".py"), path
         assert seconds >= 0
+
+
+def test_unit_durations_file_if_committed_parses() -> None:
+    # Optional, so absent is fine; present, it must hold unit files only, or a
+    # misplaced integration file would silently weigh the wrong suite.
+    for path, seconds in _shard.load_durations(_shard.UNIT_DURATIONS_PATH).items():
+        assert path.startswith("tests/unit/") and path.endswith(".py"), path
+        assert seconds >= 0
+
+
+def test_default_load_merges_every_durations_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    first, second = tmp_path / "a.json", tmp_path / "b.json"
+    first.write_text(json.dumps({"tests/integration/test_a.py": 2}), encoding="utf-8")
+    second.write_text(json.dumps({"tests/unit/test_b.py": 3}), encoding="utf-8")
+    monkeypatch.setattr(_shard, "DURATIONS_PATHS", (first, tmp_path / "absent.json", second))
+    assert _shard.load_durations() == {
+        "tests/integration/test_a.py": 2.0,
+        "tests/unit/test_b.py": 3.0,
+    }
 
 
 def test_load_durations_without_a_file(tmp_path: Path) -> None:
@@ -230,43 +251,256 @@ def _jobs() -> dict:
     return jobs
 
 
-def test_shards_get_the_same_services_and_env_as_the_test_job() -> None:
+#: (shard job, aggregate job, required check name, test directory, artifact stem)
+SUITES = [
+    ("test-unit-shards", "test-unit", "test (backend-unit)", "tests/unit", "backend-unit"),
+    (
+        "test-integration-shards",
+        "test-integration",
+        "test (backend-integration)",
+        "tests/integration",
+        "backend-integration",
+    ),
+]
+
+
+def test_shards_get_the_same_services_and_env() -> None:
     jobs = _jobs()
-    assert jobs["test-integration-shards"]["services"] == jobs["test"]["services"]
-    assert jobs["test-integration-shards"]["env"] == jobs["test"]["env"]
+    assert jobs["test-integration-shards"]["services"] == jobs["test-unit-shards"]["services"]
+    assert jobs["test-integration-shards"]["env"] == jobs["test-unit-shards"]["env"]
 
 
-def test_shard_count_comes_from_the_matrix() -> None:
-    shards = _jobs()["test-integration-shards"]
+@pytest.mark.parametrize(("shard_job", "directory"), [(s[0], s[3]) for s in SUITES])
+def test_shard_count_comes_from_the_matrix(shard_job: str, directory: str) -> None:
+    shards = _jobs()[shard_job]
     assert shards["strategy"]["fail-fast"] is False
     matrix = shards["strategy"]["matrix"]["shard"]
     assert matrix == list(range(1, len(matrix) + 1))
     run = next(s for s in shards["steps"] if "pytest" in str(s.get("run", "")))
     assert run["env"]["SHARDS"] == "${{ strategy.job-total }}"
     assert '--shard "$SHARD/$SHARDS"' in run["run"]
-    assert run["run"].rstrip().splitlines()[-3].strip() == "tests/integration"
+    assert run["run"].rstrip().splitlines()[-3].strip() == directory
 
 
-def test_the_required_check_aggregates_every_shard() -> None:
+@pytest.mark.parametrize(("shard_job", "aggregate_job", "check", "stem"), [
+    (s[0], s[1], s[2], s[4]) for s in SUITES
+])
+def test_the_required_check_aggregates_every_shard(
+    shard_job: str, aggregate_job: str, check: str, stem: str
+) -> None:
     jobs = _jobs()
-    aggregate = jobs["test-integration"]
-    assert aggregate["name"] == "test (backend-integration)"
-    assert aggregate["needs"] == "test-integration-shards"
+    aggregate = jobs[aggregate_job]
+    assert aggregate["name"] == check
+    assert set(aggregate["needs"]) == {"changes", shard_job}
     # Without always() a failed shard skips this job, and a skipped required
     # check counts as passing.
     assert aggregate["if"] == "always()"
     first = aggregate["steps"][0]
-    assert first["env"]["RESULT"] == "${{ needs.test-integration-shards.result }}"
+    assert first["env"]["RESULT"] == f"${{{{ needs.{shard_job}.result }}}}"
     assert '[ "$RESULT" != "success" ]' in first["run"]
     assert any("tests._shard verify" in str(s.get("run", "")) for s in aggregate["steps"])
+    download = next(s for s in aggregate["steps"] if "download-artifact" in str(s.get("uses")))
+    assert download["with"]["pattern"] == f"{stem}-shard-report-*"
 
     gate = jobs["coverage-gate"]
-    assert set(gate["needs"]) == {"test", "test-integration"}
-    assert "test-integration-shards" in jobs["nightly-alert"]["needs"]
+    assert set(gate["needs"]) == {"changes", "test-unit", "test-integration"}
+    assert shard_job in jobs["nightly-alert"]["needs"]
     # A failed `verify` leaves every shard green, so the alert must also see
     # the aggregator.
-    assert "test-integration" in jobs["nightly-alert"]["needs"]
+    assert aggregate_job in jobs["nightly-alert"]["needs"]
     # No other job may carry the required check's name.
-    names = [j.get("name") for k, j in jobs.items() if k != "test-integration"]
-    assert "test (backend-integration)" not in names
-    assert "backend-integration" not in jobs["test"]["strategy"]["matrix"]["target"]
+    names = [j.get("name") for k, j in jobs.items() if k != aggregate_job]
+    assert check not in names
+
+
+def test_the_frontend_test_job_keeps_its_required_name() -> None:
+    jobs = _jobs()
+    frontend = [k for k, j in jobs.items() if j.get("name") == "test (frontend)"]
+    assert frontend == ["test-frontend"]
+    assert "strategy" not in jobs["test-frontend"]
+
+
+# The frontend-only skip (the `changes` job in ci.yml). A required check that
+# is skipped counts as passing, so each of these is a way for a pull request
+# to merge with a backend check that never ran.
+
+#: Jobs that a frontend-only pull request may skip outright.
+SKIPPABLE = {
+    "test-integration-shards",
+    "postgres-init-l1",
+    "image-scan",
+}
+#: Matrix jobs whose backend leg must start (so it reports) and skip its steps.
+STEP_GATED = {"lint", "typecheck"}
+
+
+def test_changes_answers_true_unless_a_pull_request_is_frontend_only() -> None:
+    changes = _jobs()["changes"]
+    assert changes["outputs"]["backend"] == "${{ steps.classify.outputs.backend }}"
+    run = next(s for s in changes["steps"] if s.get("id") == "classify")["run"]
+    # The default, and the only place it is turned off.
+    assert run.count("backend=true") == 1 and run.count("backend=false") == 1
+    assert '[ "$EVENT" = "pull_request" ]' in run
+    assert "--no-renames" in run
+    assert "^apps/frontend/" in run
+    assert "docs-site" not in run
+
+
+def test_the_changes_job_classifies_a_real_merge(tmp_path: Path) -> None:
+    """Run the workflow's own script against a merge commit, both ways."""
+    script = next(s for s in _jobs()["changes"]["steps"] if s.get("id") == "classify")["run"]
+
+    def git(*args: str) -> None:
+        subprocess.run(  # noqa: S603 - fixed argv
+            ["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid", *args],  # noqa: S607
+            cwd=tmp_path,
+            check=True,
+            capture_output=True,
+        )
+
+    def classify(event: str, *changed: str) -> str:
+        git("checkout", "-q", "-B", "base", "root")
+        git("checkout", "-q", "-B", "topic", "root")
+        for name in changed:
+            target = tmp_path / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(name, encoding="utf-8")
+        git("add", "-A")
+        git("commit", "-q", "-m", "change")
+        git("checkout", "-q", "base")
+        git("merge", "-q", "--no-ff", "-m", "merge", "topic")
+        output = tmp_path.parent / f"{tmp_path.name}-output"
+        output.write_text("", encoding="utf-8")
+        subprocess.run(  # noqa: S603 - fixed argv
+            ["bash", "-c", script],  # noqa: S607
+            cwd=tmp_path,
+            env={"EVENT": event, "GITHUB_OUTPUT": str(output), "PATH": "/usr/bin:/bin"},
+            check=True,
+            capture_output=True,
+        )
+        return output.read_text(encoding="utf-8").strip()
+
+    git("init", "-q")
+    (tmp_path / "README").write_text("root", encoding="utf-8")
+    (tmp_path / "apps/backend").mkdir(parents=True)
+    (tmp_path / "apps/backend/moved.py").write_text("x", encoding="utf-8")
+    git("add", "-A")
+    git("commit", "-q", "-m", "root")
+    git("branch", "root")
+
+    assert classify("pull_request", "apps/frontend/src/a.ts") == "backend=false"
+    assert classify("pull_request", "apps/frontend/a.ts", "apps/backend/b.py") == "backend=true"
+    assert classify("pull_request", "docs-site/docs/a.md") == "backend=true"
+    assert classify("pull_request", "apps/frontend-other/a.ts") == "backend=true"
+    assert classify("push", "apps/frontend/src/a.ts") == "backend=true"
+    assert classify("schedule", "apps/frontend/src/a.ts") == "backend=true"
+    assert classify("workflow_dispatch", "apps/frontend/src/a.ts") == "backend=true"
+
+    # A rename out of apps/backend lists the deleted side too.
+    git("checkout", "-q", "-B", "topic", "root")
+    (tmp_path / "apps/frontend").mkdir(parents=True, exist_ok=True)
+    git("mv", "apps/backend/moved.py", "apps/frontend/moved.py")
+    git("commit", "-q", "-m", "move")
+    git("checkout", "-q", "-B", "base", "root")
+    git("merge", "-q", "--no-ff", "-m", "merge", "topic")
+    output = tmp_path.parent / f"{tmp_path.name}-output"
+    output.write_text("", encoding="utf-8")
+    env = {"EVENT": "pull_request", "GITHUB_OUTPUT": str(output), "PATH": "/usr/bin:/bin"}
+    subprocess.run(["bash", "-c", script], cwd=tmp_path, env=env, check=True)  # noqa: S603,S607
+    assert output.read_text(encoding="utf-8").strip() == "backend=true"
+
+    # Not a merge commit: its parent is not the base, so the diff against it
+    # says nothing about the pull request. A frontend-only commit on top of
+    # the root makes that diff look frontend-only, so this fails unless the
+    # merge check itself is what answers true.
+    git("checkout", "-q", "-B", "linear", "root")
+    (tmp_path / "apps/frontend").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "apps/frontend/linear.ts").write_text("x", encoding="utf-8")
+    git("add", "-A")
+    git("commit", "-q", "-m", "linear")
+    output.write_text("", encoding="utf-8")
+    subprocess.run(["bash", "-c", script], cwd=tmp_path, env=env, check=True)  # noqa: S603,S607
+    assert output.read_text(encoding="utf-8").strip() == "backend=true"
+
+
+@pytest.mark.parametrize("job", sorted(SKIPPABLE))
+def test_skippable_jobs_skip_only_on_an_explicit_false(job: str) -> None:
+    spec = _jobs()[job]
+    needs = spec["needs"] if isinstance(spec["needs"], list) else [spec["needs"]]
+    assert "changes" in needs
+    # `!cancelled()` makes a failed `changes` job run this rather than skip it,
+    # and `!= 'false'` makes an empty answer run it too.
+    assert spec["if"] == "${{ !cancelled() && needs.changes.outputs.backend != 'false' }}"
+
+
+def test_coverage_gate_skips_only_on_an_explicit_false() -> None:
+    gate = _jobs()["coverage-gate"]
+    # No status function: success() is implied, so the gate still waits for
+    # every backend test job to pass.
+    assert gate["if"] == "needs.changes.outputs.backend != 'false'"
+
+
+@pytest.mark.parametrize("job", sorted(STEP_GATED))
+def test_matrix_backend_legs_always_start(job: str) -> None:
+    spec = _jobs()[job]
+    assert spec["strategy"]["matrix"]["target"] == ["backend", "frontend"]
+    assert spec["if"] == "${{ !cancelled() }}"
+    assert spec["env"]["BACKEND_LEG"] == (
+        "${{ matrix.target == 'backend' && needs.changes.outputs.backend != 'false' }}"
+    )
+    for step in spec["steps"]:
+        condition = str(step.get("if", ""))
+        # Every backend step goes through BACKEND_LEG; a step still keyed on
+        # the bare matrix target would run on a frontend-only pull request,
+        # and one keyed on nothing would run on the frontend leg too.
+        assert condition != "matrix.target == 'backend'", step.get("name")
+
+
+@pytest.mark.parametrize("job", ["test-unit-shards", "test-frontend", "test-unit"])
+def test_jobs_that_read_apps_frontend_are_never_skipped(job: str) -> None:
+    spec = _jobs()[job]
+    assert "needs.changes.outputs.backend" not in str(spec.get("if", ""))
+
+
+def test_the_integration_aggregate_accepts_a_skip_only_when_told_to() -> None:
+    first = _jobs()["test-integration"]["steps"][0]
+    assert first["env"]["BACKEND"] == "${{ needs.changes.outputs.backend }}"
+    assert '[ "$BACKEND" = "false" ] && [ "$RESULT" = "skipped" ]' in first["run"]
+
+    def run(result: str, backend: str) -> int:
+        return subprocess.run(  # noqa: S603 - fixed argv
+            ["bash", "-c", first["run"]],  # noqa: S607
+            env={
+                "RESULT": result,
+                "BACKEND": backend,
+                "GITHUB_OUTPUT": "/dev/null",
+                "PATH": "/usr/bin:/bin",
+            },
+            capture_output=True,
+            check=False,
+        ).returncode
+
+    assert run("skipped", "false") == 0
+    assert run("success", "true") == 0
+    assert run("skipped", "true") != 0
+    assert run("skipped", "") != 0
+    assert run("failure", "false") != 0
+    assert run("cancelled", "false") != 0
+
+
+def test_the_unit_aggregate_is_red_when_changes_did_not_succeed() -> None:
+    first = _jobs()["test-unit"]["steps"][0]
+    assert first["env"]["CHANGES"] == "${{ needs.changes.result }}"
+
+    def run(result: str, changes: str) -> int:
+        return subprocess.run(  # noqa: S603 - fixed argv
+            ["bash", "-c", first["run"]],  # noqa: S607
+            env={"RESULT": result, "CHANGES": changes, "PATH": "/usr/bin:/bin"},
+            capture_output=True,
+            check=False,
+        ).returncode
+
+    assert run("success", "success") == 0
+    assert run("success", "failure") != 0
+    assert run("success", "skipped") != 0
+    assert run("failure", "success") != 0
