@@ -65,6 +65,9 @@ export interface ApprovalOut {
    * requester id at all.
    */
   requested_by_name?: string | null;
+  /** Single-row endpoints only: the drawer names the team and the decider. */
+  team_name?: string | null;
+  decided_by_name?: string | null;
 }
 
 export interface ApprovalListPage {

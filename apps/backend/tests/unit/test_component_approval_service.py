@@ -45,6 +45,7 @@ from services.component_approval_service import (
     ApprovalTerminalState,
     create_approval,
     delete_approval,
+    fill_single_display_fields,
     get_approval,
     list_approvals,
     resolve_requester_name,
@@ -1045,3 +1046,31 @@ async def test_single_approval_name_is_none_without_a_requester(
     """An approval the pipeline raised has no user id, and no name to find."""
     assert await resolve_requester_name(session, None) is None
     assert await resolve_requester_name(session, uuid.uuid4()) is None
+
+
+@pytest.mark.asyncio
+async def test_single_approval_display_fields_name_every_id(
+    session: AsyncSession,
+    team_a,
+    project_a,
+    component,
+):
+    """The drawer shows names, not ids, for component, project, team and requester."""
+    from schemas.approvals import ApprovalOut
+
+    named = await make_user(session, full_name="Jin Park")
+    await make_membership(session, user=named, team=team_a, role="developer")
+    actor = principal_for(named, team_ids=[team_a.id], role="developer")
+    created = await create_approval(
+        session, actor, component_id=component.id, project_id=project_a.id
+    )
+
+    body = ApprovalOut.model_validate(created)
+    await fill_single_display_fields(session, created, body)
+
+    assert body.component_name == component.name
+    assert body.component_purl == component.purl
+    assert body.project_name == project_a.name
+    assert body.team_name == team_a.name
+    assert body.requested_by_name == "Jin Park"
+    assert body.decided_by_name is None

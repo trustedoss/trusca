@@ -67,6 +67,10 @@ class ApprovalOut(BaseModel):
     # as the fields above, plus a third: an approval can carry no requester id
     # at all when it was raised by automation.
     requested_by_name: str | None = None
+    # Set by the single-row endpoints only, so the drawer can name the team and
+    # the decider instead of printing their ids.
+    team_name: str | None = None
+    decided_by_name: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
