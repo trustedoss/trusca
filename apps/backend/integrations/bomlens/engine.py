@@ -70,7 +70,7 @@ from core.config import (
     trusca_instance_id,
     workspace_root,
 )
-from integrations.bomlens.contract import BomLensError, clip
+from integrations.bomlens import contract
 from integrations.bomlens.runner import (
     ERROR_TAIL_LINE_CHARS,
     ERROR_TAIL_LINES,
@@ -154,7 +154,7 @@ def _message(exc: Exception) -> str:
     return text if len(text) <= _MESSAGE_MAX_CHARS else text[: _MESSAGE_MAX_CHARS - 3] + "..."
 
 
-class BomLensEngineError(BomLensError):
+class BomLensEngineError(contract.BomLensError):
     """The engine could not be run, or left nothing a scan can use."""
 
 
@@ -177,8 +177,8 @@ def stage1_image_prefix(value: str) -> str | None:
         return None
     if len(text) > _STAGE1_PREFIX_MAX_CHARS or _STAGE1_PREFIX_RE.fullmatch(text) is None:
         raise BomLensEngineError(
-            f"SCAN_BOMLENS_STAGE1_IMAGE_PREFIX={clip(text)!r} is not a registry host followed "
-            "by a repository path (for example registry.example/mirror/cdxgen/)"
+            f"SCAN_BOMLENS_STAGE1_IMAGE_PREFIX={contract.clip(text)!r} is not a registry "
+            "host followed by a repository path (for example registry.example/mirror/cdxgen/)"
         )
     return text if text.endswith("/") else text + "/"
 
@@ -277,7 +277,7 @@ def _volumes() -> tuple[Volume, Volume | None, DockerOptions]:
         )
         return Volume(_WORKSPACE_VOLUME, root), Volume(_TRIVY_VOLUME, cache), options
     raise BomLensEngineError(
-        f"SCAN_DOCKER_VOLUME_STRATEGY={clip(strategy)!r} is not usable by the BomLens "
+        f"SCAN_DOCKER_VOLUME_STRATEGY={contract.clip(strategy)!r} is not usable by the BomLens "
         "engine (use named or bind)"
     )
 
