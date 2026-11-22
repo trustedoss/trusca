@@ -40,7 +40,7 @@ structlog==24.4.0
 # Standard library only. The version is the BomLens release it ships with and
 # must match the engine image pins in core/config.py (tests/unit/integrations/
 # bomlens/test_engine_adapter.py).
-bomlens-runner==1.15.1
+bomlens-runner==1.15.3
 httpx==0.28.1
 # python-multipart 0.0.27 fixes CVE-2026-42561 (DoS via boundary parsing in
 # multipart/form-data). 0.0.22 still ships the regression. 0.0.20 was the

@@ -22,7 +22,7 @@
         "pkg:npm/baseline-mixed-policy-fixture@1.0.0"
       ],
       "text": "This Software Bill-of-Materials (SBOM) document was created on Sunday, November 22, 2026 with cdxgen. The data was captured during the build lifecycle phase. The document describes an application named 'baseline-mixed-policy-fixture' with version '1.0.0'.",
-      "timestamp": "2026-11-22T02:27:22Z"
+      "timestamp": "2026-11-22T22:25:42Z"
     }
   ],
   "bomFormat": "CycloneDX",
@@ -93,7 +93,7 @@
   "metadata": {
     "authors": [
       {
-        "name": "BomLens 1.15.1"
+        "name": "BomLens 1.15.3"
       }
     ],
     "component": {
@@ -144,7 +144,7 @@
         "value": "tool"
       }
     ],
-    "timestamp": "2026-11-22T02:27:22Z",
+    "timestamp": "2026-11-22T22:25:42Z",
     "tools": {
       "components": [
         {
@@ -165,12 +165,12 @@
           "name": "BomLens",
           "publisher": "SK Telecom",
           "type": "application",
-          "version": "1.15.1"
+          "version": "1.15.3"
         }
       ]
     }
   },
-  "serialNumber": "urn:uuid:179aeea3-ee5c-4a1b-82e8-af94077fb01a",
+  "serialNumber": "urn:uuid:3e394179-0d23-4276-be0e-a4a8044675ec",
   "services": [],
   "specVersion": "1.6",
   "version": 1,

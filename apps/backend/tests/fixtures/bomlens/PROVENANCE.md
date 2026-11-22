@@ -103,22 +103,22 @@ days in the stale database's detail.
 
 ### Contract 1.4.0 images
 
-The BomLens v1.15.1 release, both images built from the same commit:
+The BomLens v1.15.3 release, both images built from the same commit:
 
 | | |
 |---|---|
-| Image | `ghcr.io/sktelecom/bomlens:1.15.1` |
-| Digest | `sha256:fae9b3b6e1e023534470f6092a65b61af821b68a0f432d96f27945e96d334e17` (index; the linux/arm64 manifest ran) |
-| Deep-license image | `ghcr.io/sktelecom/bomlens-deep-license:1.15.1` |
-| Deep-license digest | `sha256:83535a425de42c685004ff05d54072e3d96a2a5ff250589a1467437018291808` (index; the linux/arm64 manifest ran) |
-| Source commit | image label `org.opencontainers.image.revision=fb0125cd`, the commit the `v1.15.1` tag in `sktelecom/bomlens` names (engine contract `1.4.0`) |
+| Image | `ghcr.io/sktelecom/bomlens:1.15.3` |
+| Digest | `sha256:9a857b20f348c6b1ceae554c6566165c35cf24a71b12fb488b8a0e39aac7cf89` (index; the linux/arm64 manifest ran) |
+| Deep-license image | `ghcr.io/sktelecom/bomlens-deep-license:1.15.3` |
+| Deep-license digest | `sha256:4f5bacb77ef12ffe2c768c3a297671fe373db20c23d0753fd8e15a432e0a705f` (index; the linux/arm64 manifest ran) |
+| Source commit | image label `org.opencontainers.image.revision=87fb64f3`, the commit the `v1.15.3` tag in `sktelecom/bomlens` names (engine contract `1.4.0`) |
 | Trivy in the image | 0.75.0 |
-| Trivy database | schema 2, `UpdatedAt` 2026-11-22T01:10Z, downloaded with Trivy 0.76.1 `trivy image --download-db-only`, mounted read-only at `/trivy-db` |
+| Trivy database | schema 2, `UpdatedAt` 2026-11-22T19:00Z, downloaded with Trivy 0.76.1 `trivy image --download-db-only`, mounted read-only at `/trivy-db` |
 
 Used for `image-os-licenses`, `source-trivy-db`, `source-trivy-db-stale`,
 `image-registry-alpine` and `source-deep-license-trivy-db`, captured on
-2026-11-22. The source cases ran through the `bomlens-runner` package
-`1.15.1` from PyPI on Docker, which runs the plan's stages with the same
+2026-11-23. The source cases ran through the `bomlens-runner` package
+`1.15.3` from PyPI on Docker, which runs the plan's stages with the same
 mounts and limits as before, with `fetch_license=False` and `BOMLENS_TRIVY_DB_MAX_AGE_DAYS=9` for stage 2
 and, for the deep-license case, `LICENSE_REGISTRY=true` and
 `LICENSE_REGISTRY_BUDGET=0`. The image cases ran through the same package's
@@ -127,12 +127,12 @@ network's TLS-inspection CA bundle given as the policy's `extra_ca_file`, which
 the package mounts read-only and names in `BOMLENS_EXTRA_CA_CERTS`; no capture
 records its path. `source-trivy-db-stale`
 used a copy of the same database whose `metadata.json` dates are twelve days
-earlier (`UpdatedAt` 2026-11-10T01:10Z).
+earlier (`UpdatedAt` 2026-11-10T19:00Z).
 
 They replace captures of the same cases from the `1.13.5` release
 (2026-10-15). The steps, statuses, reasons and details are the same, with one
 new step in every manifest: `go-vulndb`, `skipped` (`no_input`, "no Go module
-in the SBOM"). The manifests say contract `1.4.0` and the engine `1.15.1`.
+in the SBOM"). The manifests say contract `1.4.0` and the engine `1.15.3`.
 The stage 1 image of the source cases is `cdxgen-alpine-node24:13.5.0`. The
 findings follow the newer database: `node` has two CVEs (`CVE-2025-13465`,
 `CVE-2026-4800`; `CVE-2026-2950` is no longer reported), and the distroless
@@ -201,7 +201,7 @@ output folder at `/host-output` and a Trivy cache folder at `/trivy-db`
 | `source-trivy-db-stale` | `node` | The same stage 1 output and stage 2 command, with a different folder at `/trivy-db`: the same `trivy.db` (a hard link) beside a `db/metadata.json` whose `UpdatedAt`, `NextUpdate` and `DownloadedAt` are twelve days earlier (`UpdatedAt` 2026-10-03T01:13:01Z) | `succeeded_degraded`; the same 3 CVEs in the report, but `scan-security` degraded (`unavailable`, "the Trivy database is 12 days old (over 9)") |
 
 | `source-deep-license-trivy-db` | `scancode-mixed-policy` with the two input changes described for `source-deep-license` (`"license": "MIT"` removed from lodash in `package-lock.json`, a `test/package.json` declaring `mocha` 10.2.0 as a dev dependency) | Stage 1 as for `source-trivy-db`, with `PROJECT_NAME=mixed` and `/out/mixed_1.0.0_bom.json`. Stage 2 as for `source-trivy-db` (`--network none`, the fresh database at `/trivy-db`, `PROJECT_NAME=mixed`, `BOMLENS_RUN_INPUT=mixed_1.0.0_bom.json`), run on the deep-license image with `-e DEEP_LICENSE=true -e LICENSE_REGISTRY=true -e LICENSE_REGISTRY_BUDGET=0` | `succeeded_degraded`; 1 component, 3 CVEs; `deep-license` ok with the same three detections as `source-deep-license`; `license-registry` degraded `budget_exhausted` with `budget_reached` 1; `bomlens:excluded-manifests` names `test/package.json` |
-| `source-go-vulndb` | A Go module with two components: `golang.org/x/net` v0.17.0 and `golang.org/x/text` v0.13.0 (`go.mod` requires the first, `go.sum` written by `go mod tidy` in `golang:1.21-alpine`; `main.go` imports `golang.org/x/net/http2`) | Through the `bomlens-runner` 1.15.1 package on Docker, as `source-trivy-db`, with `fetch_license=False` and the fresh Trivy database; captured 2026-11-22 | `succeeded`; 1 SBOM of 2 components, 23 CVEs from Trivy; `go-vulndb` ok (`components` 2, `findings` 0, `already_reported` 23), so the Go database found nothing Trivy had not and `*_security_govulndb.json` (role `vulnerabilities.other`) has no entries. The Go database export was taken 2026-11-21 (`GoVulnDB.Taken`) from the image's bundled snapshot. On the 1.15.0 image the same scan recorded `go-vulndb` degraded because the age counted from the `index/db.json` date (BomLens #1107). |
+| `source-go-vulndb` | A Go module with two components: `golang.org/x/net` v0.17.0 and `golang.org/x/text` v0.13.0 (`go.mod` requires the first, `go.sum` written by `go mod tidy` in `golang:1.21-alpine`; `main.go` imports `golang.org/x/net/http2`) | Through the `bomlens-runner` 1.15.3 package on Docker, as `source-trivy-db`, with `fetch_license=False` and the fresh Trivy database; captured 2026-11-23, with `GOPROXY` pointing at a plain-HTTP copy of the two modules' download cache and `GOSUMDB=off`, because the capturing network inspects TLS | `succeeded`; 1 SBOM of 2 components, 23 CVEs from Trivy; `go-vulndb` ok (`components` 2, `findings` 0, `already_reported` 23), so the Go database found nothing Trivy had not and `*_security_govulndb.json` (role `vulnerabilities.other`) has no entries. The Go database export was taken from the image's bundled snapshot (`GoVulnDB.Taken` in the report). On the 1.15.0 image the same scan recorded `go-vulndb` degraded because the age counted from the `index/db.json` date (BomLens #1107). |
 
 The input of `source-trivy-db-stale` was changed on purpose: the database
 date is the one thing that differs between the two source cases. The output

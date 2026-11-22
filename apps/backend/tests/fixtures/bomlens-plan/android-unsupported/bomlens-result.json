@@ -4,9 +4,9 @@
     "version": "1.4.0"
   },
   "engine": {
-    "version": "1.15.1",
-    "image": "ghcr.io/sktelecom/bomlens:1.15.1",
-    "image_digest": "sha256:fae9b3b6e1e023534470f6092a65b61af821b68a0f432d96f27945e96d334e17"
+    "version": "1.15.3",
+    "image": "ghcr.io/sktelecom/bomlens:1.15.3",
+    "image_digest": "sha256:9a857b20f348c6b1ceae554c6566165c35cf24a71b12fb488b8a0e39aac7cf89"
   },
   "input": {
     "kind": "source",
@@ -16,8 +16,8 @@
   "run": {
     "status": "succeeded_degraded",
     "reason": "step_failed_or_degraded",
-    "started_at": "2026-11-22T02:28:22Z",
-    "ended_at": "2026-11-22T02:28:22Z",
+    "started_at": "2026-11-22T22:30:49Z",
+    "ended_at": "2026-11-22T22:30:49Z",
     "exit_code": 0
   },
   "steps": [
@@ -26,8 +26,8 @@
       "status": "skipped",
       "reason": "not_installed",
       "detail": "Android needs a locally built SDK image (bomlens-android-sdk34); it is not published",
-      "started_at": "2026-11-22T02:28:22Z",
-      "ended_at": "2026-11-22T02:28:22Z",
+      "started_at": "2026-11-22T22:30:49Z",
+      "ended_at": "2026-11-22T22:30:49Z",
       "stage": 2
     }
   ],
@@ -43,7 +43,7 @@
     {
       "role": "plan",
       "path": "bomlens-plan.json",
-      "sha256": "d11ae96cbabbc6603e2f5c7d5774b3d2195ad7b3d330b1c118de5870cba45782",
+      "sha256": "e78cb58bf7bba320f44a8ae35ee0cec1e92a8f1985ded273e5f13810f67884c7",
       "bytes": 6454
     }
   ]

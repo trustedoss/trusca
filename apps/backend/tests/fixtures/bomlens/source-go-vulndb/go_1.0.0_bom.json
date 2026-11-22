@@ -22,7 +22,7 @@
         "library:baseline-go-vuln:"
       ],
       "text": "This Software Bill-of-Materials (SBOM) document was created on Sunday, November 22, 2026 with cdxgen. The data was captured during the build lifecycle phase. The document describes an application named 'baseline-go-vuln'. The package type in this SBOM is golang with a single purl namespace 'golang.org/x' described under components. The components were identified from the source files: go.mod.",
-      "timestamp": "2026-11-22T04:03:43Z"
+      "timestamp": "2026-11-22T22:30:18Z"
     }
   ],
   "bomFormat": "CycloneDX",
@@ -249,7 +249,7 @@
   "metadata": {
     "authors": [
       {
-        "name": "BomLens 1.15.1"
+        "name": "BomLens 1.15.3"
       }
     ],
     "component": {
@@ -317,7 +317,7 @@
         "value": "tool"
       }
     ],
-    "timestamp": "2026-11-22T04:03:43Z",
+    "timestamp": "2026-11-22T22:30:18Z",
     "tools": {
       "components": [
         {
@@ -338,12 +338,12 @@
           "name": "BomLens",
           "publisher": "SK Telecom",
           "type": "application",
-          "version": "1.15.1"
+          "version": "1.15.3"
         }
       ]
     }
   },
-  "serialNumber": "urn:uuid:843aaadf-d2fe-4fce-a08e-4117e78ff39e",
+  "serialNumber": "urn:uuid:78d3ad06-2f32-4417-942d-7d5851fb7404",
   "services": [],
   "specVersion": "1.6",
   "version": 1,

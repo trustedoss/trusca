@@ -153,9 +153,9 @@ billiard==4.2.4 \
     --hash=sha256:525b42bdec68d2b983347ac312f892db930858495db601b5836ac24e6477cde5 \
     --hash=sha256:55f542c371209e03cd5862299b74e52e4fbcba8250ba611ad94276b369b6a85f
     # via celery
-bomlens-runner==1.15.1 \
-    --hash=sha256:0ef43bd3fe1f094851b15d6cca16e33702613bd6e98f8130a9ef9b0fa99c263d \
-    --hash=sha256:fae2800024dd8688c7035a732b076d210456d6d12e07f614e25dffb4f9146f8d
+bomlens-runner==1.15.3 \
+    --hash=sha256:6acd2eda6ea6c96f0a15e32c5ab391d2514ad6ce75d5b2b8e5b1c3a3cade9de3 \
+    --hash=sha256:ff0c95855600d19ca063fda2d6b1207e92ef6bd13626016373123c7f610e3506
     # via -r requirements.txt
 brotli==1.2.1 \
     --hash=sha256:0023348c448140a6ea71615eba331835c971d38ae8acf8a89b4e963b1f38f131 \
