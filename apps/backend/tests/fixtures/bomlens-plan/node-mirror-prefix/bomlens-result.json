@@ -16,8 +16,8 @@
   "run": {
     "status": "succeeded",
     "reason": null,
-    "started_at": "2026-11-22T02:28:21Z",
-    "ended_at": "2026-11-22T02:28:22Z",
+    "started_at": "2026-11-22T03:09:26Z",
+    "ended_at": "2026-11-22T03:09:27Z",
     "exit_code": 0
   },
   "steps": [
@@ -26,8 +26,8 @@
       "status": "ok",
       "reason": null,
       "detail": null,
-      "started_at": "2026-11-22T02:28:21Z",
-      "ended_at": "2026-11-22T02:28:22Z",
+      "started_at": "2026-11-22T03:09:26Z",
+      "ended_at": "2026-11-22T03:09:27Z",
       "stage": 2
     }
   ],
@@ -43,8 +43,8 @@
     {
       "role": "plan",
       "path": "bomlens-plan.json",
-      "sha256": "fb8276386fa77bff6dd2383b23948f72921920f2fbc89409ca495dc106de0e24",
-      "bytes": 21792
+      "sha256": "fedf25c9f21de4d83e5d8cff4d7197e69aab7db0466cad004fba9a8ec6e30d92",
+      "bytes": 21808
     }
   ]
 }

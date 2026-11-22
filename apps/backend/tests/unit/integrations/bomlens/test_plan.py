@@ -527,6 +527,20 @@ def test_the_captured_stage_2_env_and_passthrough_are_what_trusca_keeps() -> Non
         "BOMLENS_GO_VULNDB_PATH",
         "BOMLENS_GO_VULNDB_MAX_AGE_DAYS",
         "BOMLENS_GO_VULNDB_URL",
+        # BomLens v1.15.1 adds the build tool choice, the installed Maven
+        # repository, Gradle cache and Python environment, the Node.js
+        # installed lock file, the registry probe and license fetch timeouts
+        # and the CocoaPods license lookup. TRUSCA sets none of them.
+        "BOMLENS_BUILD_TOOL",
+        "BOMLENS_MAVEN_USER_REPOSITORY",
+        "BOMLENS_MAVEN_PROBE_TIMEOUT",
+        "BOMLENS_GRADLE_USER_CACHE",
+        "BOMLENS_PYTHON_VENV",
+        "BOMLENS_NODE_INSTALLED_LOCK",
+        "BOMLENS_LICENSE_PROBE_TIMEOUT",
+        "BOMLENS_LICENSE_FETCH_TIMEOUT",
+        "COCOAPODS_CDN_URL",
+        "COCOAPODS_LICENSE_BUDGET",
         "BOMLENS_KEEP_BUILD_OUTPUT",
         "BOMLENS_MAVEN_FULL_GRAPH",
         "BOMLENS_ANDROID_FULL_GRAPH",
@@ -560,6 +574,15 @@ def test_the_captured_stage_2_env_and_passthrough_are_what_trusca_keeps() -> Non
         "BOMLENS_NO_AI_USAGE",
         "BOMLENS_AI_USAGE_TIMEOUT",
         "BOMLENS_EXTRA_CA_CERTS",
+        # BomLens v1.15.1, as for stage 2 above.
+        "BOMLENS_BUILD_TOOL",
+        "BOMLENS_MAVEN_USER_REPOSITORY",
+        "BOMLENS_MAVEN_PROBE_TIMEOUT",
+        "BOMLENS_GRADLE_USER_CACHE",
+        "BOMLENS_PYTHON_VENV",
+        "BOMLENS_NODE_INSTALLED_LOCK",
+        "BOMLENS_LICENSE_PROBE_TIMEOUT",
+        "BOMLENS_LICENSE_FETCH_TIMEOUT",
     }
 
 

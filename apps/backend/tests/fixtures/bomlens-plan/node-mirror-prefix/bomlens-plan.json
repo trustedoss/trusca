@@ -199,7 +199,7 @@
     {
       "id": "generate",
       "stage": 1,
-      "image": "ghcr.io/cdxgen/cdxgen-alpine-node24:13.5.0",
+      "image": "registry.example/mirror/cdxgen/cdxgen-alpine-node24:13.5.0",
       "image_digest": "sha256:0fb2e022c564589424f8e6704e3417eae573434e5bb43540cc86fceac8a61d84",
       "user": "0:0",
       "entrypoint": [
