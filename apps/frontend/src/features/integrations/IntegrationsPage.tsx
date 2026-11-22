@@ -514,6 +514,7 @@ export function IntegrationsPage() {
                             <Button
                               type="button"
                               size="sm"
+                              variant="outline"
                               onClick={() => setCreateOpen(true)}
                               data-testid="integrations-keys-empty-create"
                             >

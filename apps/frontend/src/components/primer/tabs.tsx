@@ -46,7 +46,7 @@ export const TabsList = forwardRef<
       // sizing to max-content and never reaches its wrap point. Above the
       // phone band there is more than 767 px, so nothing wraps and the
       // desktop strip is unchanged.
-      "inline-flex max-w-full flex-wrap items-center gap-1 border-b bg-background px-2",
+      "flex w-full flex-wrap items-center gap-1 border-b bg-background px-2",
       className,
     )}
     {...props}

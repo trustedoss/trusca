@@ -155,7 +155,7 @@ function InboxRow({ item, onActivate }: InboxRowProps) {
               <span
                 aria-hidden
                 data-testid="notifications-unread-dot"
-                className="inline-block h-2 w-2 shrink-0 rounded-full bg-risk-critical"
+                className="inline-block h-2 w-2 shrink-0 rounded-full bg-brand"
               />
             ) : null}
           </div>

@@ -2,6 +2,8 @@
 // Copyright 2026 TRUSCA contributors
 import {
   AlertIcon,
+  InfoIcon,
+  StopIcon,
   LinkExternalIcon,
 } from "@primer/octicons-react";
 import { useTranslation } from "react-i18next";
@@ -351,7 +353,7 @@ export function OverviewTab({
           data-testid="overview-malicious-chip"
           data-malicious-count={data.malicious_count}
         >
-          <AlertIcon size={16} />
+          <StopIcon size={16} />
           <AlertDescription className="flex flex-wrap items-baseline gap-2">
             <span className="font-semibold">
               {t("overview.malicious_chip.title", {
@@ -431,7 +433,7 @@ export function OverviewTab({
           data-testid="overview-outdated-chip"
           data-outdated-count={data.outdated_count}
         >
-          <AlertIcon size={16} />
+          <InfoIcon size={16} />
           <AlertDescription className="flex flex-wrap items-baseline gap-2">
             <span className="font-semibold">
               {t("overview.outdated_chip.title", { count: data.outdated_count })}

@@ -16,7 +16,7 @@ function HomepageHero(): ReactNode {
       <div className="container">
         <p className={styles.heroEyebrow}>
           <Translate id="homepage.hero.eyebrow">
-            Apache-2.0 · Self-hosted · v0.19.2
+            Apache-2.0 · Self-hosted
           </Translate>
         </p>
         <h1 className={styles.heroTitle}>{siteConfig.title}</h1>

@@ -59,8 +59,10 @@
   /* Neutral surfaces, text and lines: the app's own scale, so a Primer
    * control and a Tailwind one sitting side by side read as one palette in both
    * modes. Without this a dialog in dark mode is Primer's near-black, not the
-   * app's slate. */
-  --bgColor-default: hsl(var(--background));
+   * app's slate. Controls sit on cards, so the default surface is the card
+   * colour; mapping it to the page background made a field a grey patch on a
+   * white card in light and a hole darker than the card in dark. */
+  --bgColor-default: hsl(var(--card));
   --bgColor-muted: hsl(var(--muted));
   --overlay-bgColor: hsl(var(--popover));
   --fgColor-default: hsl(var(--foreground));
@@ -70,7 +72,7 @@
   --control-transparent-bgColor-hover: hsl(var(--accent));
   --control-transparent-bgColor-active: hsl(var(--accent));
   --control-transparent-bgColor-selected: hsl(var(--accent));
-  --button-default-bgColor-rest: hsl(var(--background));
+  --button-default-bgColor-rest: hsl(var(--card));
   --button-default-bgColor-hover: hsl(var(--accent));
   --button-default-bgColor-active: hsl(var(--accent));
   --button-default-fgColor-rest: hsl(var(--foreground));

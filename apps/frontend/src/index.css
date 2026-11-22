@@ -38,6 +38,14 @@
  *   structural Tailwind config changes required.
  * ------------------------------------------------------------------------- */
 
+/* Korean breaks between words, not inside them. Without this a heading wraps
+ * mid-word ("위험한 / 지"). Long unbroken strings (identifiers, URLs) still
+ * wrap through overflow-wrap. */
+:lang(ko) {
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+
 @layer base {
   :root {
     /* -------------------------------------------------------------------
