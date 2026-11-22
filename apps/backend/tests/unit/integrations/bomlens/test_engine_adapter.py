@@ -61,9 +61,9 @@ def test_the_pinned_package_ships_the_images_core_config_pins() -> None:
     and ``core/config.py`` pins the same ones. A bump of only one of them fails
     here."""
     shipped = package.release_images()
-    assert shipped.engine.ref == BOMLENS_IMAGE_DEFAULT
+    assert shipped.engine.run_ref == BOMLENS_IMAGE_DEFAULT
     assert shipped.deep_license is not None
-    assert shipped.deep_license.ref == BOMLENS_DEEP_LICENSE_IMAGE_DEFAULT
+    assert shipped.deep_license.run_ref == BOMLENS_DEEP_LICENSE_IMAGE_DEFAULT
 
 
 def test_requirements_pin_the_installed_package_version() -> None:
@@ -122,7 +122,7 @@ def test_a_bad_prefix_in_the_settings_stops_the_policy(monkeypatch: pytest.Monke
 
 def test_the_policy_carries_the_settings_and_the_pinned_images() -> None:
     policy, options = engine.build_policy(deep_license=False, include_non_shipped=True)
-    assert policy.images.engine.ref == BOMLENS_IMAGE_DEFAULT
+    assert policy.images.engine.run_ref == BOMLENS_IMAGE_DEFAULT
     assert policy.images.deep_license is None
     assert policy.deep_license is False
     assert policy.stage1_env["BOMLENS_INCLUDE_NON_SHIPPED"] == "true"
@@ -146,8 +146,8 @@ def test_scope_filter_off_leaves_the_non_shipped_switch_unset() -> None:
 def test_deep_license_adds_its_image_and_nothing_else_changes() -> None:
     policy, _ = engine.build_policy(deep_license=True, include_non_shipped=False)
     assert policy.deep_license is True
-    assert policy.stage2_image.ref == BOMLENS_DEEP_LICENSE_IMAGE_DEFAULT
-    assert policy.images.engine.ref == BOMLENS_IMAGE_DEFAULT
+    assert policy.stage2_image.run_ref == BOMLENS_DEEP_LICENSE_IMAGE_DEFAULT
+    assert policy.images.engine.run_ref == BOMLENS_IMAGE_DEFAULT
 
 
 def test_the_compose_networks_of_the_database_and_the_docker_api_are_refused_as_egress() -> None:
@@ -399,7 +399,7 @@ def test_the_cancellation_poll_reads_the_scan_status_at_most_every_few_seconds(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     clock = {"now": 100.0}
-    monkeypatch.setattr(engine.time, "monotonic", lambda: clock["now"])
+    monkeypatch.setattr("integrations.bomlens.engine.time.monotonic", lambda: clock["now"])
     reads: list[float] = []
 
     def is_cancelled() -> bool:

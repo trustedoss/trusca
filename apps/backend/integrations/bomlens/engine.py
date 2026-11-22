@@ -372,14 +372,16 @@ def _cancel_poll(is_cancelled: Callable[[], bool] | None) -> Callable[[], bool] 
     """``is_cancelled`` read at most every :data:`CANCEL_POLL_SECONDS`."""
     if is_cancelled is None:
         return None
-    state = {"at": 0.0, "value": False}
+    last_read = 0.0
+    cancelled = False
 
     def poll() -> bool:
+        nonlocal last_read, cancelled
         now = time.monotonic()
-        if not state["value"] and now - state["at"] >= CANCEL_POLL_SECONDS:
-            state["at"] = now
-            state["value"] = bool(is_cancelled())
-        return state["value"]
+        if not cancelled and now - last_read >= CANCEL_POLL_SECONDS:
+            last_read = now
+            cancelled = bool(is_cancelled())
+        return cancelled
 
     return poll
 
