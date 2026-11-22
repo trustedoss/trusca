@@ -19,6 +19,7 @@ import { Button } from "@/components/primer/Button";
 import { Checkbox } from "@/components/primer/Checkbox";
 import { Input } from "@/components/primer/Input";
 import { MultiSelect } from "@/components/primer/multi-select";
+import { SegmentedControl } from "@/components/primer/SegmentedControl";
 import type {
   LicenseCategoryName,
   TeamScopedRole,
@@ -425,43 +426,25 @@ export function VulnerabilitiesToolbar({
       )}
       data-testid="vulnerabilities-toolbar"
     >
-      {/* W9-#53 — group-by segmented control. Mirrors the hand-rolled control
-          on ComponentsToolbar (role=group + aria-pressed buttons). Always
+      {/* W9-#53: group-by segmented control, the shared Primer one also used
+          on ComponentsToolbar (aria-pressed buttons). Always
           visible; picking "By upgrade" hides the flat-list-only controls. */}
       <div className="flex flex-col">
         <span className="text-xs font-medium text-muted-foreground">
           {t("vulnerabilities.group_by.label")}
         </span>
-        <div
-          role="group"
+        <SegmentedControl
+          className="mt-1"
           aria-label={t("vulnerabilities.group_by.label")}
           data-testid="vulnerabilities-group-by"
-          className="mt-1 inline-flex h-8 items-stretch overflow-hidden rounded-md border border-input bg-background"
-        >
-          {GROUP_BY_OPTIONS.map((opt, idx) => {
-            const isActive = groupBy === opt.value;
-            return (
-              <button
-                key={opt.key}
-                type="button"
-                aria-pressed={isActive}
-                data-testid={`vulnerabilities-group-by-${opt.key}`}
-                data-active={isActive ? "true" : "false"}
-                onClick={() => onGroupByChange(opt.value)}
-                className={cn(
-                  "px-3 text-xs font-medium transition-colors duration-fast ease-out-soft",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
-                  idx > 0 && "border-l border-input",
-                  isActive
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:bg-muted",
-                )}
-              >
-                {t(`vulnerabilities.group_by.${opt.key}`)}
-              </button>
-            );
-          })}
-        </div>
+          value={groupBy}
+          onChange={onGroupByChange}
+          options={GROUP_BY_OPTIONS.map((opt) => ({
+            value: opt.value,
+            label: t(`vulnerabilities.group_by.${opt.key}`),
+            testId: `vulnerabilities-group-by-${opt.key}`,
+          }))}
+        />
       </div>
 
       {groupBy === "flat" ? (
@@ -500,11 +483,26 @@ export function VulnerabilitiesToolbar({
           onChange={(event) =>
             onSortKeyChange(event.target.value as VulnerabilitySortKey)
           }
-          className="mt-1 w-56"
+          className="mt-1 w-40"
           data-testid="vulnerabilities-sort-select"
+          // The option reads just "Priority" so it fits the control; the
+          // ranking it stands for rides on the tooltip.
+          title={
+            sort === "priority"
+              ? t("vulnerabilities.toolbar.sort_option_hint.priority")
+              : undefined
+          }
         >
           {SORT_OPTIONS.map((opt) => (
-            <option key={opt} value={opt}>
+            <option
+              key={opt}
+              value={opt}
+              title={
+                opt === "priority"
+                  ? t("vulnerabilities.toolbar.sort_option_hint.priority")
+                  : undefined
+              }
+            >
               {t(SORT_OPTION_LABEL_KEY[opt])}
             </option>
           ))}

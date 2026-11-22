@@ -2,6 +2,7 @@
   "page": {
     "title": "스캔",
     "subtitle": "접근 가능한 프로젝트의 스캔 큐를 한눈에 확인합니다.",
+    "status_filter_aria": "상태 필터",
     "tab": {
       "running": "실행 중",
       "queued": "대기 중",

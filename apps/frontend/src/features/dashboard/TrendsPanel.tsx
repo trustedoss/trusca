@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/primer/card";
+import { SegmentedControl } from "@/components/primer/SegmentedControl";
 import { Skeleton } from "@/components/primer/Skeleton";
 import {
   TREND_WINDOWS,
@@ -399,36 +400,21 @@ function WindowPicker({
   label: string;
   optionLabel: (days: TrendWindow) => string;
 }) {
+  // Primer marks the selected option with a raised neutral segment, not the
+  // brand accent: a segmented control is not on the accent whitelist.
   return (
-    <div
-      className="flex items-center gap-1 rounded-md border p-0.5"
-      role="group"
-      aria-label={label}
+    <SegmentedControl
       data-testid="trend-window-picker"
-    >
-      {TREND_WINDOWS.map((days) => (
-        <button
-          key={days}
-          type="button"
-          onClick={() => onChange(days)}
-          aria-pressed={days === value}
-          data-testid={`trend-window-${days}`}
-          className={cn(
-            "rounded px-2 py-1 text-xs font-medium transition-colors duration-fast ease-out-soft",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
-            // Neutral, not the brand accent: the accent whitelist covers the
-            // sidebar's active item, tab indicators, progress and the login
-            // panel, and a segmented control is none of those. Widening it
-            // here is how a whitelist stops meaning anything.
-            days === value
-              ? "bg-accent text-foreground shadow-sm"
-              : "text-muted-foreground hover:bg-accent/50",
-          )}
-        >
-          {optionLabel(days)}
-        </button>
-      ))}
-    </div>
+      aria-label={label}
+      size="small"
+      value={value}
+      onChange={onChange}
+      options={TREND_WINDOWS.map((days) => ({
+        value: days,
+        label: optionLabel(days),
+        testId: `trend-window-${days}`,
+      }))}
+    />
   );
 }
 

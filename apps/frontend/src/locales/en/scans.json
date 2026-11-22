@@ -2,6 +2,7 @@
   "page": {
     "title": "Scans",
     "subtitle": "Scan queue across the projects you can access.",
+    "status_filter_aria": "Filter by status",
     "tab": {
       "running": "Running",
       "queued": "Queued",

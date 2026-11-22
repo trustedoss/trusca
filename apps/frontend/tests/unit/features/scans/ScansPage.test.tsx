@@ -102,6 +102,25 @@ describe("ScansPage", () => {
     );
   });
 
+  it("renders the status filter as a named pressed-button group, not tabs", async () => {
+    mockedListMyScans.mockResolvedValue(pageResponse([]));
+    renderPage();
+    // It narrows one table, so it is not a tablist with tabs that switch
+    // panels; the selected option reads as pressed.
+    expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab")).not.toBeInTheDocument();
+    const group = screen.getByTestId("scans-tabs");
+    expect(group).toHaveAttribute("aria-label", "Filter by status");
+    expect(screen.getByTestId("scans-tab-all")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByTestId("scans-tab-running")).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+  });
+
   it("switching to the failed tab re-queries with status=failed", async () => {
     mockedListMyScans.mockResolvedValue(pageResponse([]));
     renderPage();

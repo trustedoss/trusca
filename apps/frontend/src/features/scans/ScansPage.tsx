@@ -4,8 +4,8 @@
  * ScansPage — Phase 3 / Step 4-C.
  *
  * Cross-project scan queue scoped to the current user's reachable teams.
- * Five tabs (Running / Queued / Succeeded / Failed / All) drive a status
- * filter on `GET /v1/scans`. The table is compact (40 px rows) and is
+ * A five-option segmented control (Running / Queued / Succeeded / Failed /
+ * All) drives a status filter on `GET /v1/scans`. The table is compact (40 px rows) and is
  * paginated 20-per-page (the backend caps `size` at 100 but we stay small
  * to keep the queue feel snappy).
  *
@@ -26,6 +26,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Badge } from "@/components/primer/badge";
 import { Button } from "@/components/primer/Button";
+import { SegmentedControl } from "@/components/primer/SegmentedControl";
 import { TableRowsSkeleton } from "@/components/primer/skeletons";
 import { ScanCancelButton } from "@/features/scans/ScanCancelButton";
 import { useScans } from "@/features/scans/useScans";
@@ -130,25 +131,23 @@ export function ScansPage() {
         description={t("page.subtitle")}
       />
 
-      <div
-        className="flex flex-wrap items-center gap-2 border-b bg-card px-6 py-2"
-        data-testid="scans-tabs"
-        role="tablist"
-      >
-        {TABS.map((value) => (
-          <Button
-            key={value}
-            size="sm"
-            variant={tab === value ? "default" : "outline"}
-            onClick={() => setTab(value)}
-            role="tab"
-            aria-selected={tab === value}
-            data-testid={`scans-tab-${value}`}
-            data-active={tab === value}
-          >
-            {t(`page.tab.${value}`)}
-          </Button>
-        ))}
+      {/* A status filter, not tabs: it narrows one table rather than
+          switching panels, so it is a segmented control (aria-pressed
+          buttons) and no option borrows the primary button's fill. The
+          five options are wider than a 390 px phone and a segmented control
+          does not wrap, so the row scrolls sideways there. */}
+      <div className="flex items-center gap-2 overflow-x-auto border-b bg-card px-6 py-2">
+        <SegmentedControl
+          data-testid="scans-tabs"
+          aria-label={t("page.status_filter_aria")}
+          value={tab}
+          onChange={setTab}
+          options={TABS.map((value) => ({
+            value,
+            label: t(`page.tab.${value}`),
+            testId: `scans-tab-${value}`,
+          }))}
+        />
       </div>
 
       <div className="flex-1 overflow-y-auto">
@@ -174,7 +173,7 @@ export function ScansPage() {
               <th className="px-3 py-2 text-right">
                 {t("page.column.duration")}
               </th>
-              <th className="px-3 py-2 text-right">
+              <th className="py-2 pl-3 pr-6 text-right">
                 {t("page.column.actions")}
               </th>
             </tr>
@@ -197,7 +196,7 @@ export function ScansPage() {
                       className="border-b transition-colors duration-fast ease-out-soft hover:bg-accent/40"
                       style={{ height: "var(--table-row)" }}
                     >
-                      <td className="px-6 text-xs">
+                      <td className="px-6">
                         <div className="flex items-center gap-2">
                           {/* P1 #5 — show the project name + link to
                               /projects/{id} when the BE surfaced it, fall
@@ -257,7 +256,7 @@ export function ScansPage() {
                       <td className="px-3 text-right text-xs text-muted-foreground">
                         {dur == null ? "—" : `${dur}s`}
                       </td>
-                      <td className="px-3 text-right">
+                      <td className="pl-3 pr-6 text-right">
                         <div className="flex justify-end">
                           <ScanCancelButton
                             scanId={scan.id}

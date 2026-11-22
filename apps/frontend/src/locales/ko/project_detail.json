@@ -680,7 +680,10 @@
       "search_placeholder": "CVE ID, 요약, 컴포넌트로 검색",
       "sort_label": "정렬",
       "sort_option": {
-        "priority": "우선순위 (KEV → 심각도 → EPSS)"
+        "priority": "우선순위"
+      },
+      "sort_option_hint": {
+        "priority": "악용이 확인된 취약점(KEV)이 먼저 오고, 그다음 심각도와 EPSS 순입니다"
       },
       "status_label": "상태",
       "reachable_label": "도달 가능성",

@@ -76,6 +76,10 @@ import {
   formatEpssScore,
 } from "@/features/projects/lib/epss";
 import {
+  VULN_DEFAULT_HIDDEN_COLUMNS,
+  vulnTrackMinWidth,
+} from "@/features/projects/lib/vulnColumnLayout";
+import {
   ALL_VULNERABILITY_STATUSES,
   type TriageRole,
 } from "@/features/projects/lib/vulnerabilityTransitions";
@@ -431,9 +435,15 @@ export function VulnerabilitiesTab({
     () => getVulnColumnsCatalog((k) => t(k)),
     [t],
   );
-  const [visibleColumns, setVisibleColumns] = useState<Set<string>>(() =>
-    loadInitialVisibility(VULN_COLUMNS_STORAGE_KEY, columnsCatalog),
-  );
+  const [visibleColumns, setVisibleColumns] = useState<Set<string>>(() => {
+    const stored =
+      typeof window !== "undefined" &&
+      window.localStorage?.getItem(VULN_COLUMNS_STORAGE_KEY) != null;
+    const all = loadInitialVisibility(VULN_COLUMNS_STORAGE_KEY, columnsCatalog);
+    if (stored) return all;
+    for (const id of VULN_DEFAULT_HIDDEN_COLUMNS) all.delete(id);
+    return all;
+  });
 
   // W2 #33b — bulk-selection state. Single-page only (D-bulk): we clear the
   // set on page / filter / sort / scanId change because the row population
@@ -1029,16 +1039,18 @@ export function VulnerabilitiesTab({
         // above the SLA values — and the misalignment is visible in the
         // committed 1440 px baseline, so it shipped.
         //
-        // The floor below is the sum of the declared column widths, and it
-        // has to stay that: 48 (px-6) + 16 (w-4) + 1280 (the ten other
-        // fixed cells, now including Owner's w-32) + 132 (eleven gap-3
-        // gutters) + 260 (Component's floor) = 1736, rounded up.
-        // `tests/e2e/tableColumnAlignment.spec.ts` fails if a new column
-        // lands without this number moving with it; that check is the
-        // reason a stale floor cannot silently return.
+        // The floor below is the sum of the declared widths of the columns
+        // that are showing, computed by `vulnTrackMinWidth`. It used to be a
+        // fixed 1740 px for every column, which made the default set scroll
+        // at 1440 px even after columns were hidden.
+        // `tests/e2e/tableColumnAlignment.spec.ts` fails if a column's class
+        // and its entry in VULN_COLUMN_WIDTH_PX (lib/vulnColumnLayout) drift; that check is
+        // the reason a stale floor cannot silently return.
         <div className="flex flex-1 flex-col overflow-x-auto">
           <div
-            className="min-w-[1740px] flex flex-1 flex-col"
+            className="flex flex-1 flex-col"
+            style={{ minWidth: vulnTrackMinWidth(visibleColumns) }}
+            data-testid="vulnerabilities-track"
             // G0-5 backlog — this is the table. Before it, the header and the
             // rows were flex `div`s with no relationship a screen reader could
             // use: no way to move by column, and nowhere valid to put
@@ -1318,7 +1330,7 @@ function VulnerabilitiesTableHeader({
           W11-C — non-sortable CVE label inherits the strip's typography
           (uppercase + tracking-wider) from the parent, so the cell needs
           no extra class. */}
-      <span className="w-44" role="columnheader">
+      <span className="w-36" role="columnheader">
         {t("vulnerabilities.column.cve_id")}
       </span>
       {/* M-27 — Title column (source: list `summary`). Not sortable: the
@@ -1335,7 +1347,7 @@ function VulnerabilitiesTableHeader({
       ) : null}
       {visibleColumns.has("component") ? (
         <span
-          className="flex-1 min-w-[260px]"
+          className="flex-1 min-w-[200px]"
           data-testid="vulnerabilities-header-cell-component"
           role="columnheader"
           aria-sort={ariaSortFor("component", currentSort)}
@@ -1350,7 +1362,7 @@ function VulnerabilitiesTableHeader({
         </span>
       ) : null}
       <span
-        className="w-28"
+        className="w-24"
         role="columnheader"
         aria-sort={ariaSortFor("severity", currentSort)}
       >
@@ -1364,7 +1376,7 @@ function VulnerabilitiesTableHeader({
       </span>
       {visibleColumns.has("cvss") ? (
         <span
-          className="w-16 text-right"
+          className="w-14 text-right"
           data-testid="vulnerabilities-header-cell-cvss"
           role="columnheader"
           aria-sort={ariaSortFor("cvss", currentSort)}
@@ -1380,7 +1392,7 @@ function VulnerabilitiesTableHeader({
       ) : null}
       {visibleColumns.has("epss") ? (
         <span
-          className="w-20 text-right"
+          className="w-16 text-right"
           data-testid="vulnerabilities-header-cell-epss"
           role="columnheader"
           aria-sort={ariaSortFor("epss", currentSort)}
@@ -1419,7 +1431,7 @@ function VulnerabilitiesTableHeader({
           rows without an SLA always last (NULLS LAST). */}
       {visibleColumns.has("sla_due") ? (
         <span
-          className="w-36"
+          className="w-44"
           data-testid="vulnerabilities-header-cell-sla-due"
           role="columnheader"
           aria-sort={ariaSortFor("sla_due", currentSort)}
@@ -1579,7 +1591,7 @@ function VulnerabilityRow({
           "KEV" text label (color is never the only signal); the due date
           rides on its tooltip so the 40px row stays quiet. */}
       <span
-        className="flex w-44 min-w-0 items-center gap-1.5"
+        className="flex w-36 min-w-0 items-center gap-1.5"
         role="cell"
         data-testid="vulnerability-row-cve"
         data-kev={vulnerability.kev ? "true" : "false"}
@@ -1616,12 +1628,12 @@ function VulnerabilityRow({
           count={vulnerability.affected_component_count}
         />
       ) : null}
-      <span className="w-28" role="cell">
+      <span className="w-24" role="cell">
         <SeverityBadge severity={vulnerability.severity} />
       </span>
       {visibleColumns.has("cvss") ? (
         <span
-          className="w-16 text-right font-mono text-xs tabular-nums"
+          className="w-14 text-right font-mono text-xs tabular-nums"
           role="cell"
           data-testid="vulnerability-row-cvss"
         >
@@ -1761,7 +1773,7 @@ function SlaDueCell({ status, dueDate }: SlaDueCellProps) {
   const { t } = useTranslation("project_detail");
   return (
     <span
-      className="flex w-36 items-center"
+      className="flex w-44 items-center"
       role="cell"
       data-testid="vulnerability-row-sla"
       data-sla-status={status ?? "none"}
@@ -1807,7 +1819,7 @@ function EpssCell({ score, percentile }: EpssCellProps) {
   if (formattedScore == null) {
     return (
       <span
-        className="w-20 text-right font-mono text-xs tabular-nums text-muted-foreground"
+        className="w-16 text-right font-mono text-xs tabular-nums text-muted-foreground"
         role="cell"
         data-testid="vulnerability-row-epss"
         data-epss-empty="true"
@@ -1833,7 +1845,7 @@ function EpssCell({ score, percentile }: EpssCellProps) {
 
   return (
     <span
-      className="w-20 text-right font-mono text-xs tabular-nums"
+      className="w-16 text-right font-mono text-xs tabular-nums"
       role="cell"
       data-testid="vulnerability-row-epss"
       data-epss-score={score ?? undefined}
@@ -1878,7 +1890,7 @@ function ComponentColumnCell({ name, version, count }: ComponentColumnCellProps)
   // tabular-nums on the suffix keeps "+9" / "+99" aligned across rows.
   return (
     <span
-      className="flex flex-1 min-w-[260px] items-center gap-1 truncate"
+      className="flex flex-1 min-w-[200px] items-center gap-1 truncate"
       role="cell"
       data-testid="vulnerability-row-component"
       data-component-name={name ?? ""}

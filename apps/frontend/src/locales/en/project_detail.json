@@ -680,7 +680,10 @@
       "search_placeholder": "Search by CVE ID, summary, or component",
       "sort_label": "Sort",
       "sort_option": {
-        "priority": "Priority (KEV → Severity → EPSS)"
+        "priority": "Priority"
+      },
+      "sort_option_hint": {
+        "priority": "Known exploited (KEV) first, then severity, then EPSS"
       },
       "status_label": "Status",
       "reachable_label": "Reachability",

@@ -22,6 +22,11 @@ import {
   getVulnColumnsCatalog,
   VulnerabilitiesTab,
 } from "@/features/projects/components/VulnerabilitiesTab";
+import {
+  VULN_COLUMN_WIDTH_PX,
+  VULN_DEFAULT_HIDDEN_COLUMNS,
+  vulnTrackMinWidth,
+} from "@/features/projects/lib/vulnColumnLayout";
 import { ProblemError } from "@/lib/problem";
 
 vi.mock("@/features/projects/api/vulnerabilitiesApi", async () => {
@@ -159,6 +164,18 @@ async function mountFilter(optionId: string, testId: string) {
     ),
   );
   return screen.findByTestId(testId);
+}
+
+/**
+ * Store every catalog column as visible, as a user who turned them all on in
+ * the Columns menu would have. A fresh user no longer sees Title, Owner and
+ * Discovered (VULN_DEFAULT_HIDDEN_COLUMNS).
+ */
+function showAllColumns() {
+  window.localStorage.setItem(
+    "column-visibility:vulnerabilities",
+    JSON.stringify(getVulnColumnsCatalog((key) => key).map((c) => c.id)),
+  );
 }
 
 describe("VulnerabilitiesTab", () => {
@@ -1403,11 +1420,12 @@ describe("VulnerabilitiesTab", () => {
   // -------------------------------------------------------------------------
   // M-27 — Title (source: summary) + Discovered (source: discovered_at)
   // columns. Both are ColumnsPicker-toggleable; fresh users (no stored
-  // visibility) see them by default per `loadInitialVisibility`.
+  // visibility) do not see them, so these tests turn them on first.
   // -------------------------------------------------------------------------
 
-  it("renders Title and Discovered cells by default for a fresh visibility set", async () => {
+  it("renders Title and Discovered cells once they are turned on", async () => {
     window.localStorage.clear();
+    showAllColumns();
     mockedList.mockResolvedValueOnce(
       listResponse([
         vuln("CVE-2024-1111", {
@@ -1447,6 +1465,7 @@ describe("VulnerabilitiesTab", () => {
 
   it("renders an em-dash Title placeholder when the summary is null", async () => {
     window.localStorage.clear();
+    showAllColumns();
     mockedList.mockResolvedValueOnce(
       listResponse([vuln("CVE-2024-2222", { summary: null })]),
     );
@@ -1463,6 +1482,7 @@ describe("VulnerabilitiesTab", () => {
 
   it("hiding the Title column via the ColumnsPicker drops the Title cell", async () => {
     window.localStorage.clear();
+    showAllColumns();
     mockedList.mockResolvedValue(listResponse([vuln("CVE-2024-3333")]));
     renderTab();
     await waitFor(() => {
@@ -1491,6 +1511,7 @@ describe("VulnerabilitiesTab", () => {
 
   it("clicking the Discovered column header requests sort=discovered_at", async () => {
     window.localStorage.clear();
+    showAllColumns();
     mockedList.mockResolvedValue(listResponse([vuln("CVE-2024-4444")]));
     renderTab();
     await waitFor(() => {
@@ -1765,10 +1786,9 @@ describe("VulnerabilitiesTab", () => {
     // list) so a future column that lands in the catalog + row but not the
     // header fails here, in the PR gate, instead of 24 hours later.
     //
-    // No localStorage entry is set, so `loadInitialVisibility` defaults to
-    // "all columns visible" (the maximal case the width-floor comment
-    // above the table also assumes).
+    // Every column is turned on: the maximal case.
     window.localStorage.clear();
+    showAllColumns();
     const catalog = getVulnColumnsCatalog((key) => key);
 
     mockedList.mockResolvedValueOnce(listResponse([vuln("CVE-2024-9999")]));
@@ -1792,5 +1812,95 @@ describe("VulnerabilitiesTab", () => {
     expect(headerColumnCount).toBe(expectedCount);
     expect(rowCellCount).toBe(expectedCount);
     expect(headerColumnCount).toBe(rowCellCount);
+  });
+
+  // -------------------------------------------------------------------------
+  // Fit at 1440 px. With every column on, the track needed 1636 px against a
+  // 1184 px pane, so SLA due was cut at the right edge. A fresh user now
+  // starts without Title, Owner and Discovered, and the track floor follows
+  // the columns that are showing instead of a fixed 1740 px.
+  // -------------------------------------------------------------------------
+
+  it("starts a fresh user without Title, Owner and Discovered, and fits the pane", async () => {
+    window.localStorage.clear();
+    mockedList.mockResolvedValueOnce(listResponse([vuln("CVE-2024-1212")]));
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getAllByTestId("vulnerability-row")).toHaveLength(1);
+    });
+    for (const id of VULN_DEFAULT_HIDDEN_COLUMNS) {
+      expect(VULN_COLUMN_WIDTH_PX[id]).toBeDefined();
+    }
+    expect(screen.queryByTestId("vulnerability-row-title")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("vulnerability-row-assignee")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("vulnerability-row-discovered")).not.toBeInTheDocument();
+    expect(screen.getByTestId("vulnerability-row-sla")).toBeInTheDocument();
+    expect(
+      screen.getByTestId("vulnerabilities-header-cell-status"),
+    ).toBeInTheDocument();
+    // 1184 px is the pane at 1440 px with the 256 px sidebar open.
+    const track = screen.getByTestId("vulnerabilities-track");
+    expect(track.style.minWidth).toBe("1136px");
+    expect(parseInt(track.style.minWidth, 10)).toBeLessThanOrEqual(1184);
+  });
+
+  it("respects a stored column selection and widens the track for it", async () => {
+    window.localStorage.clear();
+    showAllColumns();
+    mockedList.mockResolvedValueOnce(listResponse([vuln("CVE-2024-1313")]));
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getAllByTestId("vulnerability-row")).toHaveLength(1);
+    });
+    expect(screen.getByTestId("vulnerability-row-title")).toBeInTheDocument();
+    expect(screen.getByTestId("vulnerability-row-assignee")).toBeInTheDocument();
+    expect(screen.getByTestId("vulnerability-row-discovered")).toBeInTheDocument();
+    expect(screen.getByTestId("vulnerabilities-track").style.minWidth).toBe(
+      "1636px",
+    );
+  });
+
+  it("declares each column at the width the track floor counts", async () => {
+    // jsdom does no layout, so read the Tailwind width class off every
+    // header cell and row cell and hold it against VULN_COLUMN_WIDTH_PX. The
+    // e2e alignment spec measures the same thing in a browser, but only on
+    // the nightly run.
+    window.localStorage.clear();
+    showAllColumns();
+    mockedList.mockResolvedValueOnce(listResponse([vuln("CVE-2024-1414")]));
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getAllByTestId("vulnerability-row")).toHaveLength(1);
+    });
+    const declared = (el: HTMLElement): number => {
+      const floor = /(?:^|\s)min-w-\[(\d+)px\]/.exec(el.className);
+      if (floor) return Number(floor[1]);
+      const fixed = /(?:^|\s)w-(\d+)(?:\s|$)/.exec(el.className);
+      if (!fixed) throw new Error(`no width class on: ${el.className}`);
+      return Number(fixed[1]) * 4;
+    };
+    const expected = Object.values(VULN_COLUMN_WIDTH_PX);
+    const header = within(screen.getByTestId("vulnerabilities-header"))
+      .getAllByRole("columnheader")
+      .map(declared);
+    const row = within(screen.getByTestId("vulnerability-row"))
+      .getAllByRole("cell")
+      .map(declared);
+    expect(header).toEqual(expected);
+    expect(row).toEqual(expected);
+  });
+
+  it("computes the track floor from the visible columns", () => {
+    const all = new Set(Object.keys(VULN_COLUMN_WIDTH_PX));
+    // 48 padding + 1456 of cells + 11 gutters of 12.
+    expect(vulnTrackMinWidth(all)).toBe(1636);
+    const defaults = new Set(
+      [...all].filter((id) => !VULN_DEFAULT_HIDDEN_COLUMNS.includes(id)),
+    );
+    expect(vulnTrackMinWidth(defaults)).toBe(1136);
+    // Only the required columns: select, CVE, severity.
+    expect(vulnTrackMinWidth(new Set(["cve_id", "severity"]))).toBe(
+      48 + 16 + 144 + 96 + 2 * 12,
+    );
   });
 });
