@@ -114,6 +114,11 @@ def test_descriptor_content_names_the_subject_and_deadline() -> None:
     assert descriptor["link"] == "/admin/users"
     assert descriptor["context"]["subject_user_id"] == str(subject)
     assert descriptor["request_id"] == str(row.id)
+    # The same two facts as values, for the SPA's own wording (0094).
+    assert descriptor["message_params"] == {
+        "subject_user_id": str(subject),
+        "expires_on": "2026-08-15",
+    }
 
 
 def test_descriptor_no_super_admins_still_notifies_the_requester() -> None:
@@ -165,6 +170,8 @@ def test_enqueue_records_in_app_only_call_shape(
     assert kwargs["in_app_link"] == d["link"]
     assert kwargs["in_app_target_table"] == "user_anonymisation_requests"
     assert kwargs["in_app_target_id"] == d["request_id"]
+    assert kwargs["in_app_message_key"] == "anonymisation_request_expired"
+    assert kwargs["in_app_params"] == d.get("message_params")
 
 
 def test_enqueue_swallows_per_descriptor_broker_failure(

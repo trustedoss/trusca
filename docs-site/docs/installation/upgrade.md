@@ -18,6 +18,7 @@ Operators with `sudo` on the host that runs the portal. Familiarity with `docker
 
 - **Forward-only Alembic migrations.** TRUSCA does not support `alembic downgrade`. To revert, restore the pre-upgrade backup (see [Rollback](#rollback)).
 - **Minor / patch upgrades** within the same major version are always supported in place. **Major upgrades** (e.g., 2.x → 3.x) are documented in dedicated release notes; do not run `scripts/upgrade.sh` blindly across major versions.
+- **Upgrade workers with or before the API.** A newer API or beat can queue tasks with arguments an older worker does not accept, and those tasks are dropped. `scripts/upgrade.sh` moves every service together. On Kubernetes, roll the worker deployments first or in the same release.
 - **Downtime expectation:** the portal is briefly unavailable while `docker-compose up -d` recreates services whose image changed. Typical window is under 30 seconds.
 
 ## Prerequisites

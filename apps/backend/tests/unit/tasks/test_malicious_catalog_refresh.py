@@ -254,6 +254,13 @@ def test_the_notification_actually_reaches_the_dispatch_task(
     assert str(project_id) in kwargs["in_app_link"]
     # The body must prescribe the response; an upgrade is the wrong action.
     assert "rotate" in kwargs["in_app_body"]
+    # The SPA renders the advisory variant in the reader's language (0094).
+    assert kwargs["in_app_message_key"] == "malicious_in_project_advisory"
+    assert kwargs["in_app_params"] == {
+        "project_name": "payments",
+        "purl": "pkg:npm/evil@1.0.0",
+        "advisory_id": "MAL-2026-1",
+    }
 
 
 def test_a_flagged_package_nobody_ships_notifies_nobody(

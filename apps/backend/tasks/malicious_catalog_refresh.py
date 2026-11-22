@@ -245,6 +245,12 @@ def _notify_newly_flagged(
                 "rotate the credentials this build could reach — upgrading "
                 "does not help."
             )
+            message_params = {"project_name": project_name, "purl": purl}
+            if advisory_id:
+                message_params["advisory_id"] = advisory_id
+            message_key = (
+                "malicious_in_project_advisory" if advisory_id else "malicious_in_project"
+            )
             for user_id in _team_member_user_ids(session, team_id):
                 try:
                     send_notification_task.delay(
@@ -265,6 +271,8 @@ def _notify_newly_flagged(
                         ),
                         in_app_target_table="projects",
                         in_app_target_id=str(project_id),
+                        in_app_message_key=message_key,
+                        in_app_params=message_params,
                     )
                     enqueued += 1
                 except Exception:  # noqa: BLE001 — per-descriptor

@@ -42,14 +42,21 @@ Click the bell to navigate directly to the **`/notifications`** inbox. The bell 
 
 Each row shows:
 
-- **Title** — bold while unread.
-- **Body** — one or two lines.
+- **Title** - bold while unread.
+- **Body** - one or two lines.
 - **Channel icons** — which channels delivered this event for you (in-app always shows; email / Slack / Teams show only if you opted in).
 - **Timestamp** — absolute on hover, relative otherwise.
 - **Mark read** — a click anywhere on the row marks it read; the row dim-loads.
 - **Open** — clicking navigates to the source resource and marks read on the way.
 
 Bulk actions: **Mark all as read** (clears the unread badge for the current page).
+
+Titles and bodies follow the language you picked for the portal. A
+notification names the message it carries and the values in it (a project
+name, a count, a date), and the page words it in English or Korean and
+formats dates for your locale. Notifications written before this release, and
+any message this version of the portal does not know yet, show the English
+text they were stored with.
 
 ## Preferences
 
@@ -64,7 +71,10 @@ Below the inbox, the **Preferences** section lists every trigger with four **glo
 | Slack | off | Requires `SLACK_WEBHOOK_URL` configured. |
 | Teams | off | Requires `TEAMS_WEBHOOK_URL` configured. |
 
-Toggles enter a draft state. Click **Save** to persist your changes — the page tracks dirty state and disables Save until something changes.
+Each switch saves as soon as you change it; there is no Save button. While the
+change is being saved the switches wait and the section shows **Saving…**. If
+the save fails, the switch moves back to the value that is still stored and an
+error appears above the switches; change it again to retry.
 
 ## Routing rules: who else hears {#routing-rules}
 
@@ -140,7 +150,7 @@ Channel selection is global — the **Preferences** tab decides which channels d
 <!-- docs-uat: id=notifications-mark-read-decrements kind=ui harness=notificationsMarkReadDecrements tier=nightly -->
 - Open `/notifications` in a second tab and mark a row read; the first tab's bell badge decrements within 60 seconds.
 <!-- docs-uat: id=notifications-email-disable-inapp-only kind=ui harness=notificationsEmailDisableInappOnly tier=nightly -->
-- Globally disable email under **Preferences** and click **Save**; run another scan and confirm the next `scan_completed` notification arrives via in-app only.
+- Globally disable email under **Preferences** (the switch saves on change); run another scan and confirm the next `scan_completed` notification arrives via in-app only.
 
 ## Troubleshooting
 

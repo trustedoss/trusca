@@ -96,12 +96,22 @@ def _notify_schedule_completion(session: Session, scan: Scan, *, kind: str) -> N
 
         from tasks.notify import send_notification_task
 
+        # ``message_key`` + ``params`` let the SPA render this in the
+        # reader's language; ``title``/``body`` are the English fallback.
+        params: dict[str, str] = {"project_name": project.name}
         if kind == "scan_completed":
+            message_key = "scan_scheduled_completed"
             title = f"Scheduled scan completed: {project.name}"
             body = "The scheduled scan finished. Review the results when you have a moment."
         else:
             title = f"Scheduled scan failed: {project.name}"
             body = (scan.error_message or "The scheduled scan did not complete.")[:1000]
+            if scan.error_message:
+                # The error is the tool's own text and stays as written.
+                message_key = "scan_scheduled_failed_detail"
+                params["error"] = scan.error_message[:500]
+            else:
+                message_key = "scan_scheduled_failed"
 
         for user_id in member_ids:
             send_notification_task.delay(
@@ -115,6 +125,8 @@ def _notify_schedule_completion(session: Session, scan: Scan, *, kind: str) -> N
                 in_app_link=f"/projects/{project.id}",
                 in_app_target_table="scans",
                 in_app_target_id=str(scan.id),
+                in_app_message_key=message_key,
+                in_app_params=params,
             )
     except Exception as exc:  # noqa: BLE001 (delivery must not fail the pipeline)
         log.warning(

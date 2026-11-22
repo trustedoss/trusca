@@ -308,6 +308,8 @@ async def create_notification(
     link: str | None = None,
     target_table: str | None = None,
     target_id: uuid.UUID | None = None,
+    message_key: str | None = None,
+    params: dict[str, Any] | None = None,
 ) -> Notification:
     """Insert an in-app notification row for ``user_id`` and return it.
 
@@ -316,6 +318,11 @@ async def create_notification(
     ``in_app_enabled=False``. Keeping the gate in one place avoids a
     "should we have written this row?" decision being smeared across
     multiple call sites.
+
+    ``message_key`` + ``params`` let the SPA render the message in the
+    reader's language; ``title``/``body`` remain the English rendering and
+    the fallback. Both pass through :func:`_message_fields`, which drops a
+    malformed key or value rather than refusing the row.
     """
     row = Notification(
         user_id=user_id,
@@ -325,6 +332,7 @@ async def create_notification(
         link=_safe_link(link),
         target_table=target_table,
         target_id=target_id,
+        **_message_fields(message_key, params),
     )
     session.add(row)
     await session.commit()
@@ -375,6 +383,8 @@ def create_notification_sync(
     link: str | None = None,
     target_table: str | None = None,
     target_id: uuid.UUID | None = None,
+    message_key: str | None = None,
+    params: dict[str, Any] | None = None,
 ) -> Notification:
     """Sync analogue of :func:`create_notification` for Celery callers."""
     row = Notification(
@@ -385,6 +395,7 @@ def create_notification_sync(
         link=_safe_link(link),
         target_table=target_table,
         target_id=target_id,
+        **_message_fields(message_key, params),
     )
     session.add(row)
     session.commit()
@@ -412,6 +423,71 @@ def _truncate(value: str, max_len: int) -> str:
         return value
     # Reserve 1 char for the ellipsis so we never hit the column cap.
     return value[: max_len - 1] + "…"
+
+
+# Message key + params (migration 0094).
+# The SPA looks the key up in its catalog (``messages.<key>``) and
+# interpolates ``params`` into the translated text. The key is held to a
+# plain identifier so it can never walk into another part of the catalog
+# (i18next treats ``.`` as a path separator). Params are flat scalars: the
+# catalog interpolates them as text, so a nested structure would only ever
+# render as ``[object Object]``. Anything outside these rules is dropped
+# with a warning rather than failing the insert, the same fail-safe choice
+# as ``link`` below: the English ``title``/``body`` still reach the reader.
+_MESSAGE_KEY_RE = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
+_PARAM_NAME_RE = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
+# i18next reads these names from its options object as lookup controls
+# (language, namespace, context), so a param with one of them would change
+# which text is shown rather than fill a placeholder. The client drops the
+# same names (notificationText.ts).
+_RESERVED_PARAM_NAMES = frozenset(
+    {"lng", "lngs", "ns", "context", "ordinal", "replace", "interpolation", "defaultvalue"}
+)
+_MAX_PARAMS = 16
+_MAX_PARAM_STR = 512
+
+
+def _clean_params(params: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Keep the well-formed scalar entries of ``params``; ``None`` if none."""
+    if not params or not isinstance(params, dict):
+        return None
+    cleaned: dict[str, Any] = {}
+    for name, value in params.items():
+        if len(cleaned) >= _MAX_PARAMS:
+            log.warning("notification.params_truncated", kept=_MAX_PARAMS)
+            break
+        if (
+            not isinstance(name, str)
+            or not _PARAM_NAME_RE.fullmatch(name)
+            or name in _RESERVED_PARAM_NAMES
+        ):
+            log.warning("notification.param_name_rejected", name=str(name)[:40])
+            continue
+        if isinstance(value, bool) or value is None:
+            cleaned[name] = value
+        elif isinstance(value, int | float):
+            cleaned[name] = value
+        elif isinstance(value, str):
+            cleaned[name] = _truncate(value, _MAX_PARAM_STR)
+        else:
+            log.warning("notification.param_value_rejected", name=name)
+    return cleaned or None
+
+
+def _message_fields(
+    message_key: str | None, params: dict[str, Any] | None
+) -> dict[str, Any]:
+    """Validated ``message_key`` / ``params`` column values for a new row.
+
+    A key that is not a plain identifier is dropped together with its
+    params: params without a key have nothing to render them.
+    """
+    if message_key is None:
+        return {"message_key": None, "params": None}
+    if not isinstance(message_key, str) or not _MESSAGE_KEY_RE.fullmatch(message_key):
+        log.warning("notification.message_key_rejected", key=str(message_key)[:80])
+        return {"message_key": None, "params": None}
+    return {"message_key": message_key, "params": _clean_params(params)}
 
 
 # Marathon bundle 4 (S / L1) — Notification.link safe-URL allow-list.

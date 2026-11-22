@@ -15,8 +15,8 @@
  * Manual-walkthrough alignment (Phase 4 fix items):
  *   - Header bell click navigates to `/notifications` (NO dropdown). The
  *     verb {@link openHeaderBell} encodes that contract.
- *   - Preferences require an explicit Save button click — the verb
- *     {@link savePreferences} surfaces it.
+ *   - Preferences save on change, one switch at a time (no Save button).
+ *     The verb {@link togglePreference} waits for that save to land.
  *   - In-app channel cannot be disabled — the verb
  *     {@link expectInAppAlwaysOn} asserts the disabled toggle, and
  *     {@link rawPutPrefs} is provided so adversarial scenarios can hit the
@@ -204,13 +204,15 @@ export class NotificationsHarness {
   }
 
   /**
-   * Toggle a channel switch. The page tracks dirty state internally; the
-   * Save button is disabled until at least one toggle changes value, so
-   * tests should call {@link savePreferences} explicitly afterwards.
+   * Toggle a channel switch and wait for the save it triggers. Each switch
+   * saves on change (there is no Save button), so this verb waits for the
+   * `PUT /v1/users/me/notification-prefs` the click sends to come back 200
+   * and for the switch to settle on the requested value. A failed save
+   * reverts the switch, so the final assertion fails on a rejected save
+   * rather than passing on the optimistic flip.
    *
-   * The in-app switch is rendered disabled — attempting to toggle it via
-   * this verb throws (the underlying click is a no-op and the assertion
-   * fails).
+   * The in-app switch is rendered disabled; attempting to toggle it via
+   * this verb fails (the click is a no-op and no PUT is sent).
    */
   async togglePreference(
     channel: NotificationChannel,
@@ -224,14 +226,27 @@ export class NotificationsHarness {
     };
     // The Switch component renders the testid on the underlying
     // `<input type="checkbox">`. State surfaces via `aria-checked`
-    // ("true" / "false") on the input — `data-state` lives on the
+    // ("true" / "false") on the input; `data-state` lives on the
     // wrapping `<label>` and is not addressable through the testid.
     const sw = this.page.getByTestId(map[channel]);
     await expect(sw).toBeVisible({ timeout: DEFAULT_TIMEOUT_MS });
+    // A previous toggle may still be saving; the switches wait for it.
+    await expect(sw).toBeEnabled({ timeout: DEFAULT_TIMEOUT_MS });
     const current = await sw.getAttribute("aria-checked");
     const want = enabled ? "true" : "false";
     if (current === want) return;
+    const saved = this.page.waitForResponse(
+      (res) =>
+        res.url().includes("/v1/users/me/notification-prefs") &&
+        res.request().method() === "PUT",
+      { timeout: DEFAULT_TIMEOUT_MS },
+    );
     await sw.click();
+    const response = await saved;
+    expect(response.status(), "notification prefs PUT status").toBe(200);
+    await expect(
+      this.page.getByTestId("notifications-prefs-status"),
+    ).toHaveAttribute("data-saving", "false", { timeout: DEFAULT_TIMEOUT_MS });
     await expect
       .poll(() => sw.getAttribute("aria-checked"), {
         timeout: DEFAULT_TIMEOUT_MS,
@@ -240,29 +255,23 @@ export class NotificationsHarness {
   }
 
   /**
-   * Click the explicit Save button (manual walkthrough fix — preferences
-   * are not auto-saved). Waits for the success toast. Throws via the
-   * auto-retry assertion if the button is disabled.
-   *
-   * Callers save more than once in a row — the preferences spec toggles a
-   * channel off, saves, toggles it back on and saves again so the seed ends
-   * where it started. Toasts live for 4s, so on a fast runner the first one
-   * is still on screen when the second save lands, two elements match the
-   * key, and the assertion fails on strict mode rather than on anything
-   * about the product. Waiting the previous toast out first is what makes
-   * the assertion mean "THIS save produced a toast"; matching `.first()`
-   * instead would let a stale toast satisfy a save that never succeeded.
+   * Reload `/notifications` and assert a channel switch shows `enabled`.
+   * The read-back for {@link togglePreference}: the value on screen after a
+   * reload comes from the server, so this fails when a save was only drawn.
    */
-  async savePreferences(): Promise<void> {
-    const toast = this.page.locator(
-      '[data-testid="admin-toast"][data-toast-key="prefs_saved"]',
-    );
-    await expect(toast).toHaveCount(0, { timeout: DEFAULT_TIMEOUT_MS });
-
-    const save = this.page.getByTestId("notifications-prefs-save");
-    await expect(save).toBeEnabled({ timeout: DEFAULT_TIMEOUT_MS });
-    await save.click();
-    await expect(toast).toBeVisible({ timeout: DEFAULT_TIMEOUT_MS });
+  async reloadAndExpectPreference(
+    channel: Exclude<NotificationChannel, "in_app">,
+    enabled: boolean,
+  ): Promise<void> {
+    await this.gotoNotifications();
+    await this.gotoPreferences();
+    const sw = this.page.getByTestId(`notifications-prefs-${channel}`);
+    await expect(sw).toBeVisible({ timeout: DEFAULT_TIMEOUT_MS });
+    await expect
+      .poll(() => sw.getAttribute("aria-checked"), {
+        timeout: DEFAULT_TIMEOUT_MS,
+      })
+      .toBe(enabled ? "true" : "false");
   }
 
   /**

@@ -50,6 +50,14 @@ export interface NotificationItem {
   target_id: string | null;
   read_at: string | null;
   created_at: string;
+  /**
+   * Migration 0094: the message this row carries and the values it names.
+   * Null on rows written before 0094; the page then shows `title`/`body`.
+   * Optional so a client talking to an older server still type-checks the
+   * same rendering path.
+   */
+  message_key?: string | null;
+  params?: Record<string, string | number | boolean | null> | null;
 }
 
 export interface NotificationListResponse {

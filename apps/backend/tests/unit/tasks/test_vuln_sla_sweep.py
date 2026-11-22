@@ -24,6 +24,7 @@ from tasks.vuln_sla_sweep import (
     _MAX_CATCH_UP,
     _build_in_app_payload,
     _enqueue_notifications,
+    _message_params,
     _parse_anchor,
     _window_start,
 )
@@ -152,6 +153,39 @@ def test_payload_unexpected_severity_still_renders() -> None:
         window_start=_NOW,
     )
     assert "(critical 1, future_sev 2)" in body
+
+
+# ---------------------------------------------------------------------------
+# _message_params (migration 0094)
+# ---------------------------------------------------------------------------
+
+
+def test_message_params_carry_counts_and_window_start() -> None:
+    params = _message_params(
+        project_name="portal",
+        by_severity={"low": 2, "critical": 1, "high": 3},
+        window_start=_NOW - timedelta(days=2),
+    )
+    assert params == {
+        "project_name": "portal",
+        "count": 6,
+        "since": "2026-07-23T02:45:00+00:00",
+        "critical": 1,
+        "high": 3,
+        "low": 2,
+    }
+
+
+def test_message_params_count_an_unexpected_severity_without_naming_it() -> None:
+    """The total stays true; the catalog has no label for the new bucket."""
+    params = _message_params(
+        project_name="portal",
+        by_severity={"critical": 1, "future_sev": 2},
+        window_start=_NOW,
+    )
+    assert params["count"] == 3
+    assert params["critical"] == 1
+    assert "future_sev" not in params
 
 
 def test_status_vocabulary_mirrors_gate() -> None:
@@ -302,6 +336,7 @@ def _descriptor(project_id: str | None = None) -> dict[str, Any]:
         "body": "1 open finding crossed the remediation SLA since 2026-07-24 02:45 UTC.",
         "link": "/projects/x?tab=vulnerabilities&sla=overdue",
         "project_id": project_id or str(uuid.uuid4()),
+        "message_params": {"project_name": "portal", "count": 1, "critical": 1},
     }
 
 
@@ -326,6 +361,8 @@ def test_enqueue_records_in_app_only_call_shape(
     assert kwargs["in_app_link"] == d["link"]
     assert kwargs["in_app_target_table"] == "projects"
     assert kwargs["in_app_target_id"] == d["project_id"]
+    assert kwargs["in_app_message_key"] == "vuln_sla_breach"
+    assert kwargs["in_app_params"] == d["message_params"]
 
 
 def test_enqueue_swallows_per_descriptor_broker_failure(

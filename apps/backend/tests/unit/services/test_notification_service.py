@@ -543,3 +543,80 @@ async def test_sync_helpers_round_trip_in_sync_session(
             assert row.read_at is None
     finally:
         engine.dispose()
+
+
+# ---------------------------------------------------------------------------
+# message_key + params (migration 0094)
+# ---------------------------------------------------------------------------
+
+
+async def test_create_notification_round_trips_message_key_and_params(
+    db_session: AsyncSession,
+) -> None:
+    """The key and its values survive the write and the list read."""
+    from services.notification_service import create_notification, list_notifications
+
+    user = await make_user(db_session)
+    row = await create_notification(
+        db_session,
+        user_id=user.id,
+        kind="scan_completed",
+        title="Scheduled scan completed: web",
+        body="The scheduled scan finished.",
+        message_key="scan_scheduled_completed",
+        params={"project_name": "web", "count": 3},
+    )
+    assert row.message_key == "scan_scheduled_completed"
+    assert row.params == {"project_name": "web", "count": 3}
+
+    rows, _total, _unread = await list_notifications(db_session, user_id=user.id)
+    assert rows[0].message_key == "scan_scheduled_completed"
+    assert rows[0].params == {"project_name": "web", "count": 3}
+
+
+async def test_create_notification_without_message_key_stores_nulls(
+    db_session: AsyncSession,
+) -> None:
+    """A caller that names no message writes the same row as before 0094."""
+    from services.notification_service import create_notification
+
+    user = await make_user(db_session)
+    row = await create_notification(
+        db_session,
+        user_id=user.id,
+        kind="cve_detected",
+        title="t",
+        body="b",
+        params={"ignored": "without a key"},
+    )
+    assert row.message_key is None
+    assert row.params is None
+
+
+async def test_sync_create_notification_writes_message_key_and_params(
+    db_session: AsyncSession,
+) -> None:
+    """The Celery-side writer carries the same two columns."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+
+    from core.config import database_url_sync
+    from services.notification_service import create_notification_sync
+
+    user = await make_user(db_session)
+    engine = create_engine(database_url_sync(), pool_pre_ping=True, future=True)
+    try:
+        with Session(engine) as session:
+            row = create_notification_sync(
+                session,
+                user_id=user.id,
+                kind="malicious_detected",
+                title="Known-malicious package in web",
+                body="...",
+                message_key="malicious_in_project",
+                params={"project_name": "web", "purl": "pkg:npm/evil@1.0.0"},
+            )
+            assert row.message_key == "malicious_in_project"
+            assert row.params == {"project_name": "web", "purl": "pkg:npm/evil@1.0.0"}
+    finally:
+        engine.dispose()

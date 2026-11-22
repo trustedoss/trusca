@@ -21,7 +21,13 @@
  *      but disabled with a tooltip explaining that in-app notifications
  *      are always enabled (defensive: if the row is ever dropped the
  *      backend would default to off, but we never let users opt out
- *      from this surface). PUT only fires when the form is dirty.
+ *      from this surface). Each toggle saves on its own: the PUT fires
+ *      on change, the switches wait while it is in flight, and a failed
+ *      save puts the switch back and says so inline.
+ *
+ * Row title and body come from `notificationText`: the catalog message
+ * named by `message_key` when this build knows it, the stored English
+ * text otherwise.
  *
  * No hardcoded color literals; every tone uses Tailwind tokens. Every
  * visible string flows through `t()` (CLAUDE.md i18n rule).
@@ -62,6 +68,7 @@ import {
   useNotifications,
   useUpdateNotificationPrefs,
 } from "@/features/notifications/useNotifications";
+import { notificationText } from "@/features/notifications/notificationText";
 import { problemMessage } from "@/lib/problemMessage";
 import RelativeTime from "@/components/RelativeTime";
 import { cn } from "@/lib/utils";
@@ -122,6 +129,12 @@ interface InboxRowProps {
 function InboxRow({ item, onActivate }: InboxRowProps) {
   const { t, i18n } = useTranslation("notifications");
   const isUnread = item.read_at === null;
+  const text = notificationText(
+    item,
+    t,
+    (key) => i18n.exists(key),
+    i18n.resolvedLanguage ?? "en",
+  );
   return (
     <li>
       <button
@@ -149,7 +162,7 @@ function InboxRow({ item, onActivate }: InboxRowProps) {
                 isUnread ? "font-semibold" : "font-medium text-muted-foreground",
               )}
             >
-              {item.title}
+              {text.title}
             </span>
             {isUnread ? (
               <span
@@ -160,7 +173,7 @@ function InboxRow({ item, onActivate }: InboxRowProps) {
             ) : null}
           </div>
           <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
-            {item.body}
+            {text.body}
           </p>
           <div className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground">
             <span data-testid="notifications-row-kind">
@@ -184,54 +197,79 @@ function InboxRow({ item, onActivate }: InboxRowProps) {
 
 interface PreferencesFormProps {
   prefs: NotificationPrefs;
-  onSave: (next: NotificationPrefs) => void;
+  onSave: (
+    next: NotificationPrefs,
+    handlers: { onError: (err: unknown) => void },
+  ) => void;
   saving: boolean;
 }
 
+type OutboundChannel = "email_enabled" | "slack_enabled" | "teams_enabled";
+
 function PreferencesForm({ prefs, onSave, saving }: PreferencesFormProps) {
   const { t } = useTranslation("notifications");
-  const [draft, setDraft] = useState<NotificationPrefs>(prefs);
+  // What the switches show. Moves on the click, ahead of the server, and is
+  // put back to the server's row when a save fails.
+  const [shown, setShown] = useState<NotificationPrefs>(prefs);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
-  // Re-sync draft if the underlying server row changes (e.g. mutation
-  // invalidation re-fetched and got a different value).
+  // Re-sync when the server row changes (a save landed, or a refetch).
   useEffect(() => {
-    setDraft(prefs);
+    setShown(prefs);
   }, [prefs]);
 
-  const dirty =
-    draft.email_enabled !== prefs.email_enabled ||
-    draft.slack_enabled !== prefs.slack_enabled ||
-    draft.teams_enabled !== prefs.teams_enabled ||
-    draft.in_app_enabled !== prefs.in_app_enabled;
-
-  function update<K extends keyof NotificationPrefs>(
-    key: K,
-    value: NotificationPrefs[K],
-  ) {
-    setDraft((prev) => ({ ...prev, [key]: value }));
+  function toggle(key: OutboundChannel, value: boolean) {
+    // In-app is always sent as on: the server rejects turning it off, and
+    // this surface never offers it.
+    const next: NotificationPrefs = {
+      ...shown,
+      [key]: value,
+      in_app_enabled: true,
+    };
+    setShown(next);
+    setSaveError(null);
+    onSave(next, {
+      onError: (err) => {
+        setShown(prefs);
+        setSaveError(
+          problemMessage(err, t, { action: "errors.prefs_save_failed" }),
+        );
+      },
+    });
   }
 
   return (
     <div className="space-y-4" data-testid="notifications-prefs-form">
+      {saveError ? (
+        <Alert
+          variant="destructive"
+          data-testid="notifications-prefs-save-error"
+        >
+          <AlertDescription>{saveError}</AlertDescription>
+        </Alert>
+      ) : null}
       <ToggleRow
         label={t("prefs.email.label")}
         description={t("prefs.email.description")}
-        checked={draft.email_enabled}
-        onCheckedChange={(v) => update("email_enabled", v)}
+        checked={shown.email_enabled}
+        onCheckedChange={(v) => toggle("email_enabled", v)}
+        disabled={saving}
         testId="notifications-prefs-email"
       />
       <ToggleRow
         label={t("prefs.slack.label")}
         description={t("prefs.slack.description")}
-        checked={draft.slack_enabled}
-        onCheckedChange={(v) => update("slack_enabled", v)}
+        checked={shown.slack_enabled}
+        onCheckedChange={(v) => toggle("slack_enabled", v)}
+        disabled={saving}
         testId="notifications-prefs-slack"
       />
       <ToggleRow
         label={t("prefs.teams.label")}
         description={t("prefs.teams.description")}
-        checked={draft.teams_enabled}
-        onCheckedChange={(v) => update("teams_enabled", v)}
+        checked={shown.teams_enabled}
+        onCheckedChange={(v) => toggle("teams_enabled", v)}
+        disabled={saving}
         testId="notifications-prefs-teams"
       />
       <ToggleRow
@@ -244,17 +282,14 @@ function PreferencesForm({ prefs, onSave, saving }: PreferencesFormProps) {
         tooltip={t("prefs.in_app.tooltip")}
         testId="notifications-prefs-in-app"
       />
-
-      <div className="flex justify-end">
-        <Button
-          type="button"
-          size="sm"
-          disabled={!dirty || saving}
-          onClick={() => onSave(draft)}
-          data-testid="notifications-prefs-save"
-        >
-          {saving ? t("prefs.saving") : t("prefs.save")}
-        </Button>
+      {/* Announces the save in progress; the switches carry the result. */}
+      <div
+        aria-live="polite"
+        className="min-h-5 text-xs text-muted-foreground"
+        data-testid="notifications-prefs-status"
+        data-saving={saving}
+      >
+        {saving ? t("prefs.saving") : null}
       </div>
     </div>
   );
@@ -368,19 +403,13 @@ export function NotificationsPage() {
     });
   }
 
-  function handleSavePrefs(next: NotificationPrefs) {
-    updatePrefs.mutate(next, {
-      onSuccess: () => {
-        notify(t("toast.prefs_saved"), "success", "prefs_saved");
-      },
-      onError: (err) => {
-        notify(
-          problemMessage(err, t, { action: "errors.prefs_save_failed" }),
-          "error",
-          "prefs_save_failed",
-        );
-      },
-    });
+  function handleSavePrefs(
+    next: NotificationPrefs,
+    handlers: { onError: (err: unknown) => void },
+  ) {
+    // Inline error, no toast: the message belongs next to the switch that
+    // moved back, and a success needs no message because the switch is it.
+    updatePrefs.mutate(next, { onError: handlers.onError });
   }
 
   return (

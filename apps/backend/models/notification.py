@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import (
     Boolean,
@@ -49,7 +50,7 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.dialects.postgresql import ENUM as PG_ENUM
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from . import Base
@@ -135,6 +136,15 @@ class Notification(Base):
     title: Mapped[str] = mapped_column(String(256), nullable=False)
     body: Mapped[str] = mapped_column(String(1024), nullable=False)
     link: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    # Which message this row carries, and the values it names (migration 0094).
+    # ``title``/``body`` stay the English rendering so an older client, the
+    # audit trail and a row written before 0094 still read; the SPA renders
+    # ``message_key`` + ``params`` in the reader's language when it knows the
+    # key, and falls back to ``title``/``body`` when it does not. One kind can
+    # carry several messages (``account_security`` covers three), which is why
+    # the key is separate from ``kind``.
+    message_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    params: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     target_table: Mapped[str | None] = mapped_column(String(64), nullable=True)
     target_id: Mapped[uuid.UUID | None] = mapped_column(UUID_PK, nullable=True)
     read_at: Mapped[datetime | None] = mapped_column(
