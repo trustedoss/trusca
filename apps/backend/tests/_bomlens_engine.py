@@ -338,7 +338,7 @@ def write_plan(
             shutil.copyfile(manifest, out / "bomlens-result.json")
         files = out / "bomlens-plan"
         files.mkdir(exist_ok=True)
-        for name in ("build-prep.sh", "identify-conda.py"):
+        for name in ("build-prep.sh", "identify-conda.py", "read-python-venv.py"):
             (files / name).write_text(f"# placeholder for {name}\n")
 
     return effect

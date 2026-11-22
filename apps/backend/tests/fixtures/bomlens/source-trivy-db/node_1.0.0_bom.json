@@ -21,8 +21,8 @@
       "subjects": [
         "pkg:npm/baseline-e2e-fixture@1.0.0"
       ],
-      "text": "This Software Bill-of-Materials (SBOM) document was created on Friday, November 20, 2026 with cdxgen. The data was captured during the build lifecycle phase. The document describes an application named 'baseline-e2e-fixture' with version '1.0.0'.",
-      "timestamp": "2026-11-20T23:08:15Z"
+      "text": "This Software Bill-of-Materials (SBOM) document was created on Sunday, November 22, 2026 with cdxgen. The data was captured during the build lifecycle phase. The document describes an application named 'baseline-e2e-fixture' with version '1.0.0'.",
+      "timestamp": "2026-11-22T02:26:50Z"
     }
   ],
   "bomFormat": "CycloneDX",
@@ -85,6 +85,11 @@
     }
   ],
   "metadata": {
+    "authors": [
+      {
+        "name": "BomLens 1.15.1"
+      }
+    ],
     "component": {
       "bom-ref": "pkg:npm/baseline-e2e-fixture@1.0.0",
       "description": "E2E 테스트 fixture — npm 프로젝트 (외부 도구 스캔 검증용)",
@@ -119,14 +124,18 @@
       },
       {
         "name": "bomlens:excluded-paths",
-        "value": "**/test/**, **/tests/**, **/spec/**, **/fixtures/**, **/testdata/**, **/__tests__/**, **/e2e/**, **/example/**, **/examples/**, **/sample/**, **/samples/**, **/bench/**, **/benches/**, **/benchmark/**, **/benchmarks/**, **/demo/**, **/demos/**, **/playground/**, **/.github/workflows/**, **/gradle/wrapper/**"
+        "value": "**/test/**, **/tests/**, **/spec/**, **/fixtures/**, **/testdata/**, **/__tests__/**, **/e2e/**, **/example/**, **/examples/**, **/sample/**, **/samples/**, **/bench/**, **/benches/**, **/benchmark/**, **/benchmarks/**, **/demo/**, **/demos/**, **/playground/**, **/.github/workflows/**, **/gradle/wrapper/**, **/vendor/**/package-lock.json"
       },
       {
         "name": "bomlens:undeclared-fields",
         "value": "unknown-to-author"
+      },
+      {
+        "name": "bomlens:sbom-author-source",
+        "value": "tool"
       }
     ],
-    "timestamp": "2026-11-20T23:08:15Z",
+    "timestamp": "2026-11-22T02:26:50Z",
     "tools": {
       "components": [
         {
@@ -147,12 +156,12 @@
           "name": "BomLens",
           "publisher": "SK Telecom",
           "type": "application",
-          "version": "1.15.0"
+          "version": "1.15.1"
         }
       ]
     }
   },
-  "serialNumber": "urn:uuid:c1888bdb-b16b-4a24-94df-040ea95ce78e",
+  "serialNumber": "urn:uuid:c7d4534d-6426-46a4-b97f-0921d252f841",
   "services": [],
   "specVersion": "1.6",
   "version": 1,

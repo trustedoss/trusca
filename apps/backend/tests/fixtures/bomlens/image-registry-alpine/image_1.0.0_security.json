@@ -3,8 +3,8 @@
   "Trivy": {
     "Version": "0.75.0"
   },
-  "ReportID": "01a1fb3a-0040-7274-b4c6-b0d3e3dc52a6",
-  "CreatedAt": "2026-11-20T23:10:44.800162937Z",
+  "ReportID": "01a20113-5294-7f38-99bc-358f88ee2d7c",
+  "CreatedAt": "2026-11-22T02:26:13.269000249Z",
   "ArtifactName": "image_1.0.0_bom.json",
   "ArtifactType": "cyclonedx",
   "Metadata": {
@@ -356,7 +356,15 @@
             "https://www.cve.org/CVERecord?id=CVE-2023-42363"
           ],
           "PublishedDate": "2023-11-27T22:15:07.94Z",
-          "LastModifiedDate": "2026-06-17T06:23:46.477Z"
+          "LastModifiedDate": "2026-06-17T06:23:46.477Z",
+          "introducedBy": [
+            {
+              "name": "busybox-binsh",
+              "version": "1.36.1-r15",
+              "purl": "pkg:apk/alpine/busybox-binsh@1.36.1-r15?arch=aarch64&distro=3.19.0",
+              "direct": false
+            }
+          ]
         },
         {
           "VulnerabilityID": "CVE-2023-42364",
@@ -412,7 +420,15 @@
             "https://www.cve.org/CVERecord?id=CVE-2023-42364"
           ],
           "PublishedDate": "2023-11-27T23:15:07.313Z",
-          "LastModifiedDate": "2026-06-17T06:23:46.627Z"
+          "LastModifiedDate": "2026-06-17T06:23:46.627Z",
+          "introducedBy": [
+            {
+              "name": "busybox-binsh",
+              "version": "1.36.1-r15",
+              "purl": "pkg:apk/alpine/busybox-binsh@1.36.1-r15?arch=aarch64&distro=3.19.0",
+              "direct": false
+            }
+          ]
         },
         {
           "VulnerabilityID": "CVE-2023-42365",
@@ -468,7 +484,15 @@
             "https://www.cve.org/CVERecord?id=CVE-2023-42365"
           ],
           "PublishedDate": "2023-11-27T23:15:07.373Z",
-          "LastModifiedDate": "2026-06-17T06:23:46.837Z"
+          "LastModifiedDate": "2026-06-17T06:23:46.837Z",
+          "introducedBy": [
+            {
+              "name": "busybox-binsh",
+              "version": "1.36.1-r15",
+              "purl": "pkg:apk/alpine/busybox-binsh@1.36.1-r15?arch=aarch64&distro=3.19.0",
+              "direct": false
+            }
+          ]
         },
         {
           "VulnerabilityID": "CVE-2023-42366",
@@ -521,7 +545,15 @@
             "https://www.cve.org/CVERecord?id=CVE-2023-42366"
           ],
           "PublishedDate": "2023-11-27T23:15:07.42Z",
-          "LastModifiedDate": "2026-10-08T22:17:24.96Z"
+          "LastModifiedDate": "2026-10-08T22:17:24.96Z",
+          "introducedBy": [
+            {
+              "name": "busybox-binsh",
+              "version": "1.36.1-r15",
+              "purl": "pkg:apk/alpine/busybox-binsh@1.36.1-r15?arch=aarch64&distro=3.19.0",
+              "direct": false
+            }
+          ]
         },
         {
           "VulnerabilityID": "CVE-2024-58251",
@@ -559,7 +591,15 @@
             "https://www.cve.org/CVERecord?id=CVE-2024-58251"
           ],
           "PublishedDate": "2025-04-23T18:16:03.057Z",
-          "LastModifiedDate": "2026-06-17T08:14:42.853Z"
+          "LastModifiedDate": "2026-06-17T08:14:42.853Z",
+          "introducedBy": [
+            {
+              "name": "busybox-binsh",
+              "version": "1.36.1-r15",
+              "purl": "pkg:apk/alpine/busybox-binsh@1.36.1-r15?arch=aarch64&distro=3.19.0",
+              "direct": false
+            }
+          ]
         },
         {
           "VulnerabilityID": "CVE-2025-46394",
@@ -610,7 +650,15 @@
             "https://www.openwall.com/lists/oss-security/2025/04/23/1"
           ],
           "PublishedDate": "2025-04-23T16:15:48.713Z",
-          "LastModifiedDate": "2026-06-17T09:26:20.32Z"
+          "LastModifiedDate": "2026-06-17T09:26:20.32Z",
+          "introducedBy": [
+            {
+              "name": "busybox-binsh",
+              "version": "1.36.1-r15",
+              "purl": "pkg:apk/alpine/busybox-binsh@1.36.1-r15?arch=aarch64&distro=3.19.0",
+              "direct": false
+            }
+          ]
         },
         {
           "VulnerabilityID": "CVE-2023-42363",
@@ -664,7 +712,15 @@
             "https://www.cve.org/CVERecord?id=CVE-2023-42363"
           ],
           "PublishedDate": "2023-11-27T22:15:07.94Z",
-          "LastModifiedDate": "2026-06-17T06:23:46.477Z"
+          "LastModifiedDate": "2026-06-17T06:23:46.477Z",
+          "introducedBy": [
+            {
+              "name": "busybox-binsh",
+              "version": "1.36.1-r15",
+              "purl": "pkg:apk/alpine/busybox-binsh@1.36.1-r15?arch=aarch64&distro=3.19.0",
+              "direct": true
+            }
+          ]
         },
         {
           "VulnerabilityID": "CVE-2023-42364",
@@ -720,7 +776,15 @@
             "https://www.cve.org/CVERecord?id=CVE-2023-42364"
           ],
           "PublishedDate": "2023-11-27T23:15:07.313Z",
-          "LastModifiedDate": "2026-06-17T06:23:46.627Z"
+          "LastModifiedDate": "2026-06-17T06:23:46.627Z",
+          "introducedBy": [
+            {
+              "name": "busybox-binsh",
+              "version": "1.36.1-r15",
+              "purl": "pkg:apk/alpine/busybox-binsh@1.36.1-r15?arch=aarch64&distro=3.19.0",
+              "direct": true
+            }
+          ]
         },
         {
           "VulnerabilityID": "CVE-2023-42365",
@@ -776,7 +840,15 @@
             "https://www.cve.org/CVERecord?id=CVE-2023-42365"
           ],
           "PublishedDate": "2023-11-27T23:15:07.373Z",
-          "LastModifiedDate": "2026-06-17T06:23:46.837Z"
+          "LastModifiedDate": "2026-06-17T06:23:46.837Z",
+          "introducedBy": [
+            {
+              "name": "busybox-binsh",
+              "version": "1.36.1-r15",
+              "purl": "pkg:apk/alpine/busybox-binsh@1.36.1-r15?arch=aarch64&distro=3.19.0",
+              "direct": true
+            }
+          ]
         },
         {
           "VulnerabilityID": "CVE-2023-42366",
@@ -829,7 +901,15 @@
             "https://www.cve.org/CVERecord?id=CVE-2023-42366"
           ],
           "PublishedDate": "2023-11-27T23:15:07.42Z",
-          "LastModifiedDate": "2026-10-08T22:17:24.96Z"
+          "LastModifiedDate": "2026-10-08T22:17:24.96Z",
+          "introducedBy": [
+            {
+              "name": "busybox-binsh",
+              "version": "1.36.1-r15",
+              "purl": "pkg:apk/alpine/busybox-binsh@1.36.1-r15?arch=aarch64&distro=3.19.0",
+              "direct": true
+            }
+          ]
         },
         {
           "VulnerabilityID": "CVE-2024-58251",
@@ -867,7 +947,15 @@
             "https://www.cve.org/CVERecord?id=CVE-2024-58251"
           ],
           "PublishedDate": "2025-04-23T18:16:03.057Z",
-          "LastModifiedDate": "2026-06-17T08:14:42.853Z"
+          "LastModifiedDate": "2026-06-17T08:14:42.853Z",
+          "introducedBy": [
+            {
+              "name": "busybox-binsh",
+              "version": "1.36.1-r15",
+              "purl": "pkg:apk/alpine/busybox-binsh@1.36.1-r15?arch=aarch64&distro=3.19.0",
+              "direct": true
+            }
+          ]
         },
         {
           "VulnerabilityID": "CVE-2025-46394",
@@ -918,7 +1006,15 @@
             "https://www.openwall.com/lists/oss-security/2025/04/23/1"
           ],
           "PublishedDate": "2025-04-23T16:15:48.713Z",
-          "LastModifiedDate": "2026-06-17T09:26:20.32Z"
+          "LastModifiedDate": "2026-06-17T09:26:20.32Z",
+          "introducedBy": [
+            {
+              "name": "busybox-binsh",
+              "version": "1.36.1-r15",
+              "purl": "pkg:apk/alpine/busybox-binsh@1.36.1-r15?arch=aarch64&distro=3.19.0",
+              "direct": true
+            }
+          ]
         },
         {
           "VulnerabilityID": "CVE-2024-6119",
@@ -1005,7 +1101,15 @@
             "https://www.cve.org/CVERecord?id=CVE-2024-6119"
           ],
           "PublishedDate": "2024-09-03T16:15:07.177Z",
-          "LastModifiedDate": "2026-06-17T08:17:19.693Z"
+          "LastModifiedDate": "2026-06-17T08:17:19.693Z",
+          "introducedBy": [
+            {
+              "name": "libcrypto3",
+              "version": "3.1.4-r2",
+              "purl": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64&distro=3.19.0",
+              "direct": true
+            }
+          ]
         },
         {
           "VulnerabilityID": "CVE-2023-6129",
@@ -1105,7 +1209,15 @@
             "https://www.openwall.com/lists/oss-security/2024/01/09/1"
           ],
           "PublishedDate": "2024-01-09T17:15:12.147Z",
-          "LastModifiedDate": "2026-10-14T23:17:18.96Z"
+          "LastModifiedDate": "2026-10-14T23:17:18.96Z",
+          "introducedBy": [
+            {
+              "name": "libcrypto3",
+              "version": "3.1.4-r2",
+              "purl": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64&distro=3.19.0",
+              "direct": true
+            }
+          ]
         },
         {
           "VulnerabilityID": "CVE-2024-0727",
@@ -1215,7 +1327,15 @@
             "https://www.openssl.org/news/secadv/20240125.txt"
           ],
           "PublishedDate": "2024-01-26T09:15:07.637Z",
-          "LastModifiedDate": "2026-10-15T01:17:18.263Z"
+          "LastModifiedDate": "2026-10-15T01:17:18.263Z",
+          "introducedBy": [
+            {
+              "name": "libcrypto3",
+              "version": "3.1.4-r2",
+              "purl": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64&distro=3.19.0",
+              "direct": true
+            }
+          ]
         },
         {
           "VulnerabilityID": "CVE-2025-9230",
@@ -1299,7 +1419,15 @@
             "https://www.cve.org/CVERecord?id=CVE-2025-9230"
           ],
           "PublishedDate": "2025-09-30T14:15:41.05Z",
-          "LastModifiedDate": "2026-11-09T20:57:31.21Z"
+          "LastModifiedDate": "2026-11-09T20:57:31.21Z",
+          "introducedBy": [
+            {
+              "name": "libcrypto3",
+              "version": "3.1.4-r2",
+              "purl": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64&distro=3.19.0",
+              "direct": true
+            }
+          ]
         },
         {
           "VulnerabilityID": "CVE-2023-6237",
@@ -1387,7 +1515,15 @@
             "https://www.openwall.com/lists/oss-security/2024/01/15/2"
           ],
           "PublishedDate": "2024-04-25T07:15:45.27Z",
-          "LastModifiedDate": "2026-11-10T14:05:10.233Z"
+          "LastModifiedDate": "2026-11-10T14:05:10.233Z",
+          "introducedBy": [
+            {
+              "name": "libcrypto3",
+              "version": "3.1.4-r2",
+              "purl": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64&distro=3.19.0",
+              "direct": true
+            }
+          ]
         },
         {
           "VulnerabilityID": "CVE-2024-13176",
@@ -1439,7 +1575,6 @@
           "References": [
             "http://www.openwall.com/lists/oss-security/2025/01/20/2",
             "https://access.redhat.com/errata/RHSA-2025:15699",
-            "https://access.redhat.com/errata/RHSA-2025:16046",
             "https://access.redhat.com/security/cve/CVE-2024-13176",
             "https://bugzilla.redhat.com/2359885",
             "https://bugzilla.redhat.com/2359888",
@@ -1600,7 +1735,7 @@
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2025-50102",
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2025-50104",
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2025-5399",
-            "https://errata.almalinux.org/9/ALSA-2025-16046.html",
+            "https://errata.almalinux.org/10/ALSA-2025-15699.html",
             "https://errata.rockylinux.org/RLSA-2025:15699",
             "https://github.com/advisories/GHSA-r9fv-h47r-823f",
             "https://github.com/openssl/openssl/commit/07272b05b04836a762b4baa874958af51d513844",
@@ -1628,7 +1763,15 @@
             "https://www.oracle.com/security-alerts/cpuapr2025.html#AppendixMSQL"
           ],
           "PublishedDate": "2025-01-20T14:15:26.247Z",
-          "LastModifiedDate": "2026-11-09T20:22:46.043Z"
+          "LastModifiedDate": "2026-11-09T20:22:46.043Z",
+          "introducedBy": [
+            {
+              "name": "libcrypto3",
+              "version": "3.1.4-r2",
+              "purl": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64&distro=3.19.0",
+              "direct": true
+            }
+          ]
         },
         {
           "VulnerabilityID": "CVE-2024-2511",
@@ -1722,7 +1865,15 @@
             "https://www.openssl.org/news/vulnerabilities.html"
           ],
           "PublishedDate": "2024-04-08T14:15:07.66Z",
-          "LastModifiedDate": "2026-11-06T19:29:12.633Z"
+          "LastModifiedDate": "2026-11-06T19:29:12.633Z",
+          "introducedBy": [
+            {
+              "name": "libcrypto3",
+              "version": "3.1.4-r2",
+              "purl": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64&distro=3.19.0",
+              "direct": true
+            }
+          ]
         },
         {
           "VulnerabilityID": "CVE-2024-4603",
@@ -1805,7 +1956,15 @@
             "https://www.openssl.org/news/secadv/20240516.txt"
           ],
           "PublishedDate": "2024-05-16T16:15:10.643Z",
-          "LastModifiedDate": "2026-11-09T16:20:11.16Z"
+          "LastModifiedDate": "2026-11-09T16:20:11.16Z",
+          "introducedBy": [
+            {
+              "name": "libcrypto3",
+              "version": "3.1.4-r2",
+              "purl": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64&distro=3.19.0",
+              "direct": true
+            }
+          ]
         },
         {
           "VulnerabilityID": "CVE-2024-4741",
@@ -1856,11 +2015,9 @@
           },
           "References": [
             "https://access.redhat.com/errata/RHSA-2024:9333",
+            "https://access.redhat.com/errata/RHSA-2026:97212",
             "https://access.redhat.com/security/cve/CVE-2024-4741",
-            "https://bugzilla.redhat.com/2274020",
-            "https://bugzilla.redhat.com/2281029",
             "https://bugzilla.redhat.com/2283757",
-            "https://bugzilla.redhat.com/2294581",
             "https://bugzilla.redhat.com/show_bug.cgi?id=2274020",
             "https://bugzilla.redhat.com/show_bug.cgi?id=2281029",
             "https://bugzilla.redhat.com/show_bug.cgi?id=2283757",
@@ -1870,7 +2027,7 @@
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2024-4603",
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2024-4741",
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2024-5535",
-            "https://errata.almalinux.org/9/ALSA-2024-9333.html",
+            "https://errata.almalinux.org/10/ALSA-2026-97212.html",
             "https://errata.rockylinux.org/RLSA-2024:9333",
             "https://github.com/advisories/GHSA-6vgq-8qjq-h578",
             "https://github.com/openssl/openssl/commit/704f725b96aa373ee45ecfb23f6abfe8be8d9177",
@@ -1891,7 +2048,15 @@
             "https://www.openssl.org/news/secadv/20240528.txt"
           ],
           "PublishedDate": "2024-11-13T11:15:04.48Z",
-          "LastModifiedDate": "2026-11-09T17:27:44.183Z"
+          "LastModifiedDate": "2026-11-09T17:27:44.183Z",
+          "introducedBy": [
+            {
+              "name": "libcrypto3",
+              "version": "3.1.4-r2",
+              "purl": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64&distro=3.19.0",
+              "direct": true
+            }
+          ]
         },
         {
           "VulnerabilityID": "CVE-2024-5535",
@@ -2040,7 +2205,15 @@
             "https://www.oracle.com/security-alerts/cpuoct2024.html#AppendixMSQL"
           ],
           "PublishedDate": "2024-06-27T11:15:24.447Z",
-          "LastModifiedDate": "2026-11-10T14:31:44.263Z"
+          "LastModifiedDate": "2026-11-10T14:31:44.263Z",
+          "introducedBy": [
+            {
+              "name": "libcrypto3",
+              "version": "3.1.4-r2",
+              "purl": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64&distro=3.19.0",
+              "direct": true
+            }
+          ]
         },
         {
           "VulnerabilityID": "CVE-2024-9143",
@@ -2113,7 +2286,15 @@
             "https://www.cve.org/CVERecord?id=CVE-2024-9143"
           ],
           "PublishedDate": "2024-10-16T17:15:18.13Z",
-          "LastModifiedDate": "2026-11-09T15:56:44.17Z"
+          "LastModifiedDate": "2026-11-09T15:56:44.17Z",
+          "introducedBy": [
+            {
+              "name": "libcrypto3",
+              "version": "3.1.4-r2",
+              "purl": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64&distro=3.19.0",
+              "direct": true
+            }
+          ]
         },
         {
           "VulnerabilityID": "CVE-2025-9232",
@@ -2179,7 +2360,15 @@
             "https://www.cve.org/CVERecord?id=CVE-2025-9232"
           ],
           "PublishedDate": "2025-09-30T14:15:41.313Z",
-          "LastModifiedDate": "2026-11-09T21:02:53.39Z"
+          "LastModifiedDate": "2026-11-09T21:02:53.39Z",
+          "introducedBy": [
+            {
+              "name": "libcrypto3",
+              "version": "3.1.4-r2",
+              "purl": "pkg:apk/alpine/libcrypto3@3.1.4-r2?arch=aarch64&distro=3.19.0",
+              "direct": true
+            }
+          ]
         },
         {
           "VulnerabilityID": "CVE-2024-6119",
@@ -2266,7 +2455,15 @@
             "https://www.cve.org/CVERecord?id=CVE-2024-6119"
           ],
           "PublishedDate": "2024-09-03T16:15:07.177Z",
-          "LastModifiedDate": "2026-06-17T08:17:19.693Z"
+          "LastModifiedDate": "2026-06-17T08:17:19.693Z",
+          "introducedBy": [
+            {
+              "name": "libssl3",
+              "version": "3.1.4-r2",
+              "purl": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64&distro=3.19.0",
+              "direct": true
+            }
+          ]
         },
         {
           "VulnerabilityID": "CVE-2023-6129",
@@ -2366,7 +2563,15 @@
             "https://www.openwall.com/lists/oss-security/2024/01/09/1"
           ],
           "PublishedDate": "2024-01-09T17:15:12.147Z",
-          "LastModifiedDate": "2026-10-14T23:17:18.96Z"
+          "LastModifiedDate": "2026-10-14T23:17:18.96Z",
+          "introducedBy": [
+            {
+              "name": "libssl3",
+              "version": "3.1.4-r2",
+              "purl": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64&distro=3.19.0",
+              "direct": true
+            }
+          ]
         },
         {
           "VulnerabilityID": "CVE-2024-0727",
@@ -2476,7 +2681,15 @@
             "https://www.openssl.org/news/secadv/20240125.txt"
           ],
           "PublishedDate": "2024-01-26T09:15:07.637Z",
-          "LastModifiedDate": "2026-10-15T01:17:18.263Z"
+          "LastModifiedDate": "2026-10-15T01:17:18.263Z",
+          "introducedBy": [
+            {
+              "name": "libssl3",
+              "version": "3.1.4-r2",
+              "purl": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64&distro=3.19.0",
+              "direct": true
+            }
+          ]
         },
         {
           "VulnerabilityID": "CVE-2025-9230",
@@ -2560,7 +2773,15 @@
             "https://www.cve.org/CVERecord?id=CVE-2025-9230"
           ],
           "PublishedDate": "2025-09-30T14:15:41.05Z",
-          "LastModifiedDate": "2026-11-09T20:57:31.21Z"
+          "LastModifiedDate": "2026-11-09T20:57:31.21Z",
+          "introducedBy": [
+            {
+              "name": "libssl3",
+              "version": "3.1.4-r2",
+              "purl": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64&distro=3.19.0",
+              "direct": true
+            }
+          ]
         },
         {
           "VulnerabilityID": "CVE-2023-6237",
@@ -2648,7 +2869,15 @@
             "https://www.openwall.com/lists/oss-security/2024/01/15/2"
           ],
           "PublishedDate": "2024-04-25T07:15:45.27Z",
-          "LastModifiedDate": "2026-11-10T14:05:10.233Z"
+          "LastModifiedDate": "2026-11-10T14:05:10.233Z",
+          "introducedBy": [
+            {
+              "name": "libssl3",
+              "version": "3.1.4-r2",
+              "purl": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64&distro=3.19.0",
+              "direct": true
+            }
+          ]
         },
         {
           "VulnerabilityID": "CVE-2024-13176",
@@ -2700,7 +2929,6 @@
           "References": [
             "http://www.openwall.com/lists/oss-security/2025/01/20/2",
             "https://access.redhat.com/errata/RHSA-2025:15699",
-            "https://access.redhat.com/errata/RHSA-2025:16046",
             "https://access.redhat.com/security/cve/CVE-2024-13176",
             "https://bugzilla.redhat.com/2359885",
             "https://bugzilla.redhat.com/2359888",
@@ -2861,7 +3089,7 @@
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2025-50102",
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2025-50104",
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2025-5399",
-            "https://errata.almalinux.org/9/ALSA-2025-16046.html",
+            "https://errata.almalinux.org/10/ALSA-2025-15699.html",
             "https://errata.rockylinux.org/RLSA-2025:15699",
             "https://github.com/advisories/GHSA-r9fv-h47r-823f",
             "https://github.com/openssl/openssl/commit/07272b05b04836a762b4baa874958af51d513844",
@@ -2889,7 +3117,15 @@
             "https://www.oracle.com/security-alerts/cpuapr2025.html#AppendixMSQL"
           ],
           "PublishedDate": "2025-01-20T14:15:26.247Z",
-          "LastModifiedDate": "2026-11-09T20:22:46.043Z"
+          "LastModifiedDate": "2026-11-09T20:22:46.043Z",
+          "introducedBy": [
+            {
+              "name": "libssl3",
+              "version": "3.1.4-r2",
+              "purl": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64&distro=3.19.0",
+              "direct": true
+            }
+          ]
         },
         {
           "VulnerabilityID": "CVE-2024-2511",
@@ -2983,7 +3219,15 @@
             "https://www.openssl.org/news/vulnerabilities.html"
           ],
           "PublishedDate": "2024-04-08T14:15:07.66Z",
-          "LastModifiedDate": "2026-11-06T19:29:12.633Z"
+          "LastModifiedDate": "2026-11-06T19:29:12.633Z",
+          "introducedBy": [
+            {
+              "name": "libssl3",
+              "version": "3.1.4-r2",
+              "purl": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64&distro=3.19.0",
+              "direct": true
+            }
+          ]
         },
         {
           "VulnerabilityID": "CVE-2024-4603",
@@ -3066,7 +3310,15 @@
             "https://www.openssl.org/news/secadv/20240516.txt"
           ],
           "PublishedDate": "2024-05-16T16:15:10.643Z",
-          "LastModifiedDate": "2026-11-09T16:20:11.16Z"
+          "LastModifiedDate": "2026-11-09T16:20:11.16Z",
+          "introducedBy": [
+            {
+              "name": "libssl3",
+              "version": "3.1.4-r2",
+              "purl": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64&distro=3.19.0",
+              "direct": true
+            }
+          ]
         },
         {
           "VulnerabilityID": "CVE-2024-4741",
@@ -3117,11 +3369,9 @@
           },
           "References": [
             "https://access.redhat.com/errata/RHSA-2024:9333",
+            "https://access.redhat.com/errata/RHSA-2026:97212",
             "https://access.redhat.com/security/cve/CVE-2024-4741",
-            "https://bugzilla.redhat.com/2274020",
-            "https://bugzilla.redhat.com/2281029",
             "https://bugzilla.redhat.com/2283757",
-            "https://bugzilla.redhat.com/2294581",
             "https://bugzilla.redhat.com/show_bug.cgi?id=2274020",
             "https://bugzilla.redhat.com/show_bug.cgi?id=2281029",
             "https://bugzilla.redhat.com/show_bug.cgi?id=2283757",
@@ -3131,7 +3381,7 @@
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2024-4603",
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2024-4741",
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2024-5535",
-            "https://errata.almalinux.org/9/ALSA-2024-9333.html",
+            "https://errata.almalinux.org/10/ALSA-2026-97212.html",
             "https://errata.rockylinux.org/RLSA-2024:9333",
             "https://github.com/advisories/GHSA-6vgq-8qjq-h578",
             "https://github.com/openssl/openssl/commit/704f725b96aa373ee45ecfb23f6abfe8be8d9177",
@@ -3152,7 +3402,15 @@
             "https://www.openssl.org/news/secadv/20240528.txt"
           ],
           "PublishedDate": "2024-11-13T11:15:04.48Z",
-          "LastModifiedDate": "2026-11-09T17:27:44.183Z"
+          "LastModifiedDate": "2026-11-09T17:27:44.183Z",
+          "introducedBy": [
+            {
+              "name": "libssl3",
+              "version": "3.1.4-r2",
+              "purl": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64&distro=3.19.0",
+              "direct": true
+            }
+          ]
         },
         {
           "VulnerabilityID": "CVE-2024-5535",
@@ -3301,7 +3559,15 @@
             "https://www.oracle.com/security-alerts/cpuoct2024.html#AppendixMSQL"
           ],
           "PublishedDate": "2024-06-27T11:15:24.447Z",
-          "LastModifiedDate": "2026-11-10T14:31:44.263Z"
+          "LastModifiedDate": "2026-11-10T14:31:44.263Z",
+          "introducedBy": [
+            {
+              "name": "libssl3",
+              "version": "3.1.4-r2",
+              "purl": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64&distro=3.19.0",
+              "direct": true
+            }
+          ]
         },
         {
           "VulnerabilityID": "CVE-2024-9143",
@@ -3374,7 +3640,15 @@
             "https://www.cve.org/CVERecord?id=CVE-2024-9143"
           ],
           "PublishedDate": "2024-10-16T17:15:18.13Z",
-          "LastModifiedDate": "2026-11-09T15:56:44.17Z"
+          "LastModifiedDate": "2026-11-09T15:56:44.17Z",
+          "introducedBy": [
+            {
+              "name": "libssl3",
+              "version": "3.1.4-r2",
+              "purl": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64&distro=3.19.0",
+              "direct": true
+            }
+          ]
         },
         {
           "VulnerabilityID": "CVE-2025-9232",
@@ -3440,7 +3714,15 @@
             "https://www.cve.org/CVERecord?id=CVE-2025-9232"
           ],
           "PublishedDate": "2025-09-30T14:15:41.313Z",
-          "LastModifiedDate": "2026-11-09T21:02:53.39Z"
+          "LastModifiedDate": "2026-11-09T21:02:53.39Z",
+          "introducedBy": [
+            {
+              "name": "libssl3",
+              "version": "3.1.4-r2",
+              "purl": "pkg:apk/alpine/libssl3@3.1.4-r2?arch=aarch64&distro=3.19.0",
+              "direct": true
+            }
+          ]
         },
         {
           "VulnerabilityID": "CVE-2025-26519",
@@ -3489,7 +3771,15 @@
             "https://www.openwall.com/lists/oss-security/2025/02/13/2"
           ],
           "PublishedDate": "2025-02-14T04:15:09.05Z",
-          "LastModifiedDate": "2026-06-17T09:01:57.26Z"
+          "LastModifiedDate": "2026-06-17T09:01:57.26Z",
+          "introducedBy": [
+            {
+              "name": "musl",
+              "version": "1.2.4_git20230717-r4",
+              "purl": "pkg:apk/alpine/musl@1.2.4_git20230717-r4?arch=aarch64&distro=3.19.0",
+              "direct": true
+            }
+          ]
         },
         {
           "VulnerabilityID": "CVE-2026-40200",
@@ -3534,7 +3824,15 @@
             "https://www.openwall.com/lists/oss-security/2026/04/10/13"
           ],
           "PublishedDate": "2026-04-10T17:17:14.107Z",
-          "LastModifiedDate": "2026-06-17T10:44:51.887Z"
+          "LastModifiedDate": "2026-06-17T10:44:51.887Z",
+          "introducedBy": [
+            {
+              "name": "musl",
+              "version": "1.2.4_git20230717-r4",
+              "purl": "pkg:apk/alpine/musl@1.2.4_git20230717-r4?arch=aarch64&distro=3.19.0",
+              "direct": true
+            }
+          ]
         },
         {
           "VulnerabilityID": "CVE-2026-6042",
@@ -3583,7 +3881,15 @@
             "https://www.openwall.com/lists/oss-security/2026/04/03/2"
           ],
           "PublishedDate": "2026-04-10T09:16:25.45Z",
-          "LastModifiedDate": "2026-10-26T21:10:00.17Z"
+          "LastModifiedDate": "2026-10-26T21:10:00.17Z",
+          "introducedBy": [
+            {
+              "name": "musl",
+              "version": "1.2.4_git20230717-r4",
+              "purl": "pkg:apk/alpine/musl@1.2.4_git20230717-r4?arch=aarch64&distro=3.19.0",
+              "direct": true
+            }
+          ]
         },
         {
           "VulnerabilityID": "CVE-2025-26519",
@@ -3632,7 +3938,15 @@
             "https://www.openwall.com/lists/oss-security/2025/02/13/2"
           ],
           "PublishedDate": "2025-02-14T04:15:09.05Z",
-          "LastModifiedDate": "2026-06-17T09:01:57.26Z"
+          "LastModifiedDate": "2026-06-17T09:01:57.26Z",
+          "introducedBy": [
+            {
+              "name": "musl-utils",
+              "version": "1.2.4_git20230717-r4",
+              "purl": "pkg:apk/alpine/musl-utils@1.2.4_git20230717-r4?arch=aarch64&distro=3.19.0",
+              "direct": true
+            }
+          ]
         },
         {
           "VulnerabilityID": "CVE-2026-40200",
@@ -3677,7 +3991,15 @@
             "https://www.openwall.com/lists/oss-security/2026/04/10/13"
           ],
           "PublishedDate": "2026-04-10T17:17:14.107Z",
-          "LastModifiedDate": "2026-06-17T10:44:51.887Z"
+          "LastModifiedDate": "2026-06-17T10:44:51.887Z",
+          "introducedBy": [
+            {
+              "name": "musl-utils",
+              "version": "1.2.4_git20230717-r4",
+              "purl": "pkg:apk/alpine/musl-utils@1.2.4_git20230717-r4?arch=aarch64&distro=3.19.0",
+              "direct": true
+            }
+          ]
         },
         {
           "VulnerabilityID": "CVE-2026-6042",
@@ -3726,7 +4048,15 @@
             "https://www.openwall.com/lists/oss-security/2026/04/03/2"
           ],
           "PublishedDate": "2026-04-10T09:16:25.45Z",
-          "LastModifiedDate": "2026-10-26T21:10:00.17Z"
+          "LastModifiedDate": "2026-10-26T21:10:00.17Z",
+          "introducedBy": [
+            {
+              "name": "musl-utils",
+              "version": "1.2.4_git20230717-r4",
+              "purl": "pkg:apk/alpine/musl-utils@1.2.4_git20230717-r4?arch=aarch64&distro=3.19.0",
+              "direct": true
+            }
+          ]
         },
         {
           "VulnerabilityID": "CVE-2023-42363",
@@ -3780,7 +4110,8 @@
             "https://www.cve.org/CVERecord?id=CVE-2023-42363"
           ],
           "PublishedDate": "2023-11-27T22:15:07.94Z",
-          "LastModifiedDate": "2026-06-17T06:23:46.477Z"
+          "LastModifiedDate": "2026-06-17T06:23:46.477Z",
+          "introducedBy": []
         },
         {
           "VulnerabilityID": "CVE-2023-42364",
@@ -3836,7 +4167,8 @@
             "https://www.cve.org/CVERecord?id=CVE-2023-42364"
           ],
           "PublishedDate": "2023-11-27T23:15:07.313Z",
-          "LastModifiedDate": "2026-06-17T06:23:46.627Z"
+          "LastModifiedDate": "2026-06-17T06:23:46.627Z",
+          "introducedBy": []
         },
         {
           "VulnerabilityID": "CVE-2023-42365",
@@ -3892,7 +4224,8 @@
             "https://www.cve.org/CVERecord?id=CVE-2023-42365"
           ],
           "PublishedDate": "2023-11-27T23:15:07.373Z",
-          "LastModifiedDate": "2026-06-17T06:23:46.837Z"
+          "LastModifiedDate": "2026-06-17T06:23:46.837Z",
+          "introducedBy": []
         },
         {
           "VulnerabilityID": "CVE-2023-42366",
@@ -3945,7 +4278,8 @@
             "https://www.cve.org/CVERecord?id=CVE-2023-42366"
           ],
           "PublishedDate": "2023-11-27T23:15:07.42Z",
-          "LastModifiedDate": "2026-10-08T22:17:24.96Z"
+          "LastModifiedDate": "2026-10-08T22:17:24.96Z",
+          "introducedBy": []
         },
         {
           "VulnerabilityID": "CVE-2024-58251",
@@ -3983,7 +4317,8 @@
             "https://www.cve.org/CVERecord?id=CVE-2024-58251"
           ],
           "PublishedDate": "2025-04-23T18:16:03.057Z",
-          "LastModifiedDate": "2026-06-17T08:14:42.853Z"
+          "LastModifiedDate": "2026-06-17T08:14:42.853Z",
+          "introducedBy": []
         },
         {
           "VulnerabilityID": "CVE-2025-46394",
@@ -4034,11 +4369,16 @@
             "https://www.openwall.com/lists/oss-security/2025/04/23/1"
           ],
           "PublishedDate": "2025-04-23T16:15:48.713Z",
-          "LastModifiedDate": "2026-06-17T09:26:20.32Z"
+          "LastModifiedDate": "2026-06-17T09:26:20.32Z",
+          "introducedBy": []
         }
       ]
     }
   ],
+  "IntroducedBy": {
+    "State": "ok",
+    "Max": 3
+  },
   "UncheckedComponents": {
     "Count": 0,
     "Components": []

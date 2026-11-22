@@ -3,8 +3,8 @@
   "Trivy": {
     "Version": "0.75.0"
   },
-  "ReportID": "01a1fb37-d615-7428-8f16-23e2fa5397f8",
-  "CreatedAt": "2026-11-20T23:08:22.933274465Z",
+  "ReportID": "01a20113-fcb0-7791-85da-e71dce6f9787",
+  "CreatedAt": "2026-11-22T02:26:56.816498556Z",
   "ArtifactName": "node_1.0.0_bom.json",
   "ArtifactType": "cyclonedx",
   "Results": [
@@ -152,9 +152,9 @@
             "https://access.redhat.com/errata/RHSA-2026:8493",
             "https://access.redhat.com/errata/RHSA-2026:8498",
             "https://access.redhat.com/errata/RHSA-2026:9385",
+            "https://access.redhat.com/errata/RHSA-2026:97238",
             "https://access.redhat.com/errata/RHSA-2026:9742",
             "https://access.redhat.com/errata/RHSA-2026:97514",
-            "https://access.redhat.com/errata/RHSA-2026:97539",
             "https://access.redhat.com/security/cve/CVE-2026-4800",
             "https://advisory.echohq.com/cve/CVE-2026-4800",
             "https://bugzilla.redhat.com/2453496",
@@ -165,7 +165,7 @@
             "https://creativecommons.org/licenses/by/4.0/",
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-2950",
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-4800",
-            "https://errata.almalinux.org/9/ALSA-2026-97539.html",
+            "https://errata.almalinux.org/10/ALSA-2026-97238.html",
             "https://errata.rockylinux.org/RLSA-2026:97514",
             "https://github.com/advisories/GHSA-35jh-r3h4-6jhm",
             "https://github.com/advisories/GHSA-r5fr-rjxr-66jc",
@@ -173,14 +173,22 @@
             "https://github.com/lodash/lodash/commit/3469357cff396a26c363f8c1b5a91dde28ba4b1c",
             "https://github.com/lodash/lodash/security/advisories/GHSA-r5fr-rjxr-66jc",
             "https://linux.oracle.com/cve/CVE-2026-4800.html",
-            "https://linux.oracle.com/errata/ELSA-2026-24331.html",
+            "https://linux.oracle.com/errata/ELSA-2026-97537.html",
             "https://nvd.nist.gov/vuln/detail/CVE-2026-4800",
             "https://security.access.redhat.com/data/csaf/v2/vex/2026/cve-2026-4800.json",
             "https://ubuntu.com/security/notices/USN-8411-1",
             "https://www.cve.org/CVERecord?id=CVE-2026-4800"
           ],
           "PublishedDate": "2026-03-31T20:16:29.66Z",
-          "LastModifiedDate": "2026-10-15T07:18:00.61Z"
+          "LastModifiedDate": "2026-10-15T07:18:00.61Z",
+          "introducedBy": [
+            {
+              "name": "lodash",
+              "version": "4.17.21",
+              "purl": "pkg:npm/lodash@4.17.21",
+              "direct": true
+            }
+          ]
         },
         {
           "VulnerabilityID": "CVE-2025-13465",
@@ -337,7 +345,7 @@
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-23745",
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-23950",
             "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2026-24842",
-            "https://errata.almalinux.org/9/ALSA-2026-2452.html",
+            "https://errata.almalinux.org/10/ALSA-2026-2438.html",
             "https://errata.rockylinux.org/RLSA-2026:18868",
             "https://github.com/advisories/GHSA-xxjr-mmjv-4gpg",
             "https://github.com/lodash/lodash",
@@ -351,11 +359,23 @@
             "https://www.cve.org/CVERecord?id=CVE-2025-13465"
           ],
           "PublishedDate": "2026-01-21T20:16:05.25Z",
-          "LastModifiedDate": "2026-10-15T07:17:53.62Z"
+          "LastModifiedDate": "2026-10-15T07:17:53.62Z",
+          "introducedBy": [
+            {
+              "name": "lodash",
+              "version": "4.17.21",
+              "purl": "pkg:npm/lodash@4.17.21",
+              "direct": true
+            }
+          ]
         }
       ]
     }
   ],
+  "IntroducedBy": {
+    "State": "ok",
+    "Max": 3
+  },
   "UncheckedComponents": {
     "Count": 0,
     "Components": []

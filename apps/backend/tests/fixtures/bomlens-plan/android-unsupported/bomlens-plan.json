@@ -4,9 +4,9 @@
     "version": "1.4.0"
   },
   "engine": {
-    "version": "1.15.0",
-    "image": "ghcr.io/sktelecom/bomlens:1.15.0",
-    "image_digest": "sha256:563fb0be1b188bbd550f504fcd77b3f2f062637d25104c3f9ac99bcfd61f2a51"
+    "version": "1.15.1",
+    "image": "ghcr.io/sktelecom/bomlens:1.15.1",
+    "image_digest": "sha256:fae9b3b6e1e023534470f6092a65b61af821b68a0f432d96f27945e96d334e17"
   },
   "input": {
     "kind": "source",
@@ -28,7 +28,7 @@
       {
         "kind": "engine",
         "name": "build-prep.sh",
-        "sha256": "6e8133c0231d481e569fdcd4e22c355a37a37aaed2677c71bf95f2cd592dd4a2"
+        "sha256": "1e45b947481e71fae14e3f3aeea9de713e86112b98a906a911a7c03f33bfa261"
       },
       {
         "kind": "engine",
@@ -38,7 +38,12 @@
       {
         "kind": "engine",
         "name": "make-plan.sh",
-        "sha256": "fd0b1f470e489c9e7fb50a221a7e962c6e1f968392ba5e447773e45e0882a650"
+        "sha256": "91b448b46da4672ff97ff523705e3601d2fd7470a3dfbd36fa17eb9ccc57625b"
+      },
+      {
+        "kind": "engine",
+        "name": "read-python-venv.py",
+        "sha256": "c476c4c48280b0a8b79b8f8e40bededfbc56f80b2d0311215fdb042e2a58833c"
       },
       {
         "kind": "file",
@@ -49,7 +54,7 @@
       {
         "kind": "image",
         "name": "bomlens",
-        "sha256": "563fb0be1b188bbd550f504fcd77b3f2f062637d25104c3f9ac99bcfd61f2a51"
+        "sha256": "fae9b3b6e1e023534470f6092a65b61af821b68a0f432d96f27945e96d334e17"
       },
       {
         "kind": "image",
@@ -68,7 +73,17 @@
       },
       {
         "kind": "setting",
+        "name": "BOMLENS_BUILD_TOOL",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "kind": "setting",
         "name": "BOMLENS_GRADLE_FULL_GRAPH",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "kind": "setting",
+        "name": "BOMLENS_GRADLE_USER_CACHE",
         "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
       {
@@ -88,12 +103,37 @@
       },
       {
         "kind": "setting",
+        "name": "BOMLENS_LICENSE_FETCH_TIMEOUT",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "kind": "setting",
+        "name": "BOMLENS_LICENSE_PROBE_TIMEOUT",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "kind": "setting",
         "name": "BOMLENS_MAVEN_FULL_GRAPH",
         "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
       {
         "kind": "setting",
+        "name": "BOMLENS_MAVEN_PROBE_TIMEOUT",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "kind": "setting",
+        "name": "BOMLENS_MAVEN_USER_REPOSITORY",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "kind": "setting",
         "name": "BOMLENS_NODE_FULL_GRAPH",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "kind": "setting",
+        "name": "BOMLENS_NODE_INSTALLED_LOCK",
         "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
       {
@@ -119,6 +159,11 @@
       {
         "kind": "setting",
         "name": "BOMLENS_PREP_TIMEOUT",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "kind": "setting",
+        "name": "BOMLENS_PYTHON_VENV",
         "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
       },
       {

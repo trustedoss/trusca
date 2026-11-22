@@ -20425,6 +20425,11 @@
     }
   ],
   "metadata": {
+    "authors": [
+      {
+        "name": "BomLens 1.15.1"
+      }
+    ],
     "component": {
       "bom-ref": "151908f98e4ed559",
       "name": "gcr.io/distroless/static-debian12",
@@ -20440,9 +20445,13 @@
       {
         "name": "bomlens:undeclared-fields",
         "value": "unknown-to-author"
+      },
+      {
+        "name": "bomlens:sbom-author-source",
+        "value": "tool"
       }
     ],
-    "timestamp": "2026-11-20T23:10:32Z",
+    "timestamp": "2026-11-22T02:25:57Z",
     "tools": {
       "components": [
         {
@@ -20455,12 +20464,12 @@
           "name": "BomLens",
           "publisher": "SK Telecom",
           "type": "application",
-          "version": "1.15.0"
+          "version": "1.15.1"
         }
       ]
     }
   },
-  "serialNumber": "urn:uuid:1da2eb66-58bd-4ed9-a0bb-a36b031734b5",
+  "serialNumber": "urn:uuid:fbc97a7e-4e27-42ae-9148-5073be293980",
   "specVersion": "1.6",
   "version": 1,
   "compositions": [
