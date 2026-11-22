@@ -458,7 +458,7 @@ def _failure(exc: PackageError, output: _Output) -> Exception:
     return BomLensEngineError(_message(exc))
 
 
-class _ContainerOnlyCli(DockerCli):
+class _ContainerOnlyCli(DockerCli):  # type: ignore[misc]  # the package has no type hints
     """The package's docker commands, with ``docker inspect`` asking for a container only.
 
     ``docker inspect <name>`` with no type asks the daemon for a container, then
