@@ -1,7 +1,7 @@
 # Provenance of the BomLens execution plan fixtures
 
 Every `bomlens-plan.json` and `bomlens-result.json` here is unedited output of
-the published BomLens image, captured on 2026-11-21 with a plain
+the published BomLens image, captured on 2026-11-22 with a plain
 `docker run` (no compose). Tests that need a hostile or broken plan copy a capture and
 change the copy (`tests/unit/integrations/bomlens/test_plan.py`).
 
@@ -9,9 +9,9 @@ change the copy (`tests/unit/integrations/bomlens/test_plan.py`).
 
 | | |
 |---|---|
-| Image | `ghcr.io/sktelecom/bomlens:1.15.0` (the BomLens v1.15.0 release) |
-| Index digest | `sha256:563fb0be1b188bbd550f504fcd77b3f2f062637d25104c3f9ac99bcfd61f2a51` |
-| Source commit | image label `org.opencontainers.image.revision=44168332`, the commit the `v1.15.0` tag in `sktelecom/bomlens` names. Image label `com.sktelecom.sbom.engine-contract=1.4.0` |
+| Image | `ghcr.io/sktelecom/bomlens:1.15.1` (the BomLens v1.15.1 release) |
+| Index digest | `sha256:fae9b3b6e1e023534470f6092a65b61af821b68a0f432d96f27945e96d334e17` |
+| Source commit | image label `org.opencontainers.image.revision=fb0125cd`, the commit the `v1.15.1` tag in `sktelecom/bomlens` names. Image label `com.sktelecom.sbom.engine-contract=1.4.0` |
 | Platform pulled | `linux/arm64` |
 
 The plans and the result manifests both say contract `1.4.0`. Until BomLens
@@ -20,7 +20,7 @@ The plans and the result manifests both say contract `1.4.0`. Until BomLens
 role); #208 gives the plan the engine contract version. The reader still does
 not use the version to decide which mount roles to expect.
 
-`engine-plan-1.json` is `schemas/engine-plan-1.json` at the `v1.15.0` tag,
+`engine-plan-1.json` is `schemas/engine-plan-1.json` at the `v1.15.1` tag,
 copied byte for byte. Against the `v1.13.2` copy it replaced, it adds the
 `input_fingerprint` object (at the top level and on each stage) and the six
 settings mount roles. The vocabulary test compares the reader's enums to it.
@@ -39,10 +39,10 @@ docker run --rm --read-only --network none --cap-drop ALL \
   --workdir /host-output \
   -e MODE=PLAN -e PROJECT_NAME=app -e PROJECT_VERSION=1.0 -e HOST_OUTPUT_DIR=/host-output \
   -e FETCH_LICENSE=false \
-  -e BOMLENS_IMAGE_REF=ghcr.io/sktelecom/bomlens:1.15.0 \
-  -e BOMLENS_IMAGE_DIGEST=sha256:563fb0be1b188bbd550f504fcd77b3f2f062637d25104c3f9ac99bcfd61f2a51 \
+  -e BOMLENS_IMAGE_REF=ghcr.io/sktelecom/bomlens:1.15.1 \
+  -e BOMLENS_IMAGE_DIGEST=sha256:fae9b3b6e1e023534470f6092a65b61af821b68a0f432d96f27945e96d334e17 \
   -e HOST_UID=<uid> -e HOST_GID=<gid> \
-  ghcr.io/sktelecom/bomlens:1.15.0@sha256:563fb0be1b188bbd550f504fcd77b3f2f062637d25104c3f9ac99bcfd61f2a51
+  ghcr.io/sktelecom/bomlens:1.15.1@sha256:fae9b3b6e1e023534470f6092a65b61af821b68a0f432d96f27945e96d334e17
 ```
 
 | Case | Source | Exit | Result |
@@ -65,7 +65,7 @@ It is the list the offline-install guide tells an operator to read and copy;
 `tests/unit/test_bomlens_stage1_prefix_doc_contract.py` runs the guide's
 commands on it.
 
-Against the `1.13.5` captures (2026-10-15) these replaced, the plans differ
+Against the `1.13.5` captures (2026-10-15) the first `1.4.0` captures replaced, the plans differ
 in the image fields, the contract version (`1.4.0`), the digests in
 `input_fingerprint`, which adds the settings `BOMLENS_AI_USAGE_TIMEOUT`,
 `BOMLENS_GRADLE_FULL_GRAPH` and `BOMLENS_NO_AI_USAGE`, and in stage 1's image,
