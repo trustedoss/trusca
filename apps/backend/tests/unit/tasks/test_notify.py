@@ -240,6 +240,38 @@ def test_run_notification_invokes_filter_when_user_id_supplied(monkeypatch) -> N
     assert seen["channels"] == ["email", "slack"]
     # Filter dropped email; dispatch sees only slack.
     assert captured["channels"] == ["slack"]
+    # A caller that names no message passes none on (migration 0094).
+    assert seen["message_key"] is None
+    assert seen["params"] is None
+
+
+def test_run_notification_passes_message_key_and_params_to_filter(monkeypatch) -> None:
+    """``in_app_message_key`` / ``in_app_params`` reach the in-app writer."""
+    import uuid as _uuid
+
+    seen: dict[str, object] = {}
+
+    def _fake_filter(**kwargs):
+        seen.update(kwargs)
+        return []
+
+    monkeypatch.setattr(notify_mod, "_apply_prefs_filter", _fake_filter)
+
+    notify_mod._run_notification(
+        _FakeTask(),
+        "scan_completed",
+        {"project_name": "web"},
+        [],
+        None,
+        user_id=str(_uuid.uuid4()),
+        in_app_title="Scheduled scan completed: web",
+        in_app_body="The scheduled scan finished.",
+        in_app_message_key="scan_scheduled_completed",
+        in_app_params={"project_name": "web"},
+    )
+
+    assert seen["message_key"] == "scan_scheduled_completed"
+    assert seen["params"] == {"project_name": "web"}
 
 
 def test_run_notification_short_circuits_when_filter_returns_empty(
@@ -402,6 +434,8 @@ def test_apply_prefs_filter_writes_in_app_row_and_filters_channels(
         target_table="scans",
         target_id=target_id,
         channels=["email", "slack", "teams"],
+        message_key="scan_scheduled_completed",
+        params={"project_name": "web"},
     )
     # email and teams are disabled; only slack survives.
     assert out == ["slack"]
@@ -409,6 +443,8 @@ def test_apply_prefs_filter_writes_in_app_row_and_filters_channels(
     assert seen_create["user_id"] == user_id
     assert seen_create["kind"] == "scan_completed"
     assert seen_create["target_id"] == target_id
+    assert seen_create["message_key"] == "scan_scheduled_completed"
+    assert seen_create["params"] == {"project_name": "web"}
     assert seen_get["user_id"] == user_id
 
 

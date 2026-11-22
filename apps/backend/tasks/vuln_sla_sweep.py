@@ -258,6 +258,28 @@ def _build_in_app_payload(
     return title, body
 
 
+def _message_params(
+    *, project_name: str, by_severity: dict[str, int], window_start: datetime
+) -> dict[str, Any]:
+    """Values for the ``vuln_sla_breach`` message the SPA renders.
+
+    The same facts as :func:`_build_in_app_payload`, kept as values so the
+    reader's language decides the wording: one count per known severity, the
+    total, and the window start as an ISO 8601 instant the SPA formats in the
+    reader's locale. A severity outside :data:`_SEVERITY_ORDER` is counted in
+    ``count`` but has no catalog label, so it is not named on its own.
+    """
+    params: dict[str, Any] = {
+        "project_name": project_name,
+        "count": sum(by_severity.values()),
+        "since": window_start.astimezone(UTC).isoformat(),
+    }
+    for sev in _SEVERITY_ORDER:
+        if sev in by_severity:
+            params[sev] = by_severity[sev]
+    return params
+
+
 # ---------------------------------------------------------------------------
 # DB helpers
 # ---------------------------------------------------------------------------
@@ -408,6 +430,11 @@ def _run_sweep(*, now: datetime | None = None) -> dict[str, Any]:
                     if sev in by_severity
                 ),
             }
+            message_params = _message_params(
+                project_name=project_name,
+                by_severity=by_severity,
+                window_start=window_start,
+            )
             for user_id in _team_member_user_ids(session, team_id):
                 to_enqueue.append(
                     {
@@ -416,6 +443,7 @@ def _run_sweep(*, now: datetime | None = None) -> dict[str, Any]:
                         "user_id": str(user_id),
                         "title": title,
                         "body": body,
+                        "message_params": message_params,
                         "link": link,
                         "project_id": str(project_id),
                     }
@@ -469,6 +497,8 @@ def _enqueue_notifications(descriptors: list[dict[str, Any]]) -> int:
                 in_app_link=d["link"],
                 in_app_target_table="projects",
                 in_app_target_id=d["project_id"],
+                in_app_message_key="vuln_sla_breach",
+                in_app_params=d.get("message_params"),
             )
             enqueued += 1
         except Exception as exc:  # noqa: BLE001 - broker failure is per-descriptor

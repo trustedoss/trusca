@@ -7,17 +7,22 @@
  *   3. Clicking a row marks it read AND navigates to its `link`.
  *   4. "Mark all as read" only renders when unread_count > 0; click
  *      invokes the mutation.
- *   5. Saving prefs round-trips through `updatePrefs` (PUT echo).
+ *   5. A channel switch saves on change (PUT echo); a failed save puts
+ *      the switch back and shows an inline error.
  *   6. The in-app switch is rendered checked AND disabled.
+ *   7. Rows render title/body from the catalog by `message_key` in EN and
+ *      KO, and fall back to the stored text for an unknown or absent key.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { NotificationsPage } from "@/features/notifications/NotificationsPage";
 import { formatAbsoluteTime } from "@/lib/absoluteTime";
+import i18n from "@/lib/i18n";
+import { ProblemError } from "@/lib/problem";
 import type {
   NotificationItem,
   NotificationKind,
@@ -67,6 +72,8 @@ function makeItem(
     target_id: overrides.target_id ?? null,
     read_at: overrides.read_at ?? null,
     created_at: overrides.created_at ?? "2026-05-08T00:00:00Z",
+    message_key: overrides.message_key ?? null,
+    params: overrides.params ?? null,
   };
 }
 
@@ -306,7 +313,7 @@ describe("NotificationsPage", () => {
     });
   });
 
-  it("saves preferences via PUT and reflects the echoed row", async () => {
+  it("saves a channel switch on change, with no Save button", async () => {
     mockedList.mockResolvedValue(makeList([]));
 
     const initial = defaultPrefs();
@@ -317,31 +324,95 @@ describe("NotificationsPage", () => {
 
     renderPage();
 
-    // Wait for the form to render (not the loading skeleton).
     await waitFor(() => {
       expect(screen.getByTestId("notifications-prefs-form")).toBeInTheDocument();
     });
-
-    // Save is disabled while pristine.
-    expect(screen.getByTestId("notifications-prefs-save")).toBeDisabled();
+    expect(screen.queryByTestId("notifications-prefs-save")).toBeNull();
+    expect(screen.queryByRole("button", { name: /save/i })).toBeNull();
 
     await userEvent.click(screen.getByTestId("notifications-prefs-slack"));
 
-    // Now dirty → enabled.
     await waitFor(() => {
-      expect(screen.getByTestId("notifications-prefs-save")).not.toBeDisabled();
+      expect(mockedUpdatePrefs).toHaveBeenCalledTimes(1);
+    });
+    expect(mockedUpdatePrefs).toHaveBeenCalledWith({
+      email_enabled: true,
+      slack_enabled: true,
+      teams_enabled: false,
+      in_app_enabled: true,
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("notifications-prefs-slack")).toBeChecked();
+    });
+    expect(screen.getByTestId("notifications-prefs-status")).toHaveAttribute(
+      "data-saving",
+      "false",
+    );
+    expect(screen.queryByTestId("notifications-prefs-save-error")).toBeNull();
+  });
+
+  it("puts the switch back and shows an inline error when the save fails", async () => {
+    mockedList.mockResolvedValue(makeList([]));
+    mockedGetPrefs.mockReset();
+    mockedGetPrefs.mockResolvedValue(defaultPrefs());
+    mockedUpdatePrefs.mockRejectedValueOnce(
+      new ProblemError("save failed", {
+        status: 500,
+        title: "Internal Server Error",
+        detail: "boom",
+        problem: {
+          type: "about:blank",
+          title: "Internal Server Error",
+          status: 500,
+          detail: "boom",
+        },
+      }),
+    );
+
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("notifications-prefs-form")).toBeInTheDocument();
+    });
+    const email = screen.getByTestId("notifications-prefs-email");
+    expect(email).toBeChecked();
+
+    await userEvent.click(email);
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("notifications-prefs-save-error"),
+      ).toBeInTheDocument();
+    });
+    // Reverted to what the server still holds.
+    expect(screen.getByTestId("notifications-prefs-email")).toBeChecked();
+    expect(screen.getByTestId("notifications-prefs-email")).not.toBeDisabled();
+    expect(mockedUpdatePrefs).toHaveBeenCalledWith(
+      expect.objectContaining({ email_enabled: false }),
+    );
+  });
+
+  it("sends in-app as on even when the server row says off", async () => {
+    // The server rejects in_app_enabled=false; a stale row must not turn
+    // every toggle into a failed save.
+    mockedList.mockResolvedValue(makeList([]));
+    mockedGetPrefs.mockReset();
+    mockedGetPrefs.mockResolvedValue({ ...defaultPrefs(), in_app_enabled: false });
+    mockedUpdatePrefs.mockResolvedValueOnce({
+      ...defaultPrefs(),
+      teams_enabled: true,
     });
 
-    await userEvent.click(screen.getByTestId("notifications-prefs-save"));
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("notifications-prefs-teams")).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByTestId("notifications-prefs-teams"));
 
     await waitFor(() => {
       expect(mockedUpdatePrefs).toHaveBeenCalledWith(
-        expect.objectContaining({
-          email_enabled: true,
-          slack_enabled: true,
-          teams_enabled: false,
-          in_app_enabled: true,
-        }),
+        expect.objectContaining({ teams_enabled: true, in_app_enabled: true }),
       );
     });
   });
@@ -370,6 +441,130 @@ describe("NotificationsPage", () => {
 
     await waitFor(() => {
       expect(screen.getByTestId("notifications-empty")).toBeInTheDocument();
+    });
+  });
+
+  describe("message rendering by message_key", () => {
+    afterEach(async () => {
+      await i18n.changeLanguage("en");
+    });
+
+    const keyed = [
+      makeItem("k1", {
+        kind: "scan_completed",
+        title: "Scheduled scan completed: web",
+        body: "The scheduled scan finished. Review the results when you have a moment.",
+        message_key: "scan_scheduled_completed",
+        params: { project_name: "web" },
+      }),
+      makeItem("k2", {
+        kind: "vuln_sla_breach",
+        title: "SLA breach: 3 findings overdue in api",
+        body: "stored english",
+        message_key: "vuln_sla_breach",
+        params: {
+          project_name: "api",
+          count: 3,
+          since: "2026-07-24T02:45:00+00:00",
+          critical: 1,
+          high: 2,
+        },
+      }),
+      makeItem("k3", {
+        kind: "account_security",
+        title: "Your second factor was removed",
+        body: "stored english",
+        message_key: "mfa_cleared_by_admin",
+      }),
+    ];
+
+    function rowText(id: string): string {
+      const row = screen
+        .getAllByTestId("notifications-row")
+        .find((el) => el.getAttribute("data-notification-id") === id);
+      return row?.textContent ?? "";
+    }
+
+    it("renders English from the catalog", async () => {
+      mockedList.mockResolvedValue(makeList(keyed));
+      renderPage();
+      await waitFor(() => {
+        expect(screen.getAllByTestId("notifications-row")).toHaveLength(3);
+      });
+      expect(rowText("k1")).toContain("Scheduled scan completed: web");
+      expect(rowText("k2")).toContain("SLA breach in api: 3 overdue");
+      expect(rowText("k2")).toContain("(Critical 1, High 2)");
+      expect(rowText("k2")).not.toContain("stored english");
+      expect(rowText("k3")).toContain(
+        "An administrator cleared the authenticator app",
+      );
+    });
+
+    it("renders Korean from the catalog", async () => {
+      await i18n.changeLanguage("ko");
+      mockedList.mockResolvedValue(makeList(keyed));
+      renderPage();
+      await waitFor(() => {
+        expect(screen.getAllByTestId("notifications-row")).toHaveLength(3);
+      });
+      expect(rowText("k1")).toContain("예약 스캔 완료: web");
+      expect(rowText("k1")).not.toContain("Scheduled scan");
+      expect(rowText("k2")).toContain("조치 기한 초과: api, 3건");
+      expect(rowText("k2")).toContain("(치명 1, 높음 2)");
+      expect(rowText("k3")).toContain("2단계 인증이 해제되었습니다");
+      expect(rowText("k3")).not.toContain("stored english");
+    });
+
+    it("falls back to the stored text for an absent or unknown key", async () => {
+      await i18n.changeLanguage("ko");
+      mockedList.mockResolvedValue(
+        makeList([
+          makeItem("old", {
+            title: "Scan Completed #1",
+            body: "Project scan completed successfully.",
+          }),
+          makeItem("future", {
+            title: "Stored future title",
+            body: "Stored future body",
+            message_key: "a_message_this_build_does_not_know",
+            params: { project_name: "web" },
+          }),
+          makeItem("dotted", {
+            title: "Stored dotted title",
+            body: "Stored dotted body",
+            // Would walk into another part of the catalog if it were looked up.
+            message_key: "kind.scan_completed",
+          }),
+        ]),
+      );
+      renderPage();
+      await waitFor(() => {
+        expect(screen.getAllByTestId("notifications-row")).toHaveLength(3);
+      });
+      expect(rowText("old")).toContain("Scan Completed #1");
+      expect(rowText("old")).toContain("Project scan completed successfully.");
+      expect(rowText("future")).toContain("Stored future title");
+      expect(rowText("future")).toContain("Stored future body");
+      expect(rowText("dotted")).toContain("Stored dotted title");
+    });
+
+    it("falls back to the stored text when a param the message needs is missing", async () => {
+      mockedList.mockResolvedValue(
+        makeList([
+          makeItem("thin", {
+            title: "Stored title",
+            body: "Stored body",
+            message_key: "scan_scheduled_completed",
+            params: {},
+          }),
+        ]),
+      );
+      renderPage();
+      await waitFor(() => {
+        expect(screen.getByTestId("notifications-row")).toBeInTheDocument();
+      });
+      expect(rowText("thin")).toContain("Stored title");
+      expect(rowText("thin")).not.toContain("{{");
     });
   });
 });

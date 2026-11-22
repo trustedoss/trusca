@@ -149,6 +149,10 @@ def _notification_descriptors(
         "be approved - open a new request if the erasure is still needed."
     )
     link = "/admin/users"
+    message_params = {
+        "subject_user_id": str(row.subject_user_id),
+        "expires_on": row.expires_at.date().isoformat(),
+    }
     context = {
         "request_id": str(row.id),
         "subject_user_id": str(row.subject_user_id),
@@ -160,6 +164,7 @@ def _notification_descriptors(
             "user_id": str(user_id),
             "title": title,
             "body": body,
+            "message_params": message_params,
             "link": link,
             "request_id": str(row.id),
         }
@@ -228,6 +233,8 @@ def _enqueue_notifications(descriptors: list[dict[str, Any]]) -> int:
                 in_app_link=d["link"],
                 in_app_target_table="user_anonymisation_requests",
                 in_app_target_id=d["request_id"],
+                in_app_message_key="anonymisation_request_expired",
+                in_app_params=d.get("message_params"),
             )
             enqueued += 1
         except Exception as exc:  # noqa: BLE001 - broker failure is per-descriptor

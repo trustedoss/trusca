@@ -187,8 +187,8 @@ const VERBS: Record<string, (ctx: Ctx, args: string[]) => Promise<void>> = {
   },
   async notificationsEmailDisableInappOnly({ notifications }) {
     await notifications.gotoPreferences();
+    // Saves on change; the verb waits for the PUT to land.
     await notifications.togglePreference("email", false);
-    await notifications.savePreferences();
     // In-app stays force-enabled regardless — the documented invariant.
     await notifications.expectInAppAlwaysOn();
   },

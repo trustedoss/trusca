@@ -147,6 +147,39 @@ async def test_get_notifications_empty_returns_empty_page(client: AsyncClient) -
     assert body["page_size"] == 20
 
 
+async def test_get_notifications_returns_message_key_and_params(
+    client: AsyncClient,
+) -> None:
+    """Migration 0094: the list carries the message key and its values, and a
+    row written without them reads back with both null (the SPA then shows the
+    stored English text)."""
+    from services.notification_service import create_notification
+
+    factory = await _factory(client)
+    async with factory() as session:
+        user = await make_user(session)
+        await _create_inapp(session, user_id=user.id, title="legacy")
+        await create_notification(
+            session,
+            user_id=user.id,
+            kind="vuln_sla_breach",
+            title="SLA breach: 2 findings overdue in web",
+            body="...",
+            message_key="vuln_sla_breach",
+            params={"project_name": "web", "count": 2, "critical": 2},
+        )
+
+    response = await client.get("/v1/notifications", headers=_bearer_for(user))
+    assert response.status_code == 200, response.text
+    by_title = {item["title"]: item for item in response.json()["items"]}
+    legacy = by_title["legacy"]
+    assert legacy["message_key"] is None
+    assert legacy["params"] is None
+    keyed = by_title["SLA breach: 2 findings overdue in web"]
+    assert keyed["message_key"] == "vuln_sla_breach"
+    assert keyed["params"] == {"project_name": "web", "count": 2, "critical": 2}
+
+
 async def test_get_notifications_returns_caller_rows_only(client: AsyncClient) -> None:
     """One user's GET must not reveal another user's notifications."""
     factory = await _factory(client)

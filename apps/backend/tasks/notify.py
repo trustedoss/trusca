@@ -86,6 +86,8 @@ def _apply_prefs_filter(
     target_id: uuid.UUID | None,
     channels: list[str],
     ledger: DeliveryLedger | None = None,
+    message_key: str | None = None,
+    params: dict[str, Any] | None = None,
 ) -> list[str]:
     """Consult the user's prefs, write the in-app row, return the
     outbound-channel subset to actually dispatch.
@@ -126,6 +128,8 @@ def _apply_prefs_filter(
                     link=link,
                     target_table=target_table,
                     target_id=target_id,
+                    message_key=message_key,
+                    params=params,
                 )
             except Exception:
                 # Nothing was written, so a later attempt may write it.
@@ -263,6 +267,8 @@ def _run_notification(
     in_app_link: str | None = None,
     in_app_target_table: str | None = None,
     in_app_target_id: str | uuid.UUID | None = None,
+    in_app_message_key: str | None = None,
+    in_app_params: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Underlying function (testable without Celery's bind=True self-injection).
 
@@ -274,6 +280,10 @@ def _run_notification(
 
     Callers without a target user (legacy password-reset path) omit
     ``user_id`` and the function behaves exactly as in PR #18.
+
+    ``in_app_message_key`` / ``in_app_params`` (migration 0094) name the
+    message so the SPA can render it in the reader's language; the
+    ``in_app_title`` / ``in_app_body`` English text stays the fallback.
     """
     structlog.contextvars.bind_contextvars(
         task_name="send_notification",
@@ -298,6 +308,8 @@ def _run_notification(
                 target_id=_coerce_uuid(in_app_target_id),
                 channels=effective_channels,
                 ledger=ledger,
+                message_key=in_app_message_key,
+                params=in_app_params,
             )
 
         # Rules an organization or team wrote about who else hears (N9).
@@ -377,6 +389,8 @@ def send_notification_task(
     in_app_link: str | None = None,
     in_app_target_table: str | None = None,
     in_app_target_id: str | uuid.UUID | None = None,
+    in_app_message_key: str | None = None,
+    in_app_params: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Dispatch a notification asynchronously with retry-on-transient-failure.
 
@@ -396,6 +410,8 @@ def send_notification_task(
         in_app_link=in_app_link,
         in_app_target_table=in_app_target_table,
         in_app_target_id=in_app_target_id,
+        in_app_message_key=in_app_message_key,
+        in_app_params=in_app_params,
     )
 
 

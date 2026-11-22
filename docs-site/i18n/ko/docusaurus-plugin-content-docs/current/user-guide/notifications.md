@@ -42,14 +42,20 @@ sidebar_position: 8
 
 각 행은 다음을 표시합니다.
 
-- **제목** — 읽지 않은 동안 굵게.
-- **본문** — 한두 줄.
+- **제목** - 읽지 않은 동안 굵게.
+- **본문** - 한두 줄.
 - **채널 아이콘** — 본인에게 이 이벤트를 어떤 채널로 전달했는지(인앱은 항상 표시; 이메일·Slack·Teams는 옵트인한 경우만).
 - **타임스탬프** — 호버 시 절대시각, 평소에는 상대시각.
 - **읽음 처리** — 행의 어디든 클릭하면 읽음 처리되며 행이 흐리게 표시됩니다.
 - **열기** — 클릭하면 원본 리소스로 이동하며 도중에 읽음 처리됩니다.
 
 일괄 동작: **Mark all as read**(현재 페이지의 읽지 않음 배지를 정리).
+
+제목과 본문은 포털에서 고른 언어로 표시됩니다. 알림은 어떤 메시지인지와
+그 안에 들어갈 값(프로젝트 이름, 건수, 날짜)을 함께 저장하고, 화면이 이를
+영어나 한국어 문장으로 만들며 날짜도 사용하는 언어 형식으로 보여 줍니다.
+이번 릴리스 이전에 저장된 알림과 현재 버전이 아직 모르는 메시지는 저장된
+영어 문장 그대로 표시됩니다.
 
 ## 환경설정
 
@@ -64,7 +70,10 @@ sidebar_position: 8
 | Slack | 꺼짐 | `SLACK_WEBHOOK_URL` 구성 필요. |
 | Teams | 꺼짐 | `TEAMS_WEBHOOK_URL` 구성 필요. |
 
-토글은 draft 상태로 들어갑니다. **Save**를 클릭해 변경을 영속화하세요 — 페이지가 dirty 상태를 추적하며, 변경이 없으면 Save가 비활성화됩니다.
+스위치는 바꾸는 즉시 저장되며 저장 버튼은 따로 없습니다. 저장하는 동안에는
+스위치를 잠시 바꿀 수 없고 섹션 아래에 **저장 중…**이 표시됩니다. 저장에
+실패하면 스위치가 저장된 값으로 돌아가고 스위치 위에 오류가 표시됩니다.
+다시 바꾸면 저장을 다시 시도합니다.
 
 ## 라우팅 규칙: 누가 더 받는지 {#routing-rules}
 
@@ -137,7 +146,7 @@ sidebar_position: 8
 <!-- docs-uat: id=notifications-mark-read-decrements kind=ui harness=notificationsMarkReadDecrements tier=nightly -->
 - 두 번째 탭에서 `/notifications`를 열고 한 행을 읽음 처리하면 첫 번째 탭의 종 배지가 60초 내에 감소합니다.
 <!-- docs-uat: id=notifications-email-disable-inapp-only kind=ui harness=notificationsEmailDisableInappOnly tier=nightly -->
-- **Preferences**에서 이메일 채널을 전역 비활성화하고 **Save**를 클릭한 뒤 다른 스캔을 실행하면, 다음 `scan_completed` 알림은 인앱으로만 도착합니다.
+- **Preferences**에서 이메일 채널을 전역 비활성화(스위치는 바꾸는 즉시 저장됨)한 뒤 다른 스캔을 실행하면, 다음 `scan_completed` 알림은 인앱으로만 도착합니다.
 
 ## 트러블슈팅
 

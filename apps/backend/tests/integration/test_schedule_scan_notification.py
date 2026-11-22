@@ -90,6 +90,9 @@ async def test_a_schedule_triggered_success_notifies_every_team_member(
     notified = {uuid.UUID(c["user_id"]) for c in calls}
     assert notified == member_ids
     assert all(c["kind"] == "scan_completed" for c in calls)
+    # Rendered by the SPA in the reader's language (migration 0094).
+    assert all(c["in_app_message_key"] == "scan_scheduled_completed" for c in calls)
+    assert all(c["in_app_params"] == {"project_name": project.name} for c in calls)
 
 
 async def test_a_schedule_triggered_failure_notifies_too(
@@ -111,6 +114,13 @@ async def test_a_schedule_triggered_failure_notifies_too(
     notified = {uuid.UUID(c["user_id"]) for c in calls}
     assert notified == member_ids
     assert all(c["kind"] == "scan_failed" for c in calls)
+    # The tool's error is carried as written; the wording around it is the
+    # reader's language (migration 0094).
+    assert all(c["in_app_message_key"] == "scan_scheduled_failed_detail" for c in calls)
+    assert all(
+        c["in_app_params"] == {"project_name": project.name, "error": "cdxgen crashed"}
+        for c in calls
+    )
 
 
 async def test_a_manually_triggered_scan_does_not_gain_this_notification(

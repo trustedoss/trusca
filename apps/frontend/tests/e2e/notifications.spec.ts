@@ -88,7 +88,7 @@ test.describe("@manual-aligned notifications", () => {
     await notifications.expectUnreadCount(0);
   });
 
-  test("3) preferences require an explicit Save click (not auto-saved)", async ({
+  test("3) a preference switch saves on change", async ({
     page,
   }, testInfo) => {
     const seed = tryAcquireSeed(testInfo, {
@@ -107,15 +107,16 @@ test.describe("@manual-aligned notifications", () => {
     // In-app must be rendered always-on (UI guard mirroring the API).
     await notifications.expectInAppAlwaysOn();
 
-    // Toggle email — the Save button must enable, then we Save and expect
-    // the success toast. We deliberately toggle twice (off, then on) so the
-    // user's persisted state ends in the original "all on" position; this
-    // keeps the seed reusable across re-runs.
+    // Each toggle saves by itself; the verb waits for the PUT to return 200
+    // and the switch to settle. Toggled twice (off, then on) so the user's
+    // persisted state ends in the original "all on" position; this keeps the
+    // seed reusable across re-runs. The reload in between proves the first
+    // toggle was stored, not just drawn.
     await notifications.togglePreference("email", false);
-    await notifications.savePreferences();
+    await notifications.reloadAndExpectPreference("email", false);
 
     await notifications.togglePreference("email", true);
-    await notifications.savePreferences();
+    await notifications.reloadAndExpectPreference("email", true);
   });
 
   test.describe("adversarial — direct API PUT with in_app=false rejected", () => {

@@ -548,6 +548,7 @@ async def confirm_mfa_enrolment(
         link="/profile",
         target_table="users",
         target_id=user.id,
+        message_key="mfa_enabled",
     )
     body = RecoveryCodesResponse(codes=codes)
     return Response(
@@ -614,6 +615,7 @@ async def regenerate_mfa_recovery_codes(
         link="/profile",
         target_table="users",
         target_id=user.id,
+        message_key="mfa_recovery_codes_regenerated",
     )
     body = RecoveryCodesResponse(codes=codes)
     return Response(

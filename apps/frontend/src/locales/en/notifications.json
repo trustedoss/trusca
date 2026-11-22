@@ -27,10 +27,59 @@
     "malicious_detected": "Malicious package",
     "account_security": "Account security"
   },
+  "message": {
+    "scan_scheduled_completed": {
+      "title": "Scheduled scan completed: {{project_name}}",
+      "body": "The scheduled scan finished. Review the results when you have a moment."
+    },
+    "scan_scheduled_failed": {
+      "title": "Scheduled scan failed: {{project_name}}",
+      "body": "The scheduled scan did not complete."
+    },
+    "scan_scheduled_failed_detail": {
+      "title": "Scheduled scan failed: {{project_name}}",
+      "body": "The scheduled scan did not complete. Error: {{error}}"
+    },
+    "vuln_sla_breach": {
+      "title": "SLA breach in {{project_name}}: {{count}} overdue",
+      "body": "Open findings that crossed the remediation SLA since {{since}}: {{count}} ({{breakdown}}). Review the overdue list and triage or remediate."
+    },
+    "malicious_in_project": {
+      "title": "Known-malicious package in {{project_name}}",
+      "body": "{{purl}} is listed as malicious by a newly published advisory. Remove it and rotate the credentials this build could reach. Upgrading does not help."
+    },
+    "malicious_in_project_advisory": {
+      "title": "Known-malicious package in {{project_name}}",
+      "body": "{{purl}} is listed as malicious by a newly published advisory ({{advisory_id}}). Remove it and rotate the credentials this build could reach. Upgrading does not help."
+    },
+    "anonymisation_request_expired": {
+      "title": "Anonymisation request expired",
+      "body": "The anonymisation request for user {{subject_user_id}} expired unapproved on {{expires_on}}. It can no longer be approved. Open a new request if the erasure is still needed."
+    },
+    "approval_approved": {
+      "title": "Component approval approved",
+      "body": "Your component approval was approved."
+    },
+    "approval_rejected": {
+      "title": "Component approval rejected",
+      "body": "Your component approval was rejected."
+    },
+    "mfa_enabled": {
+      "title": "Two-step sign-in is now on",
+      "body": "An authenticator app was set up on your account. If that was not you, change your password and tell your administrator: whoever did it can sign in as you."
+    },
+    "mfa_recovery_codes_regenerated": {
+      "title": "New recovery codes were issued",
+      "body": "A fresh set of recovery codes was created for your account and the previous set no longer works. If that was not you, change your password and tell your administrator."
+    },
+    "mfa_cleared_by_admin": {
+      "title": "Your second factor was removed",
+      "body": "An administrator cleared the authenticator app on your account. If you did not ask for this, tell your administrator and set up two-factor sign-in again straight away."
+    }
+  },
   "prefs": {
     "section_title": "Delivery preferences",
     "section_description": "Control which channels receive notifications. The in-app inbox is always enabled.",
-    "save": "Save changes",
     "saving": "Saving…",
     "email": {
       "label": "Email",
@@ -51,8 +100,7 @@
     }
   },
   "toast": {
-    "mark_all_done": "All notifications marked as read.",
-    "prefs_saved": "Notification preferences saved."
+    "mark_all_done": "All notifications marked as read."
   },
   "errors": {
     "list_failed": "Failed to load notifications.",

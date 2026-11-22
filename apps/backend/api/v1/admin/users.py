@@ -429,6 +429,7 @@ async def clear_mfa_endpoint(
         link="/profile",
         target_table="users",
         target_id=user_id,
+        message_key="mfa_cleared_by_admin",
     )
     await session.commit()
 

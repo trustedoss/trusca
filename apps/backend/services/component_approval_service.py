@@ -1115,6 +1115,14 @@ def _notify_approval_requester(row: ComponentApproval, action: str) -> None:
     from tasks.notify import send_notification_task
 
     summary = f"Your component approval was {action}."
+    # One catalog message per final state, so the reader's language words the
+    # state too. ``action`` is always terminal here; anything else keeps the
+    # English text only.
+    state = getattr(action, "value", action)
+    message_key = {
+        "approved": "approval_approved",
+        "rejected": "approval_rejected",
+    }.get(str(state))
     try:
         send_notification_task.delay(
             "approval_state_changed",
@@ -1127,6 +1135,7 @@ def _notify_approval_requester(row: ComponentApproval, action: str) -> None:
             in_app_link=f"/approvals?id={row.id}",
             in_app_target_table="component_approvals",
             in_app_target_id=str(row.id),
+            in_app_message_key=message_key,
         )
     except Exception as exc:  # noqa: BLE001 — broker failure must not fail the txn
         log.warning(

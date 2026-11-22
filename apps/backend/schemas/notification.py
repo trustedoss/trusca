@@ -30,7 +30,7 @@ Design notes:
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
@@ -76,6 +76,12 @@ class NotificationOut(BaseModel):
     target_id: UUID | None
     read_at: datetime | None
     created_at: datetime
+    # Migration 0094. ``message_key`` names the message in the SPA catalog and
+    # ``params`` the values it interpolates; ``title``/``body`` stay the
+    # English rendering and are what a client shows for a NULL or unknown key
+    # (every row written before 0094 has NULL here).
+    message_key: str | None = None
+    params: dict[str, Any] | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
