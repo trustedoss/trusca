@@ -4,9 +4,9 @@
     "version": "1.4.0"
   },
   "engine": {
-    "version": "1.15.1",
-    "image": "ghcr.io/sktelecom/bomlens:1.15.1",
-    "image_digest": "sha256:fae9b3b6e1e023534470f6092a65b61af821b68a0f432d96f27945e96d334e17"
+    "version": "1.15.3",
+    "image": "ghcr.io/sktelecom/bomlens:1.15.3",
+    "image_digest": "sha256:9a857b20f348c6b1ceae554c6566165c35cf24a71b12fb488b8a0e39aac7cf89"
   },
   "input": {
     "kind": "source",
@@ -18,7 +18,7 @@
   "output_file": "app_1.0_bom.json",
   "input_fingerprint": {
     "algorithm": "bomlens-input-1",
-    "sha256": "1d3733ab2cee39726bd2706ddb48c8fe70a04fb6d6ae693e6089f1ebb132f30a",
+    "sha256": "7d56bf30d88ae3615ebf4c3dc232018abad8cae2367714d59fa452686e84f979",
     "reusable": true,
     "reasons": [],
     "components": [
@@ -51,7 +51,7 @@
       {
         "kind": "image",
         "name": "bomlens",
-        "sha256": "fae9b3b6e1e023534470f6092a65b61af821b68a0f432d96f27945e96d334e17"
+        "sha256": "9a857b20f348c6b1ceae554c6566165c35cf24a71b12fb488b8a0e39aac7cf89"
       },
       {
         "kind": "image",
@@ -316,7 +316,7 @@
       ],
       "input_fingerprint": {
         "algorithm": "bomlens-input-1",
-        "sha256": "1d3733ab2cee39726bd2706ddb48c8fe70a04fb6d6ae693e6089f1ebb132f30a",
+        "sha256": "7d56bf30d88ae3615ebf4c3dc232018abad8cae2367714d59fa452686e84f979",
         "reusable": true,
         "reasons": [],
         "components": [
@@ -349,7 +349,7 @@
           {
             "kind": "image",
             "name": "bomlens",
-            "sha256": "fae9b3b6e1e023534470f6092a65b61af821b68a0f432d96f27945e96d334e17"
+            "sha256": "9a857b20f348c6b1ceae554c6566165c35cf24a71b12fb488b8a0e39aac7cf89"
           },
           {
             "kind": "image",
@@ -553,8 +553,8 @@
     {
       "id": "postprocess",
       "stage": 2,
-      "image": "ghcr.io/sktelecom/bomlens:1.15.1",
-      "image_digest": "sha256:fae9b3b6e1e023534470f6092a65b61af821b68a0f432d96f27945e96d334e17",
+      "image": "ghcr.io/sktelecom/bomlens:1.15.3",
+      "image_digest": "sha256:9a857b20f348c6b1ceae554c6566165c35cf24a71b12fb488b8a0e39aac7cf89",
       "user": null,
       "entrypoint": null,
       "args": [],

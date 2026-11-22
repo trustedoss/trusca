@@ -1,7 +1,7 @@
 # Provenance of the BomLens execution plan fixtures
 
 Every `bomlens-plan.json` and `bomlens-result.json` here is unedited output of
-the published BomLens image, captured on 2026-11-22 with a plain
+the published BomLens image, captured on 2026-11-23 with a plain
 `docker run` (no compose). Tests that need a hostile or broken plan copy a capture and
 change the copy (`tests/unit/integrations/bomlens/test_plan.py`).
 
@@ -9,9 +9,9 @@ change the copy (`tests/unit/integrations/bomlens/test_plan.py`).
 
 | | |
 |---|---|
-| Image | `ghcr.io/sktelecom/bomlens:1.15.1` (the BomLens v1.15.1 release) |
-| Index digest | `sha256:fae9b3b6e1e023534470f6092a65b61af821b68a0f432d96f27945e96d334e17` |
-| Source commit | image label `org.opencontainers.image.revision=fb0125cd`, the commit the `v1.15.1` tag in `sktelecom/bomlens` names. Image label `com.sktelecom.sbom.engine-contract=1.4.0` |
+| Image | `ghcr.io/sktelecom/bomlens:1.15.3` (the BomLens v1.15.3 release) |
+| Index digest | `sha256:9a857b20f348c6b1ceae554c6566165c35cf24a71b12fb488b8a0e39aac7cf89` |
+| Source commit | image label `org.opencontainers.image.revision=87fb64f3`, the commit the `v1.15.3` tag in `sktelecom/bomlens` names. Image label `com.sktelecom.sbom.engine-contract=1.4.0` |
 | Platform pulled | `linux/arm64` |
 
 The plans and the result manifests both say contract `1.4.0`. Until BomLens
@@ -20,7 +20,7 @@ The plans and the result manifests both say contract `1.4.0`. Until BomLens
 role); #208 gives the plan the engine contract version. The reader still does
 not use the version to decide which mount roles to expect.
 
-`engine-plan-1.json` is `schemas/engine-plan-1.json` at the `v1.15.1` tag,
+`engine-plan-1.json` is `schemas/engine-plan-1.json` at the `v1.15.3` tag,
 copied byte for byte. Against the `v1.13.2` copy it replaced, it adds the
 `input_fingerprint` object (at the top level and on each stage) and the six
 settings mount roles. The vocabulary test compares the reader's enums to it.
@@ -40,10 +40,10 @@ docker run --rm --read-only --network none --cap-drop ALL \
   --workdir /host-output \
   -e MODE=PLAN -e PROJECT_NAME=app -e PROJECT_VERSION=1.0 -e HOST_OUTPUT_DIR=/host-output \
   -e FETCH_LICENSE=false \
-  -e BOMLENS_IMAGE_REF=ghcr.io/sktelecom/bomlens:1.15.1 \
-  -e BOMLENS_IMAGE_DIGEST=sha256:fae9b3b6e1e023534470f6092a65b61af821b68a0f432d96f27945e96d334e17 \
+  -e BOMLENS_IMAGE_REF=ghcr.io/sktelecom/bomlens:1.15.3 \
+  -e BOMLENS_IMAGE_DIGEST=sha256:9a857b20f348c6b1ceae554c6566165c35cf24a71b12fb488b8a0e39aac7cf89 \
   -e HOST_UID=<uid> -e HOST_GID=<gid> \
-  ghcr.io/sktelecom/bomlens:1.15.1@sha256:fae9b3b6e1e023534470f6092a65b61af821b68a0f432d96f27945e96d334e17
+  ghcr.io/sktelecom/bomlens:1.15.3@sha256:9a857b20f348c6b1ceae554c6566165c35cf24a71b12fb488b8a0e39aac7cf89
 ```
 
 | Case | Source | Exit | Result |
