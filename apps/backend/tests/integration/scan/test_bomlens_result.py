@@ -845,6 +845,23 @@ def test_a_trivy_database_past_its_age_fails_the_scan_without_findings(
     assert set(_artifact_kinds(sync_session, stale_id)) == {"sbom_cyclonedx"}
 
 
+def test_a_go_run_with_the_go_vulndb_step_persists_trivy_findings_and_succeeds(
+    tmp_path: Path, sync_session: Session
+) -> None:
+    """Real BomLens 1.15.1 output of a Go module with two components. The Go
+    vulnerability database lookup ran (``go-vulndb`` ok) and found nothing Trivy
+    had not, so its output is empty and the 23 findings are Trivy's."""
+    from tasks.bomlens_result import apply_bomlens_result
+
+    scan_id = _seed_running_source_scan()
+    apply_bomlens_result(scan_uuid=scan_id, output_dir=_copy_fixture("source-go-vulndb", tmp_path))
+    assert _component_count(sync_session, scan_id) == 2
+    found = _finding_ids(sync_session, scan_id)
+    assert len(found) == 23
+    assert "CVE-2023-45288" in found and "CVE-2026-56852" in found
+    assert so.degraded_stages(_metadata(sync_session, scan_id)) == []
+
+
 def test_an_image_run_with_debian_licences_from_trivy_persists_them(
     tmp_path: Path, sync_session: Session
 ) -> None:

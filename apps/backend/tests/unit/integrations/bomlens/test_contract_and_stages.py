@@ -66,6 +66,7 @@ CONTRACT_VERSIONS = {
     "image-os-licenses": NEWEST,
     "image-registry-alpine": NEWEST,
     "source-deep-license": "1.0.0",
+    "source-go-vulndb": NEWEST,
     "source-deep-license-trivy-db": NEWEST,
     "source-degraded": "1.0.0-dev",
     "source-no-components": "1.0.0",
@@ -113,6 +114,22 @@ def test_the_newest_captures_come_from_the_pinned_images() -> None:
             seen.add(repository)
     # Both pinned images have a capture, so neither digest goes unchecked.
     assert seen == set(pinned)
+
+
+def test_a_real_go_run_records_the_go_vulndb_step_and_leaves_the_stage_outcomes_empty() -> None:
+    """BomLens v1.15.1 dated the Go vulnerability database from the export, so
+    a Go source scan is ``succeeded`` and ``go-vulndb`` is ``ok``. Until then
+    every Go scan was recorded as degraded. ``go-vulndb`` has no TRUSCA stage,
+    and its output (role ``vulnerabilities.other``) is not one TRUSCA reads."""
+    result = contract.parse_manifest(_manifest("source-go-vulndb"))
+    step = result.step("go-vulndb")
+    assert step is not None
+    assert (step.status, step.reason) == ("ok", None)
+    assert step.counts == {"components": 2, "findings": 0, "already_reported": 23}
+    assert result.run_status == "succeeded"
+    assert stages.stage_outcomes(result) == []
+    roles = {o["role"] for o in _manifest("source-go-vulndb")["outputs"]}
+    assert "vulnerabilities.other" in roles
 
 
 def test_a_real_image_run_records_the_os_licenses_step() -> None:
