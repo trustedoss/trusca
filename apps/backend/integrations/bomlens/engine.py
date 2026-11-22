@@ -55,7 +55,7 @@ from bomlens_runner import (
 from bomlens_runner import (
     EngineWroteNoResult as PackageWroteNoResult,
 )
-from bomlens_runner.docker import DockerBackend, DockerOptions
+from bomlens_runner.docker import DockerBackend, DockerCli, DockerOptions
 
 from core.config import (
     bomlens_deep_license_image,
@@ -458,6 +458,26 @@ def _failure(exc: PackageError, output: _Output) -> Exception:
     return BomLensEngineError(_message(exc))
 
 
+class _ContainerOnlyCli(DockerCli):
+    """The package's docker commands, with ``docker inspect`` asking for a container only.
+
+    ``docker inspect <name>`` with no type asks the daemon for a container, then
+    an image, a network, a volume and so on. Behind the docker-socket-proxy the
+    later requests are refused (403, not 404), so the removal check, which waits
+    for "no such container", never saw it and failed every scan after the first
+    container.
+    """
+
+    def run(self, argv: list[str], timeout: float) -> Any:
+        if argv[:1] == ["inspect"]:
+            argv = ["container", *argv]
+        return super().run(argv, timeout)
+
+
+def _docker_backend(options: DockerOptions) -> Any:
+    return DockerBackend(options, cli=_ContainerOnlyCli(options.docker))
+
+
 def engine_backend() -> Any:
     """The package's Docker backend as the settings describe it, for what is not a run.
 
@@ -467,7 +487,7 @@ def engine_backend() -> Any:
     """
     _, _, options = _volumes()
     try:
-        return DockerBackend(options)
+        return _docker_backend(options)
     except PackageError as exc:
         raise BomLensEngineError(_message(exc)) from None
 
@@ -544,7 +564,7 @@ def _recording_backend(options: DockerOptions) -> _RecordingBackend:
     any container.
     """
     try:
-        return _RecordingBackend(DockerBackend(options), egress_network=options.egress_network)
+        return _RecordingBackend(_docker_backend(options), egress_network=options.egress_network)
     except PackageError as exc:
         # Most often the egress network: the package refuses the default
         # ``bridge`` network too, where containers reach each other.

@@ -413,7 +413,7 @@ def install_backend(monkeypatch: Any, backend: FakeBackend) -> None:
 
     from integrations.bomlens import engine
 
-    def factory(options: Any) -> FakeBackend:
+    def factory(options: Any, cli: Any = None) -> FakeBackend:  # noqa: ARG001
         # Built for real first, so the options it refuses (an egress network
         # such as ``host`` or the worker's own) are refused here too.
         DockerBackend(options)

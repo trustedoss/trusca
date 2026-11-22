@@ -326,7 +326,9 @@ def test_a_run_whose_stage_1_could_not_start_fails_the_scan(
     monkeypatch.setattr(
         engine,
         "DockerBackend",
-        lambda options: _Containers(stage1={"exit_code": None, "start_error": "mount changed"}),
+        lambda options, cli=None: _Containers(
+            stage1={"exit_code": None, "start_error": "mount changed"}
+        ),
     )
     with pytest.raises(engine.BomLensEngineError, match="stage 1"):
         _run_source(scan_dir=tmp_path)
@@ -345,7 +347,7 @@ def test_a_failed_run_still_records_how_its_containers_ended(
     monkeypatch.setattr(
         engine,
         "DockerBackend",
-        lambda options: _Containers(
+        lambda options, cli=None: _Containers(
             stage1={"oom_killed": True, "exit_code": 137}, stage2={"exit_code": 1}
         ),
     )
@@ -367,7 +369,7 @@ def test_a_finished_run_records_the_plan_and_gives_the_real_stage_1_window(
     monkeypatch.setattr(
         engine, "run_source_scan", _containers_then(_result(), "plan", "stage1", "stage2")
     )
-    monkeypatch.setattr(engine, "DockerBackend", lambda options: _Containers())
+    monkeypatch.setattr(engine, "DockerBackend", lambda options, cli=None: _Containers())
     run = _run_source(scan_dir=tmp_path)
     assert run.metadata["plan_status"] == "ok"
     assert run.metadata["detected_ecosystem"] == "node"
@@ -381,7 +383,7 @@ def test_a_finished_run_gives_the_folder_the_status_and_a_fresh_verified_folder(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setattr(engine, "run_source_scan", _containers_then(_result()))
-    monkeypatch.setattr(engine, "DockerBackend", lambda options: _Containers())
+    monkeypatch.setattr(engine, "DockerBackend", lambda options, cli=None: _Containers())
     stale = tmp_path / "bomlens-verified"
     stale.mkdir()
     (stale / "old.json").write_text("{}")
@@ -397,7 +399,7 @@ def test_a_verified_folder_that_is_a_link_is_replaced_not_followed(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setattr(engine, "run_source_scan", _containers_then(_result()))
-    monkeypatch.setattr(engine, "DockerBackend", lambda options: _Containers())
+    monkeypatch.setattr(engine, "DockerBackend", lambda options, cli=None: _Containers())
     target = tmp_path / "elsewhere"
     target.mkdir()
     (tmp_path / "scan").mkdir()
@@ -414,7 +416,7 @@ def test_a_cancellation_becomes_the_event_the_tasks_handle(
         raise package.ScanCancelled("the scan was cancelled")
 
     monkeypatch.setattr(engine, "run_source_scan", cancelled)
-    monkeypatch.setattr(engine, "DockerBackend", lambda options: object())
+    monkeypatch.setattr(engine, "DockerBackend", lambda options, cli=None: object())
     with pytest.raises(engine.EngineScanCancelled):
         _run_source(scan_dir=tmp_path)
 
@@ -426,7 +428,7 @@ def test_a_package_error_is_a_bomlens_error_and_its_text_is_bounded(
         raise package.PlanRejected("x" * 5000)
 
     monkeypatch.setattr(engine, "run_source_scan", broken)
-    monkeypatch.setattr(engine, "DockerBackend", lambda options: object())
+    monkeypatch.setattr(engine, "DockerBackend", lambda options, cli=None: object())
     with pytest.raises(BomLensError) as caught:
         _run_source(scan_dir=tmp_path)
     assert len(str(caught.value)) <= 400
@@ -446,7 +448,7 @@ def test_a_run_with_no_result_names_the_last_output_without_credentials(
         raise package.EngineWroteNoResult("stage 2 exited 1 without a manifest")
 
     monkeypatch.setattr(engine, "run_source_scan", no_result)
-    monkeypatch.setattr(engine, "DockerBackend", lambda options: object())
+    monkeypatch.setattr(engine, "DockerBackend", lambda options, cli=None: object())
     with pytest.raises(engine.EngineWroteNoResult) as caught:
         _run_source(scan_dir=tmp_path)
     message = str(caught.value)
@@ -470,7 +472,7 @@ def test_the_log_lines_reach_the_scan_log_per_stage(
         return _result()
 
     monkeypatch.setattr(engine, "run_source_scan", run)
-    monkeypatch.setattr(engine, "DockerBackend", lambda options: object())
+    monkeypatch.setattr(engine, "DockerBackend", lambda options, cli=None: object())
     _run_source(scan_dir=tmp_path, line_sink=sink)
     assert seen == [
         ("cdxgen", "stdout", "one"),
@@ -507,7 +509,7 @@ def test_an_image_scan_gives_the_same_run_record(
         return _result()
 
     monkeypatch.setattr(engine, "run_image_scan", image)
-    monkeypatch.setattr(engine, "DockerBackend", lambda options: object())
+    monkeypatch.setattr(engine, "DockerBackend", lambda options, cli=None: object())
     run = engine.run_image(
         scan_uuid=uuid.uuid4(), scan_dir=tmp_path, target="alpine:3.19.0@sha256:" + "a" * 64,
         project="p", version="1",
@@ -515,3 +517,35 @@ def test_an_image_scan_gives_the_same_run_record(
     assert run.run_status == "succeeded"
     assert captured["target"].startswith("alpine:3.19.0")
     assert captured["deep_license"] is False
+
+
+def test_inspect_asks_for_a_container_only() -> None:
+    """``docker inspect <name>`` with no type goes on to ask for an image, a
+    network and a volume once there is no such container. Behind the
+    docker-socket-proxy those requests are refused, not answered "not found",
+    so the package's removal check never saw the container gone and every scan
+    failed after its first container."""
+    from bomlens_runner.docker import DockerCli
+
+    seen: list[list[str]] = []
+
+    def record(self: Any, argv: list[str], timeout: float) -> Any:  # noqa: ARG001
+        seen.append(argv)
+        return SimpleNamespace(returncode=0, stdout=b"", stderr=b"")
+
+    cli = engine._ContainerOnlyCli("docker")
+    original = DockerCli.run
+    DockerCli.run = record  # type: ignore[method-assign,assignment]
+    try:
+        cli.run(["inspect", "--format", "{{.Id}}", "abc"], 60)
+        cli.run(["image", "inspect", "--format", "{{.Id}}", "img"], 60)
+        cli.run(["container", "inspect", "abc"], 60)
+        cli.run(["ps", "--all", "--quiet"], 60)
+    finally:
+        DockerCli.run = original  # type: ignore[method-assign]
+    assert seen == [
+        ["container", "inspect", "--format", "{{.Id}}", "abc"],
+        ["image", "inspect", "--format", "{{.Id}}", "img"],
+        ["container", "inspect", "abc"],
+        ["ps", "--all", "--quiet"],
+    ]
