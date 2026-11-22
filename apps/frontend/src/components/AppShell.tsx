@@ -267,11 +267,13 @@ function NavItemLink({
             "hover:bg-accent hover:text-accent-foreground",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
             // W14 — the active row is the brand's one job in the sidebar: a
-            // accent indicator bar plus a tinted ground. The label stays ink
+            // accent indicator bar plus a tinted ground. In dark the brand tint
+            // (#0a1a2e) sits almost on the sidebar ground and read fainter than
+            // the hover fill, so the active row uses the hover fill there. The label stays ink
             // rather than accent-coloured, so legibility never depends on the accent
             // and colour is not the only thing marking the row.
             isActive
-              ? "bg-brand-subtle text-foreground before:absolute before:inset-y-1 before:left-0 before:w-0.5 before:rounded-full before:bg-brand"
+              ? "bg-brand-subtle text-foreground before:absolute before:left-0 before:top-1/2 before:h-5 before:w-[3px] before:-translate-y-1/2 before:rounded-full before:bg-brand dark:bg-accent"
               : "text-foreground",
           )
         }
