@@ -27,7 +27,8 @@ settings mount roles. The vocabulary test compares the reader's enums to it.
 
 ## How each plan was captured
 
-The flags are the ones the TRUSCA runner gives a PLAN container:
+The flags are the ones TRUSCA's own runner gave a PLAN container, which the
+`bomlens-runner` package that replaced it gives as well:
 
 ```sh
 docker run --rm --read-only --network none --cap-drop ALL \

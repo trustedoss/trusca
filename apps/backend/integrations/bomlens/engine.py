@@ -27,7 +27,6 @@ Nothing here reads a result: :mod:`integrations.bomlens.contract` and
 from __future__ import annotations
 
 import os
-import re
 import shutil
 import uuid
 from collections import deque
@@ -72,12 +71,14 @@ from core.config import (
     workspace_root,
 )
 from integrations.bomlens import contract
-from integrations.bomlens.runner import (
+from integrations.bomlens.engine_util import (
     ERROR_TAIL_LINE_CHARS,
     ERROR_TAIL_LINES,
+    BomLensEngineError,
     image_target,
     is_loopback_proxy,
     output_tail,
+    stage1_image_prefix,
     trivy_db_max_age_days,
 )
 
@@ -129,19 +130,6 @@ _WORKER_SECRETS: Final = "worker-env"
 _WORKSPACE_VOLUME: Final = "workspace"
 _TRIVY_VOLUME: Final = "trivy-db"
 
-#: ``SCAN_BOMLENS_STAGE1_IMAGE_PREFIX``: a registry host, then a repository path
-#: of at least one part, with or without the final ``/``. A host alone
-#: (``localhost``, ``reg.example:5000``) is refused: the allowed-repository check
-#: admits everything under the prefix, so it must name a path that holds only
-#: the cdxgen images. No scheme, tag, digest, space, upper case or shell
-#: character gets through.
-_STAGE1_PREFIX_RE: Final = re.compile(
-    r"(?P<host>[a-z0-9]+(?:[.-][a-z0-9]+)*(?::[0-9]{1,5})?)"
-    r"(?:/[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*)+/?"
-)
-_STAGE1_PREFIX_MAX_CHARS: Final = 200
-
-
 #: The package's own error texts carry no value, path or output (its design),
 #: so they are kept as written, only bounded.
 _MESSAGE_MAX_CHARS: Final = 300
@@ -152,35 +140,12 @@ def _message(exc: Exception) -> str:
     return text if len(text) <= _MESSAGE_MAX_CHARS else text[: _MESSAGE_MAX_CHARS - 3] + "..."
 
 
-class BomLensEngineError(contract.BomLensError):
-    """The engine could not be run, or left nothing a scan can use."""
-
-
 class EngineScanCancelled(Exception):  # noqa: N818 - reads as the event it reports
     """The scan was cancelled while the engine ran."""
 
 
 class EngineWroteNoResult(BomLensEngineError):
     """The result container exited without a manifest."""
-
-
-def stage1_image_prefix(value: str) -> str | None:
-    """The checked ``SCAN_BOMLENS_STAGE1_IMAGE_PREFIX`` with its final ``/``, or ``None``.
-
-    Empty means the setting is off. Anything the pattern does not match raises,
-    before a container starts.
-    """
-    text = value.strip()
-    if not text:
-        return None
-    if len(text) > _STAGE1_PREFIX_MAX_CHARS or _STAGE1_PREFIX_RE.fullmatch(text) is None:
-        # The value is not repeated: it may carry a login, and the message
-        # reaches the scan's error and the worker's log.
-        raise BomLensEngineError(
-            "SCAN_BOMLENS_STAGE1_IMAGE_PREFIX is not in the right form: use a registry host "
-            "followed by a repository path (for example registry.example/mirror/cdxgen/)"
-        )
-    return text if text.endswith("/") else text + "/"
 
 
 # --------------------------------------------------------------------------

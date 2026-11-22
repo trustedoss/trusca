@@ -5,7 +5,7 @@
 ``tasks.scan_source._run_pipeline`` fetches the source, detects the language
 and records the input manifests as for any scan, then hands over here. BomLens
 replaces build-prep, cdxgen, the CocoaPods fill-in, the scope filter, scancode
-and Trivy as one unit (``integrations.bomlens.runner``); TRUSCA keeps what it
+and Trivy as one unit (``integrations.bomlens.engine``); TRUSCA keeps what it
 governs: persisting through its own write paths (``tasks.bomlens_result``),
 signing and attestation, the approval queue, source preservation, the
 component outcome and the reachability follow-up.

@@ -1466,7 +1466,7 @@ def scan_engine() -> str:
     - ``bomlens`` (preview): the BomLens image produces the SBOM and the Trivy
       report and TRUSCA reads its result manifest
       (``integrations.bomlens``). The worker runs the image's execution plan
-      through the Docker API (``integrations.bomlens.runner``), so it needs a
+      through the Docker API (``integrations.bomlens.engine``), so it needs a
       Docker endpoint (the socket proxy in the compose files).
 
     Resolved at call time (CLAUDE.md core rule #11). An unknown value reads as
@@ -1504,7 +1504,7 @@ def bomlens_engine_in_use() -> bool:
 # The two images are pinned here and nowhere else: a tag for people and a
 # digest for Docker. Upgrading BomLens is a pull request that changes these two
 # lines (scan-engine-bomlens-replacement-plan-2026-10.md, stage 5). An operator
-# override must be pinned the same way; integrations.bomlens.runner refuses one
+# override must be pinned the same way; the ``bomlens-runner`` package refuses one
 # without a digest or tagged ``latest``.
 # ---------------------------------------------------------------------------
 
@@ -1551,7 +1551,7 @@ def bomlens_stage1_repositories(image_prefix: str | None = None) -> tuple[str, .
     ignored: ``ghcr.io/cdxgen`` would also admit ``ghcr.io/cdxgen-evil/...``.
 
     ``image_prefix`` is the checked ``SCAN_BOMLENS_STAGE1_IMAGE_PREFIX``
-    (``integrations.bomlens.runner.stage1_image_prefix``), ending in ``/``.
+    (``integrations.bomlens.engine_util.stage1_image_prefix``), ending in ``/``.
     The plan then names its stage 1 image under that prefix, so the prefix is
     allowed without being listed here. With the list left empty it replaces
     the default instead of joining it: a plan that names ``ghcr.io/cdxgen/``

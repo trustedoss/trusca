@@ -12,10 +12,12 @@ reads that folder:
   manifest recorded.
 * :mod:`integrations.bomlens.stages` maps BomLens steps onto TRUSCA's stage
   vocabulary (``services.scan_outcome``).
-* :mod:`integrations.bomlens.plan` reads the execution plan ``MODE=PLAN``
-  writes, as untrusted input.
-* :mod:`integrations.bomlens.runner` runs the plan's containers through the
-  Docker API (the compose path; a Kubernetes Job is a later unit).
+* :mod:`integrations.bomlens.engine` runs the engine's containers through the
+  ``bomlens-runner`` package, which reads the execution plan ``MODE=PLAN``
+  writes as untrusted input and runs the plan's stages on the Docker API (the
+  compose path; a Kubernetes Job is a later unit). It is the only module that
+  imports the package. :mod:`integrations.bomlens.engine_util` holds the
+  checks and text helpers it uses.
 
 Persisting the result through TRUSCA's existing write paths is
 ``tasks.bomlens_result.apply_bomlens_result``; the source pipeline's BomLens

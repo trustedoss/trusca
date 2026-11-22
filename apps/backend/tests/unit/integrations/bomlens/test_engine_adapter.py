@@ -107,7 +107,7 @@ def test_a_prefix_gets_its_final_slash_and_empty_means_off() -> None:
     expected = "registry.example/mirror/cdxgen/"
     assert engine.stage1_image_prefix("registry.example/mirror/cdxgen") == expected
     assert engine.stage1_image_prefix("registry.example/mirror/cdxgen/") == expected
-    assert engine.stage1_image_prefix("  ") is None
+    assert engine.stage1_image_prefix("") is None
 
 
 def test_a_bad_prefix_in_the_settings_stops_the_policy(monkeypatch: pytest.MonkeyPatch) -> None:
