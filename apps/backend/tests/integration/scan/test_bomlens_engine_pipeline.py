@@ -67,7 +67,7 @@ def _engine_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
     monkeypatch.setenv("TRIVY_CACHE_DIR", str(tmp_path / "trivy"))
     monkeypatch.setenv("SCAN_DOCKER_VOLUME_STRATEGY", "bind")
     monkeypatch.setenv("SCAN_BOMLENS_IMAGE", captured_images())
-    monkeypatch.setenv("SCAN_BOMLENS_NETWORK", "bridge")
+    monkeypatch.setenv("SCAN_BOMLENS_NETWORK", "bomlens-egress")
     monkeypatch.setenv("SCANCODE_ENABLED", "false")
     return root
 
@@ -450,7 +450,8 @@ def test_the_published_images_scan_an_npm_project(
         os.getenv("BOMLENS_ENGINE_TRIVY_CACHE", str(Path.home() / ".cache" / "trivy")),
     )
     monkeypatch.delenv("SCAN_BOMLENS_IMAGE")
-    monkeypatch.setenv("SCAN_BOMLENS_NETWORK", os.getenv("BOMLENS_ENGINE_NETWORK", "bridge"))
+    network = os.getenv("BOMLENS_ENGINE_NETWORK", "bomlens-egress")
+    monkeypatch.setenv("SCAN_BOMLENS_NETWORK", network)
     # This test process is not a container, so it has no networks of its own
     # for the runner to compare; in compose it is worker-engine and does.
     monkeypatch.setattr(DockerBackend, "own_networks", lambda self: set())
@@ -487,7 +488,8 @@ def test_the_published_images_take_stage_1_from_a_mirror(
     monkeypatch.delenv("SCAN_BOMLENS_IMAGE")
     monkeypatch.delenv("SCAN_BOMLENS_STAGE1_REPOSITORIES", raising=False)
     monkeypatch.setenv("SCAN_BOMLENS_STAGE1_IMAGE_PREFIX", mirror)
-    monkeypatch.setenv("SCAN_BOMLENS_NETWORK", os.getenv("BOMLENS_ENGINE_NETWORK", "bridge"))
+    network = os.getenv("BOMLENS_ENGINE_NETWORK", "bomlens-egress")
+    monkeypatch.setenv("SCAN_BOMLENS_NETWORK", network)
     monkeypatch.setattr(DockerBackend, "own_networks", lambda self: set())
     scan_id = _seed_running_source_scan()
 
@@ -524,7 +526,8 @@ def test_the_published_images_resolve_a_gradle_project_under_a_read_only_root(
     )
     monkeypatch.delenv("SCAN_BOMLENS_IMAGE")
     monkeypatch.delenv("SCAN_BOMLENS_STAGE1_READ_ONLY_ROOT", raising=False)
-    monkeypatch.setenv("SCAN_BOMLENS_NETWORK", os.getenv("BOMLENS_ENGINE_NETWORK", "bridge"))
+    network = os.getenv("BOMLENS_ENGINE_NETWORK", "bomlens-egress")
+    monkeypatch.setenv("SCAN_BOMLENS_NETWORK", network)
     monkeypatch.setattr(DockerBackend, "own_networks", lambda self: set())
     scan_id = _seed_running_source_scan()
 

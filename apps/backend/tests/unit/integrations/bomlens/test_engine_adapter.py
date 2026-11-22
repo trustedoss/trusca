@@ -282,7 +282,9 @@ class _Containers:
 
 
 def _spec(component: str) -> Any:
-    return SimpleNamespace(component=f"engine-{component}", image="img@sha256:" + "0" * 64)
+    return SimpleNamespace(
+        component=f"engine-{component}", image="img@sha256:" + "0" * 64, network="none"
+    )
 
 
 def _containers_then(result: Any, *components: str) -> Any:

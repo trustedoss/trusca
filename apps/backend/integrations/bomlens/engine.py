@@ -42,9 +42,6 @@ from bomlens_runner import (
     BomLensError as PackageError,
 )
 from bomlens_runner import (
-    EngineWroteNoResult as PackageWroteNoResult,
-)
-from bomlens_runner import (
     EngineContainer,
     Images,
     RunnerPolicy,
@@ -54,6 +51,9 @@ from bomlens_runner import (
     Volume,
     run_image_scan,
     run_source_scan,
+)
+from bomlens_runner import (
+    EngineWroteNoResult as PackageWroteNoResult,
 )
 from bomlens_runner.docker import DockerBackend, DockerOptions
 
@@ -546,7 +546,9 @@ def _recording_backend(options: DockerOptions) -> _RecordingBackend:
     try:
         return _RecordingBackend(DockerBackend(options), egress_network=options.egress_network)
     except PackageError as exc:
-        raise BomLensEngineError(_message(exc)) from None
+        # Most often the egress network: the package refuses the default
+        # ``bridge`` network too, where containers reach each other.
+        raise BomLensEngineError(f"{_message(exc)} (check SCAN_BOMLENS_NETWORK)") from None
 
 
 def _stage1_window(stages: dict[str, _Stage]) -> tuple[datetime, datetime] | None:
@@ -733,4 +735,5 @@ __all__ = [
     "run_image",
     "run_source",
     "stage1_image_prefix",
+    "trivy_db_max_age_days",
 ]

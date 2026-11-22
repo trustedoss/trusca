@@ -120,7 +120,7 @@ def test_containers_of_the_runner_before_the_package_are_removed_by_label(
         out = "abc\ndef\n" if argv[1] == "ps" else ""
         return subprocess.CompletedProcess(argv, 0, out, "")
 
-    monkeypatch.setattr(bomlens_engine_reaper.subprocess, "run", fake_run)
+    monkeypatch.setattr("tasks.bomlens_engine_reaper.subprocess.run", fake_run)
 
     assert bomlens_engine_reaper.remove_legacy_containers() == 2
 
@@ -137,11 +137,11 @@ def test_a_daemon_that_cannot_be_asked_leaves_the_legacy_containers_alone(
     def refused(argv: list[str], **_kw: Any) -> subprocess.CompletedProcess[str]:
         return subprocess.CompletedProcess(argv, 1, "", "cannot connect")
 
-    monkeypatch.setattr(bomlens_engine_reaper.subprocess, "run", refused)
+    monkeypatch.setattr("tasks.bomlens_engine_reaper.subprocess.run", refused)
     assert bomlens_engine_reaper.remove_legacy_containers() == 0
 
     def missing(argv: list[str], **_kw: Any) -> subprocess.CompletedProcess[str]:
         raise FileNotFoundError("docker")
 
-    monkeypatch.setattr(bomlens_engine_reaper.subprocess, "run", missing)
+    monkeypatch.setattr("tasks.bomlens_engine_reaper.subprocess.run", missing)
     assert bomlens_engine_reaper.remove_legacy_containers() == 0

@@ -79,7 +79,7 @@ def _engine_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
     monkeypatch.setenv("TRIVY_CACHE_DIR", str(tmp_path / "trivy"))
     monkeypatch.setenv("SCAN_DOCKER_VOLUME_STRATEGY", "bind")
     monkeypatch.setenv("SCAN_BOMLENS_IMAGE", captured_images())
-    monkeypatch.setenv("SCAN_BOMLENS_NETWORK", "bridge")
+    monkeypatch.setenv("SCAN_BOMLENS_NETWORK", "bomlens-egress")
     monkeypatch.setenv("SCAN_CONTAINER_ENGINE", "bomlens")
     monkeypatch.setenv("TRUSCA_INSTANCE_ID", "container-tests")
     monkeypatch.delenv("CONTAINER_SCAN_ALLOWED_REGISTRIES", raising=False)
@@ -641,8 +641,8 @@ def test_a_worker_running_as_root_does_not_lend_root_to_the_container(
 ) -> None:
     docker = _clean_docker()
     _install(monkeypatch, docker)
-    monkeypatch.setattr(engine_mod.os, "getuid", lambda: 0)
-    monkeypatch.setattr(engine_mod.os, "getgid", lambda: 0)
+    monkeypatch.setattr("integrations.bomlens.engine.os.getuid", lambda: 0)
+    monkeypatch.setattr("integrations.bomlens.engine.os.getgid", lambda: 0)
     scan_id = _seed()
 
     _run_task(scan_id)
@@ -1026,7 +1026,8 @@ def test_the_published_image_scans_a_registry_image_without_a_docker_socket(
         os.getenv("BOMLENS_ENGINE_TRIVY_CACHE", str(Path.home() / ".cache" / "trivy")),
     )
     monkeypatch.delenv("SCAN_BOMLENS_IMAGE")
-    monkeypatch.setenv("SCAN_BOMLENS_NETWORK", os.getenv("BOMLENS_ENGINE_NETWORK", "bridge"))
+    network = os.getenv("BOMLENS_ENGINE_NETWORK", "bomlens-egress")
+    monkeypatch.setenv("SCAN_BOMLENS_NETWORK", network)
     # This test process is not a container, so it has no networks of its own
     # for the runner to compare; in compose it is worker-engine and does.
     monkeypatch.setattr(DockerBackend, "own_networks", lambda self: set())
