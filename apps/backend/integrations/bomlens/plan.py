@@ -75,10 +75,16 @@ STAGE_IDS: Final = (("generate", 1), ("postprocess", 2))
 #: Read-only Maven and Gradle settings files stage 1 may mount (plan contract
 #: 1.3.0, BomLens v1.13.3): a user's ``settings.xml`` and ``init.d`` scripts,
 #: mounted beside the engine's own caches. TRUSCA provides none of them, so a
-#: plan may list them only as optional and the runner leaves them out.
+#: plan may list them only as optional and the runner leaves them out. The
+#: three host folders of BomLens v1.15.1 (a Maven local repository, a Gradle
+#: cache and the Gradle wrapper distributions) are the same kind: TRUSCA
+#: provides none of them.
 SETTINGS_ROLES: Final = (
     "maven-settings",
     "maven-settings-security",
+    "maven-repository",
+    "gradle-cache",
+    "gradle-wrapper",
     "gradle-properties",
     "gradle-init-script",
     "gradle-init-script-kts",
@@ -207,6 +213,9 @@ STAGE_ENV_ALLOWED: Final[dict[int, frozenset[str]]] = {
             # (runner.stage2_for), so this is read and not passed on.
             "CYCLONEDX_SPEC_VERSION",
             "UPLOAD_ENABLED",
+            # Plan 1.4.0 as published in BomLens v1.15.1 also sets it for
+            # stage 2. Read and not passed on, as above.
+            "FETCH_LICENSE",
         }
     ),
 }
@@ -521,7 +530,7 @@ def _parse_stage(raw: Any, index: int, expected: tuple[str, int], output_file: s
         for i, a in enumerate(raw_args)
     )
     raw_mounts = _get(entry, "mounts", where)
-    if not isinstance(raw_mounts, list) or len(raw_mounts) > 16:
+    if not isinstance(raw_mounts, list) or len(raw_mounts) > 24:
         raise _reject(f"{where}.mounts is not a list")
     mounts = tuple(
         _parse_mount(m, number, f"{where}.mounts[{i}]") for i, m in enumerate(raw_mounts)

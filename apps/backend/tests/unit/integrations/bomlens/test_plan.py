@@ -577,7 +577,10 @@ def test_the_captured_plan_lists_every_settings_role_read_only_and_optional() ->
     assert set(settings) == set(plan_mod.SETTINGS_ROLES)
     for mount in settings.values():
         assert mount.optional and mount.mode == "ro", mount
-        assert mount.target.startswith("/bomlens-settings/"), mount
+        # BomLens v1.15.1 put the Gradle cache and wrapper folders under
+        # /bomlens-user-cache/, the settings files and the Maven repository
+        # under /bomlens-settings/.
+        assert mount.target.startswith(("/bomlens-settings/", "/bomlens-user-cache/")), mount
     assert plan.generate.mount("cache-maven") == plan_mod.Mount(
         role="cache-maven", target="/tmp/sbomhome/.m2", mode="rw", optional=True
     )
