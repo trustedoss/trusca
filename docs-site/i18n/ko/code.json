@@ -3,7 +3,7 @@
     "message": "TRUSCA — 엔터프라이즈 OSS 리스크 관리"
   },
   "homepage.hero.eyebrow": {
-    "message": "Apache-2.0 · 자체 호스팅 · v0.19.2"
+    "message": "Apache-2.0 · 자체 호스팅"
   },
   "homepage.hero.subtitle": {
     "message": "Trusted SCA — 취약점, 라이선스 컴플라이언스, SBOM을 하나의 자체 호스팅 UI에서 관리합니다. 사용자 수에 따른 라이선스 비용은 없습니다."

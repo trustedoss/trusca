@@ -73,7 +73,7 @@ export const Switch = forwardRef<HTMLInputElement, SwitchProps>(
         <span
           aria-hidden
           className={cn(
-            "pointer-events-none block h-5 w-5 transform rounded-full bg-background shadow-sm ring-0 transition-transform duration-fast ease-out-soft",
+            "pointer-events-none block h-5 w-5 transform rounded-full bg-primary-foreground shadow-sm ring-0 transition-transform duration-fast ease-out-soft",
             checked ? "translate-x-5" : "translate-x-0",
           )}
         />
