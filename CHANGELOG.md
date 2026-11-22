@@ -9,6 +9,21 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Upgrade notes
 
+- **The BomLens engine runs through the `bomlens-runner` package.**
+  TRUSCA's own runner and plan reader are gone; the engine's containers are
+  run, checked and removed by the package BomLens publishes. What changes for
+  an operator who uses `SCAN_ENGINE=bomlens` or `SCAN_CONTAINER_ENGINE=bomlens`:
+  `SCAN_BOMLENS_NETWORK` may no longer be `bridge` or `default` (create a
+  network of your own, as `docker-compose.yml` does with
+  `trustedoss-scan-egress`); engine containers are named `bomlens-<scan>-<n>-<step>`
+  and labelled `app.kubernetes.io/part-of=bomlens-engine` instead of
+  `trusca.role=bomlens-engine` (the reaper removes this installation's
+  containers of the old kind once after the upgrade; `trusca.instance` is
+  unchanged); images are run by digest, so the engine image in a scan's
+  metadata has no tag; a scan can now be cancelled while a container is
+  running, not only between stages; and the `cdxgen` time of a source scan is
+  the time stage 1 ran. Upgrade while no BomLens scan is running.
+
 - **25 `.env` keys now reach the containers under Docker Compose (#583).**
   `docker-compose.yml` did not pass them, so a value set in `.env` had no
   effect: `CLIENT_ERROR_REPORT_RATE_LIMIT`, `GROUP_SEARCH_RATE_LIMIT`,
