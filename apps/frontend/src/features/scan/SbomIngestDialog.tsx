@@ -234,7 +234,7 @@ export function SbomIngestDialog({
           className="flex items-start gap-1.5 rounded-md border border-risk-high/40 bg-risk-high/10 px-3 py-2 text-xs font-medium text-risk-high-foreground"
           data-testid="sbom-ingest-shared-warning"
         >
-          <AlertIcon size={14} className="mt-0.5 shrink-0" />
+          <AlertIcon size={12} className="mt-0.5 shrink-0" />
           <span>{t("sbom_ingest.shared_warning")}</span>
         </p>
 

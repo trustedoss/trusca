@@ -89,9 +89,9 @@ export function CopyButton({
       data-copied={copied ? "true" : undefined}
     >
       {copied ? (
-        <CheckIcon size={14} />
+        <CheckIcon size={12} />
       ) : (
-        <CopyIcon size={14} />
+        <CopyIcon size={12} />
       )}
     </Button>
   );

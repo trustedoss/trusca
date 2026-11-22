@@ -326,9 +326,9 @@ function ReleaseSelector({
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-1">
       <span className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        {kind === "base" ? <ArrowLeftIcon size={14} /> : null}
+        {kind === "base" ? <ArrowLeftIcon size={12} /> : null}
         {t(labelKey)}
-        {kind === "target" ? <ArrowRightIcon size={14} /> : null}
+        {kind === "target" ? <ArrowRightIcon size={12} /> : null}
       </span>
       <ActionMenu>
         <ActionMenu.Anchor>
@@ -347,7 +347,7 @@ function ReleaseSelector({
             >
               {triggerLabel}
             </span>
-            <ChevronDownIcon size={14} className="shrink-0 opacity-60" />
+            <ChevronDownIcon size={16} className="shrink-0 opacity-60" />
           </Button>
         </ActionMenu.Anchor>
         <ActionMenu.Overlay width="medium" maxHeight="medium">
@@ -580,7 +580,7 @@ function NumberDelta({
         {baseText}
       </span>
       <ArrowRightIcon
-        size={14}
+        size={16}
         className="shrink-0 self-center text-muted-foreground"
       />
       <span className={cn("font-semibold", compact ? "text-sm" : "text-lg")}>
@@ -624,8 +624,9 @@ function GateDelta({ pair }: { pair: DiffValuePair<DiffGateStatus | null> }) {
     >
       <GatePill status={pair.base} side="base" />
       <ArrowRightIcon
+        size={12}
         className={cn(
-          "h-3.5 w-3.5 shrink-0",
+          "shrink-0",
           worsened
             ? "text-risk-critical"
             : improved
@@ -675,7 +676,7 @@ function GatePill({
         data-testid={`compare-gate-${side}`}
         data-gate="pass"
       >
-        <ShieldCheckIcon size={14} />
+        <ShieldCheckIcon size={12} />
         {t("compare.summary.gate_pass")}
       </Badge>
     );
@@ -687,7 +688,7 @@ function GatePill({
       data-testid={`compare-gate-${side}`}
       data-gate="fail"
     >
-      <ShieldXIcon size={14} />
+      <ShieldXIcon size={12} />
       {t("compare.summary.gate_fail")}
     </Badge>
   );

@@ -282,9 +282,9 @@ function ChecklistRow({
         aria-hidden
       >
         {step.done ? (
-          <CheckIcon size={14} />
+          <CheckIcon size={16} />
         ) : (
-          <Icon size={14} />
+          <Icon size={16} />
         )}
       </span>
       <div className="min-w-0 flex-1">

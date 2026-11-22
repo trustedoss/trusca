@@ -588,7 +588,7 @@ function PageHeader({
           className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors duration-fast ease-out-soft hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           data-testid="scan-detail-page-back-link"
         >
-          <ChevronLeftIcon size={14} />
+          <ChevronLeftIcon size={16} />
           {t("detail.back_to_project")}
         </Link>
 
@@ -629,7 +629,7 @@ function PageHeader({
             disabled={downloadDisabled}
             data-testid="scan-detail-page-download"
           >
-            <DownloadIcon size={14} className="mr-1" />
+            <DownloadIcon size={12} className="mr-1" />
             {downloading
               ? `${t("detail.download")}…`
               : t("detail.download")}

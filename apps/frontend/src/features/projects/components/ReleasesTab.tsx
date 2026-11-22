@@ -122,7 +122,7 @@ export function ReleasesTab({ projectId, onViewSnapshot }: ReleasesTabProps) {
             aria-label={t("compare.open_button_aria")}
             data-testid="releases-compare-button"
           >
-            <DiffIcon size={14} />
+            <DiffIcon size={12} />
             {t("compare.open_button")}
           </Button>
         </CardHeader>
@@ -340,14 +340,14 @@ function GateBadge({ status }: { status: ReleaseGateStatus | null }) {
   if (status === "pass") {
     return (
       <Badge tone="success" className="gap-1.5" data-testid="release-gate-pass">
-        <ShieldCheckIcon size={14} />
+        <ShieldCheckIcon size={12} />
         {t("releases.gate.pass")}
       </Badge>
     );
   }
   return (
     <Badge variant="destructive" className="gap-1.5" data-testid="release-gate-fail">
-      <ShieldXIcon size={14} />
+      <ShieldXIcon size={12} />
       {t("releases.gate.fail")}
     </Badge>
   );

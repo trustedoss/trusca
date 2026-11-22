@@ -114,7 +114,7 @@ export function IntakeRequestsPage() {
       <div className="flex h-full flex-col" data-testid="intake-page">
         <PageHeader title={t("title")} description={t("subtitle")} />
         <EmptyState
-          icon={<NoteIcon size={32} />}
+          icon={<NoteIcon size={24} />}
           title={t("disabled.title")}
           description={t("disabled.description")}
           data-testid="intake-disabled"
@@ -194,7 +194,7 @@ export function IntakeRequestsPage() {
           </Alert>
         ) : items.length === 0 ? (
           <EmptyState
-            icon={<NoteIcon size={32} />}
+            icon={<NoteIcon size={24} />}
             title={t("empty.title")}
             description={t("empty.description")}
             data-testid="intake-empty"

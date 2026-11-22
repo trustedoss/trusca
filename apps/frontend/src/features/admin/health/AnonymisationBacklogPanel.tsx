@@ -149,7 +149,7 @@ export function AnonymisationBacklogPanel() {
           className={cn("gap-1", badge)}
           data-testid="anonymisation-backlog-status"
         >
-          <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+          <Icon size={12} aria-hidden="true" />
           {t(`admin.anonymisation.status.${status}`)}
         </Badge>
       </div>
@@ -157,7 +157,7 @@ export function AnonymisationBacklogPanel() {
       {items.length === 0 ? (
         <EmptyState
           className="mt-3"
-          icon={<CheckCircleIcon size={20} />}
+          icon={<CheckCircleIcon size={24} />}
           title={t("admin.anonymisation.empty.title")}
           description={t("admin.anonymisation.empty.description")}
           data-testid="anonymisation-backlog-empty"

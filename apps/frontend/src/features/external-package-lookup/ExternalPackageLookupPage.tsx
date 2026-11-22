@@ -49,7 +49,7 @@ export function ExternalPackageLookupPage() {
       <div className="flex h-full flex-col" data-testid="external-package-lookup-page">
         <PageHeader title={t("title")} description={t("subtitle")} />
         <EmptyState
-          icon={<PackageDependenciesIcon size={32} />}
+          icon={<PackageDependenciesIcon size={24} />}
           title={t("disabled.title")}
           description={t("disabled.description")}
           data-testid="external-package-lookup-disabled"
@@ -125,7 +125,7 @@ export function ExternalPackageLookupPage() {
 
         {result && !result.found ? (
           <EmptyState
-            icon={<PackageDependenciesIcon size={32} />}
+            icon={<PackageDependenciesIcon size={24} />}
             title={t("not_found.title")}
             description={t("not_found.description")}
             data-testid="external-package-lookup-not-found"

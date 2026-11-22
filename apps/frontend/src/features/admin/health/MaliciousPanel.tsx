@@ -193,7 +193,7 @@ export function MaliciousPanel() {
           className="mb-3 flex items-center gap-1.5 text-xs text-status-warning-foreground"
           data-testid="malicious-stale-note"
         >
-          <AlertIcon size={14} className="shrink-0" />
+          <AlertIcon size={12} className="shrink-0" />
           {t("admin.malicious.stale_note")}
         </p>
       ) : null}
@@ -203,7 +203,7 @@ export function MaliciousPanel() {
           className="mb-3 flex items-center gap-1.5 text-xs text-risk-critical-foreground"
           data-testid="malicious-newly-flagged-note"
         >
-          <ShieldIcon size={14} className="shrink-0" />
+          <ShieldIcon size={12} className="shrink-0" />
           {t("admin.malicious.newly_flagged_note", {
             count: data.newly_flagged,
           })}

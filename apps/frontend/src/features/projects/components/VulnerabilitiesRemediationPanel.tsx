@@ -113,9 +113,9 @@ export function VulnerabilitiesRemediationPanel({
           aria-controls="vulnerabilities-remediation-body"
         >
           {expanded ? (
-            <ChevronDownIcon size={14} className="mr-1.5" />
+            <ChevronDownIcon size={12} className="mr-1.5" />
           ) : (
-            <ChevronRightIcon size={14} className="mr-1.5" />
+            <ChevronRightIcon size={12} className="mr-1.5" />
           )}
           {expanded
             ? t("vulnerabilities.remediation.collapse")

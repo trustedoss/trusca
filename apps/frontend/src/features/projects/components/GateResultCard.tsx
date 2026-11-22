@@ -145,7 +145,7 @@ export function GateResultCard({ projectId, scanId }: GateResultCardProps) {
               className="gap-1.5"
               data-testid="gate-badge-pass"
             >
-              <ShieldCheckIcon size={14} />
+              <ShieldCheckIcon size={12} />
               {t("overview.gate_card.pass", { defaultValue: "Pass" })}
             </Badge>
           ) : (
@@ -154,7 +154,7 @@ export function GateResultCard({ projectId, scanId }: GateResultCardProps) {
               className="gap-1.5"
               data-testid="gate-badge-fail"
             >
-              <ShieldXIcon size={14} />
+              <ShieldXIcon size={12} />
               {t("overview.gate_card.fail", { defaultValue: "Fail" })}
             </Badge>
           )}

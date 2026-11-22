@@ -161,7 +161,7 @@ export function GroupListPage() {
         </button>
         {path.map((level, index) => (
           <span key={level.id} className="flex items-center gap-1">
-            <ChevronRightIcon size={14} className="text-muted-foreground" />
+            <ChevronRightIcon size={16} className="text-muted-foreground" />
             <button
               type="button"
               onClick={() => handleDrilldownSegment(index)}
@@ -297,7 +297,7 @@ function GroupRow({
           <span className="flex items-center gap-1 font-medium hover:underline">
             {group.name}
             {hasChildren ? (
-              <ChevronRightIcon size={14} className="text-muted-foreground" data-testid="groups-row-has-children" />
+              <ChevronRightIcon size={16} className="text-muted-foreground" data-testid="groups-row-has-children" />
             ) : null}
           </span>
           <span className="font-mono text-xs text-muted-foreground">

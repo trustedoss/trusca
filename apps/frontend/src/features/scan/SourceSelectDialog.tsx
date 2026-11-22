@@ -379,7 +379,7 @@ export function SourceSelectDialog({
                         : "border-input hover:bg-accent",
                     )}
                   >
-                    <Icon className="h-5 w-5" aria-hidden />
+                    <Icon size={24} aria-hidden />
                     <span>{t(`source.method.${value}`)}</span>
                   </button>
                 );

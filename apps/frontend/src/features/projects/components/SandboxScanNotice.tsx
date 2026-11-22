@@ -77,7 +77,7 @@ export function SandboxScanNotice({ onUploadSbom }: SandboxScanNoticeProps) {
             className="flex items-start gap-1.5 text-xs font-medium text-risk-high-foreground"
             data-testid="sandbox-shared-warning"
           >
-            <AlertIcon size={14} className="mt-0.5 shrink-0" />
+            <AlertIcon size={12} className="mt-0.5 shrink-0" />
             <span>{t("sandbox.shared_warning")}</span>
           </p>
         </div>

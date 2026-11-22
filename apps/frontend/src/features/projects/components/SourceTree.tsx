@@ -252,16 +252,16 @@ function SourceTreeRow({
         <span className="flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground">
           {entry.is_dir ? (
             expanded ? (
-              <ChevronDownIcon size={14} />
+              <ChevronDownIcon size={16} />
             ) : (
-              <ChevronRightIcon size={14} />
+              <ChevronRightIcon size={16} />
             )
           ) : null}
         </span>
         {entry.is_dir ? (
-          <FileDirectoryIcon size={14} className="shrink-0 text-muted-foreground" />
+          <FileDirectoryIcon size={16} className="shrink-0 text-muted-foreground" />
         ) : (
-          <FileIcon size={14} className="shrink-0 text-muted-foreground" />
+          <FileIcon size={16} className="shrink-0 text-muted-foreground" />
         )}
         <span className="truncate" title={entry.name}>
           {entry.name}

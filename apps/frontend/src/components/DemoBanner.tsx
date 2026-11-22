@@ -30,7 +30,7 @@ export function DemoBanner() {
       data-testid="demo-banner"
       className="flex items-center justify-center gap-2 border-b border-status-warning-border bg-status-warning-subtle px-4 py-1.5 text-xs font-medium text-status-warning-foreground"
     >
-      <EyeIcon size={14} className="shrink-0" />
+      <EyeIcon size={12} className="shrink-0" />
       <span>
         <span className="font-semibold">{t("demo.banner_title")}</span>
         <span className="mx-1.5 text-status-warning-border" aria-hidden>

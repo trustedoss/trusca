@@ -192,7 +192,7 @@ export function StreamStopped({
             onClick={onReconnect}
             data-testid={`${copy.testId}-reconnect`}
           >
-            <SyncIcon size={14} />
+            <SyncIcon size={12} />
             {t("stream_stopped.retry")}
           </Button>
         </div>

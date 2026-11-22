@@ -243,7 +243,7 @@ export function EolPanel({ now }: EolPanelProps = {}) {
           className="mb-3 flex items-center gap-1.5 text-xs text-status-warning-foreground"
           data-testid="eol-stale-note"
         >
-          <AlertIcon size={14} className="shrink-0" />
+          <AlertIcon size={12} className="shrink-0" />
           {t("admin.eol.stale_note", { days: ageDays })}
         </p>
       ) : null}
@@ -252,7 +252,7 @@ export function EolPanel({ now }: EolPanelProps = {}) {
           className="mb-3 flex items-center gap-1.5 text-xs text-status-warning-foreground"
           data-testid="eol-skipped-reason"
         >
-          <AlertIcon size={14} className="shrink-0" />
+          <AlertIcon size={12} className="shrink-0" />
           {t("admin.eol.skipped_reason", { reason: data.skipped_reason })}
         </p>
       ) : null}
