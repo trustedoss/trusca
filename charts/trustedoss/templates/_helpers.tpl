@@ -387,3 +387,53 @@ cluster default class in ReadWriteMany, and the new pods would stay Pending.
   emptyDir: {}
   {{- end }}
 {{- end -}}
+
+{{/*
+The BomLens engine worker (worker.engine). `trustedoss.engine.validate` refuses
+a values file that would leave scans with nobody to run them or an engine
+without the isolation it relies on, at render time and with the reason.
+*/}}
+{{- define "trustedoss.engine.validate" -}}
+{{- $engines := list .Values.env.scan.engine .Values.env.scan.containerEngine -}}
+{{- if and (has "bomlens" $engines) (not .Values.worker.engine.enabled) -}}
+{{- fail "env.scan.engine or env.scan.containerEngine is bomlens but worker.engine.enabled is false: scans queued for the engine would wait for a worker that does not exist, and a project with a queued scan does not start another" -}}
+{{- end -}}
+{{- if .Values.worker.engine.enabled -}}
+{{- if not .Values.workspace.persistence.enabled -}}
+{{- fail "worker.engine.enabled needs workspace.persistence.enabled: the engine's Jobs mount the same workspace as the worker, on any node, which an emptyDir cannot give them" -}}
+{{- end -}}
+{{- if not .Values.trivyCache.persistence.enabled -}}
+{{- fail "worker.engine.enabled needs trivyCache.persistence.enabled: stage 2 reads the worker's Trivy database from the Jobs' own pods" -}}
+{{- end -}}
+{{- if not .Values.networkPolicy.enabled -}}
+{{- fail "worker.engine.enabled needs networkPolicy.enabled (on a CNI that enforces it): it is what leaves the engine's plan and stage 2 Jobs without a network" -}}
+{{- end -}}
+{{- if not .Values.networkPolicy.workerEngine.apiServerEgress -}}
+{{- fail "networkPolicy.workerEngine.apiServerEgress is required with worker.engine.enabled: the engine worker creates Jobs through the Kubernetes API and the chart cannot derive where the API server is (kubectl get endpoints kubernetes)" -}}
+{{- end -}}
+{{- if and (or (not .Values.postgres.bundled) (not .Values.redis.bundled)) (not .Values.networkPolicy.workerEngine.externalDatastoreEgress) -}}
+{{- fail "networkPolicy.workerEngine.externalDatastoreEgress is required when postgres.bundled or redis.bundled is false" -}}
+{{- end -}}
+{{- if and .Values.worker.engine.credentials.existingSecret .Values.worker.engine.credentials.data -}}
+{{- fail "worker.engine.credentials: give existingSecret or data, not both" -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/* Name of the Secret the engine's Jobs read credentials from; empty when there is none. */}}
+{{- define "trustedoss.engine.credentialsSecret" -}}
+{{- if .Values.worker.engine.credentials.existingSecret -}}
+{{- .Values.worker.engine.credentials.existingSecret -}}
+{{- else if .Values.worker.engine.credentials.data -}}
+{{- printf "%s-engine-credentials" (include "trustedoss.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+{{- end -}}
+
+{{/* The claim names the worker and the engine's Jobs share. */}}
+{{- define "trustedoss.workspaceClaim" -}}
+{{- .Values.workspace.persistence.existingClaim | default (printf "%s-workspace" (include "trustedoss.fullname" .)) -}}
+{{- end -}}
+
+{{- define "trustedoss.trivyClaim" -}}
+{{- .Values.trivyCache.persistence.existingClaim | default (printf "%s-trivy-cache" (include "trustedoss.fullname" .)) -}}
+{{- end -}}

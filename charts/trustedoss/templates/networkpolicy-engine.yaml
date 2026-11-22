@@ -1,0 +1,144 @@
+{{- /*
+SPDX-License-Identifier: Apache-2.0
+Copyright 2026 TRUSCA contributors
+*/ -}}
+{{- /*
+NetworkPolicies of the BomLens engine, rendered with worker.engine.enabled
+(which requires networkPolicy.enabled, see trustedoss.engine.validate).
+
+1. The engine worker: no ingress; egress to DNS, the datastores and the
+   Kubernetes API server (it creates Jobs), plus operator extras. No internet:
+   it runs no scanned code.
+2. Jobs labelled bomlens.engine/network=none (the execution plan, stage 2, the
+   source restore and the ownership reset): no ingress and no egress at all.
+   This is the isolation the engine's design leans on; it holds only on a CNI
+   that enforces NetworkPolicy.
+3. Jobs labelled bomlens.engine/network=egress (stage 1 and image scans): no
+   ingress; egress to DNS and the registries on a short port list.
+*/ -}}
+{{- if .Values.worker.engine.enabled -}}
+{{- $w := .Values.networkPolicy.workerEngine -}}
+{{- $j := .Values.networkPolicy.engineJobs -}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "trustedoss.fullname" . }}-worker-engine
+  labels:
+    {{- include "trustedoss.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker-engine
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "trustedoss.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: worker-engine
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress: []
+  egress:
+    {{- with $w.dns }}
+    {{- $peer := dict }}
+    {{- with .namespaceSelector }}{{- $_ := set $peer "namespaceSelector" . }}{{- end }}
+    {{- with .podSelector }}{{- $_ := set $peer "podSelector" . }}{{- end }}
+    {{- if not $peer }}
+    {{- fail "networkPolicy.workerEngine.dns needs a namespaceSelector or a podSelector" }}
+    {{- end }}
+    - to:
+        - {{ toYaml $peer | indent 10 | trim }}
+      ports:
+        {{- toYaml .ports | nindent 8 }}
+    {{- end }}
+    {{- if .Values.postgres.bundled }}
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "trustedoss.selectorLabels" . | nindent 14 }}
+              app.kubernetes.io/component: postgres
+      ports:
+        - port: {{ .Values.postgres.service.port }}
+          protocol: TCP
+    {{- end }}
+    {{- if .Values.redis.bundled }}
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "trustedoss.selectorLabels" . | nindent 14 }}
+              app.kubernetes.io/component: redis
+      ports:
+        - port: {{ .Values.redis.service.port }}
+          protocol: TCP
+    {{- end }}
+    {{- with $w.externalDatastoreEgress }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    {{- with $w.apiServerEgress }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    {{- with $w.extraEgress }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "trustedoss.fullname" . }}-engine-jobs-isolated
+  labels:
+    {{- include "trustedoss.labels" . | nindent 4 }}
+    app.kubernetes.io/component: engine-job
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: bomlens-engine
+      bomlens.engine/network: none
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress: []
+  egress: []
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "trustedoss.fullname" . }}-engine-jobs-registries
+  labels:
+    {{- include "trustedoss.labels" . | nindent 4 }}
+    app.kubernetes.io/component: engine-job
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: bomlens-engine
+      bomlens.engine/network: egress
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress: []
+  egress:
+    {{- with $j.dns }}
+    {{- $peer := dict }}
+    {{- with .namespaceSelector }}{{- $_ := set $peer "namespaceSelector" . }}{{- end }}
+    {{- with .podSelector }}{{- $_ := set $peer "podSelector" . }}{{- end }}
+    {{- if not $peer }}
+    {{- fail "networkPolicy.engineJobs.dns needs a namespaceSelector or a podSelector" }}
+    {{- end }}
+    - to:
+        - {{ toYaml $peer | indent 10 | trim }}
+      ports:
+        {{- toYaml .ports | nindent 8 }}
+    {{- end }}
+    {{- if $j.internet.enabled }}
+    - to:
+        {{- range $j.internet.ipBlocks }}
+        - ipBlock:
+            cidr: {{ .cidr }}
+            {{- with .except }}
+            except:
+              {{- toYaml . | nindent 14 }}
+            {{- end }}
+        {{- end }}
+      ports:
+        {{- toYaml $j.internet.ports | nindent 8 }}
+    {{- end }}
+    {{- with $j.extraEgress }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+{{- end }}

@@ -1,0 +1,45 @@
+{{- /*
+SPDX-License-Identifier: Apache-2.0
+Copyright 2026 TRUSCA contributors
+*/ -}}
+{{- /*
+What the engine worker may do in this namespace and nothing more: create, read,
+list and delete the Jobs of the engine's containers, read and delete their Pods
+and read their logs (the runner package's documented set). A namespaced Role,
+bound to the engine worker's ServiceAccount only.
+*/ -}}
+{{- if .Values.worker.engine.enabled -}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "trustedoss.fullname" . }}-worker-engine
+  labels:
+    {{- include "trustedoss.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker-engine
+rules:
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create", "get", "list", "delete"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "trustedoss.fullname" . }}-worker-engine
+  labels:
+    {{- include "trustedoss.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker-engine
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "trustedoss.fullname" . }}-worker-engine
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "trustedoss.serviceAccountName" (dict "root" $ "component" "worker-engine") }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}

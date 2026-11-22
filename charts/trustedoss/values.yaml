@@ -284,6 +284,15 @@ env:
     softTimeLimitSeconds: 3600         # SCAN_SOFT_TIME_LIMIT_SECONDS
     hardTimeLimitSeconds: 3900         # SCAN_HARD_TIME_LIMIT_SECONDS
     workspaceOrphanMaxAgeSeconds: 900  # WORKSPACE_ORPHAN_MAX_AGE_SECONDS
+    # Which engine produces a scan result (preview). `inprocess` is the
+    # worker's own pipeline; `bomlens` hands the scan to the BomLens engine,
+    # whose containers run as Jobs next to the engine worker (worker.engine
+    # below). Scans queued with `bomlens` go to the trustedoss.engine queue,
+    # which only the engine worker consumes: set these only with
+    # worker.engine.enabled, and set them back to `inprocess` before turning
+    # it off, or the queued scans wait with nobody to run them.
+    engine: "inprocess"            # SCAN_ENGINE (source scans)
+    containerEngine: "inprocess"   # SCAN_CONTAINER_ENGINE (image scans)
 
   # -------------------------------------------------------------------------
   # scancode first-party license detection guards (A2).
@@ -710,6 +719,61 @@ worker:
       - "trustedoss.default"
     default:
       - "trustedoss.default"
+    # Only the engine worker takes this queue, and it takes nothing else
+    # (tests/contracts/queue-names.json).
+    engine:
+      - "trustedoss.engine"
+
+  # -------------------------------------------------------------------------
+  # BomLens engine worker (preview, off by default). The one worker that can
+  # create Jobs: it has a ServiceAccount token and a namespaced Role (jobs,
+  # pods, pods/log) and consumes only worker.queues.engine, so code from a
+  # scanned repository never runs where that token is. Every engine container
+  # (plan, stage 1, stage 2, image scan) is a Job of one Pod in this
+  # namespace, mounting the workspace and Trivy claims by sub-path.
+  #
+  # Requirements, each checked when the chart renders or explained in the
+  # administrator guide:
+  # - workspace.persistence and trivyCache.persistence enabled, on storage
+  #   several pods can mount at once (ReadWriteMany): the Jobs run on any node.
+  # - networkPolicy.enabled, on a CNI that enforces it: it is what keeps the
+  #   Jobs without network (plan, stage 2) from having any.
+  # - this namespace at Pod Security `baseline` or looser: stage 1 runs as
+  #   root with CHOWN, DAC_OVERRIDE, FOWNER, SETGID and SETUID.
+  # -------------------------------------------------------------------------
+  engine:
+    enabled: false
+    replicaCount: 1
+    concurrency: 2
+    # Same reasoning as worker.scan.terminationGracePeriodSeconds: a scan in
+    # flight finishes before the pod stops.
+    terminationGracePeriodSeconds: 4200
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: "1"
+        memory: 1Gi
+    # Variables for the engine worker only, as name: value pairs.
+    extraEnv: {}
+    # Pod settings of the engine's Jobs (SCAN_ENGINE_K8S_*).
+    jobs:
+      # Pull secrets, node selector and priority class of the engine Pods.
+      imagePullSecrets: []
+      nodeSelector: {}
+      priorityClassName: ""
+      # fsGroup of the engine Pods, so they can write the workspace. Empty
+      # reads the worker's group (worker.podSecurityContext.fsGroup).
+      fsGroup: ""
+    # Credentials an engine Pod needs, such as a proxy address with a login.
+    # The Jobs read each value from a key of this Secret, named after the
+    # variable (HTTPS_PROXY, HTTP_PROXY). Give an existing Secret, or values
+    # for the chart to create one; both empty means no Secret and a proxy
+    # address with a login is refused.
+    credentials:
+      existingSecret: ""
+      data: {}
 
   # -------------------------------------------------------------------------
   # Scan-pipeline worker. Same sizing the pre-split single worker used - S1 /
@@ -1253,6 +1317,78 @@ networkPolicy:
     #     ports:
     #       - port: 8081
     #         protocol: TCP
+    extraEgress: []
+
+  # The engine worker (worker.engine). Same shape as workerScan, plus the
+  # Kubernetes API: the worker creates and deletes Jobs, so it has a token and
+  # needs a route to the API server.
+  workerEngine:
+    dns:
+      namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    externalDatastoreEgress: []
+    # Raw NetworkPolicyEgressRule list that reaches the Kubernetes API server.
+    # REQUIRED with worker.engine.enabled: the chart cannot read where the API
+    # server is (it is often a node address the pod selectors do not match).
+    # `kubectl get endpoints kubernetes` shows it. Example:
+    #   - to:
+    #       - ipBlock:
+    #           cidr: 10.0.0.1/32
+    #     ports:
+    #       - port: 6443
+    #         protocol: TCP
+    apiServerEgress: []
+    extraEgress: []
+  # The engine's Jobs, chosen by the labels the runner puts on them
+  # (app.kubernetes.io/part-of=bomlens-engine and bomlens.engine/network).
+  # `none` Jobs (plan, stage 2, restore, ownership) get no ingress and no
+  # egress at all. `egress` Jobs (stage 1 and image scans) get DNS and the
+  # package registries and image registries on a short port list.
+  engineJobs:
+    dns:
+      namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+      ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    internet:
+      enabled: true
+      ports:
+        - port: 443
+          protocol: TCP
+        - port: 80
+          protocol: TCP
+      ipBlocks:
+        - cidr: 0.0.0.0/0
+          except:
+            - 10.0.0.0/8
+            - 172.16.0.0/12
+            - 192.168.0.0/16
+            - 100.64.0.0/10
+            - 169.254.0.0/16
+            - 127.0.0.0/8
+        - cidr: ::/0
+          except:
+            - fc00::/7
+            - fe80::/10
+            - ::1/128
+    # Raw NetworkPolicyEgressRule list appended as-is: an internal registry
+    # mirror or proxy the Jobs must reach.
     extraEgress: []
 
 # Pod scheduling extras applied to all workloads.

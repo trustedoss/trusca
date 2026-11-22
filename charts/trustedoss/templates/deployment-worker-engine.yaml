@@ -1,0 +1,175 @@
+{{- /*
+SPDX-License-Identifier: Apache-2.0
+Copyright 2026 TRUSCA contributors
+*/ -}}
+{{- /*
+The BomLens engine worker (preview, worker.engine.enabled). It runs the engine
+scan tasks and the engine-container reaper, and creates one Job per engine
+container through the Kubernetes API with its own ServiceAccount token. It is
+the only workload with that token and the only one that consumes the engine
+queue, so no code from a scanned repository runs next to the credential (the
+build runs in the Jobs, which get no token). See values.yaml worker.engine.
+*/ -}}
+{{- if .Values.worker.engine.enabled -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "trustedoss.fullname" . }}-worker-engine
+  labels:
+    {{- include "trustedoss.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker-engine
+spec:
+  replicas: {{ .Values.worker.engine.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "trustedoss.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: worker-engine
+  template:
+    metadata:
+      labels:
+        {{- include "trustedoss.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: worker-engine
+      annotations:
+        checksum/env: {{ include (print $.Template.BasePath "/configmap-env.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      terminationGracePeriodSeconds: {{ .Values.worker.engine.terminationGracePeriodSeconds }}
+      serviceAccountName: {{ include "trustedoss.serviceAccountName" (dict "root" $ "component" "worker-engine") }}
+      # The ServiceAccount says false (every other workload); this one pod needs
+      # its token to create Jobs, and the Pod field wins over the ServiceAccount's.
+      automountServiceAccountToken: true
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.worker.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: worker
+          image: {{ include "trustedoss.image" (dict "repository" .Values.image.workerRepository "tag" .Values.image.tag "digest" .Values.image.workerDigest) | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- with .Values.worker.containerSecurityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          command:
+            - celery
+            - -A
+            - tasks.celery_app
+            - worker
+            - --loglevel=info
+            - --concurrency={{ .Values.worker.engine.concurrency }}
+            - -Q
+            - {{ include "trustedoss.worker.subscribedQueues" (dict "root" $ "own" "engine") }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "trustedoss.fullname" . }}-env
+            {{- include "trustedoss.extraEnvFrom" . | nindent 12 }}
+          env:
+            {{- include "trustedoss.runtimeSecretEnv" . | nindent 12 }}
+            # Remote control is off, as for the compose engine worker: a revoke
+            # would not stop a scan the worker is running, and the reaper and
+            # the scan row's own status do that instead.
+            - name: CELERY_WORKER_REMOTE_CONTROL
+              value: "false"
+            - name: SCAN_ENGINE_BACKEND
+              value: kubernetes
+            - name: SCAN_ENGINE_K8S_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: SCAN_ENGINE_K8S_WORKSPACE_CLAIM
+              value: {{ include "trustedoss.workspaceClaim" . | quote }}
+            - name: SCAN_ENGINE_K8S_TRIVY_CLAIM
+              value: {{ include "trustedoss.trivyClaim" . | quote }}
+            - name: SCAN_ENGINE_K8S_SERVICE_ACCOUNT
+              value: {{ include "trustedoss.serviceAccountName" (dict "root" $ "component" "engine-job") | quote }}
+            {{- with .Values.worker.engine.jobs.imagePullSecrets }}
+            - name: SCAN_ENGINE_K8S_IMAGE_PULL_SECRETS
+              value: {{ join "," . | quote }}
+            {{- end }}
+            {{- with .Values.worker.engine.jobs.nodeSelector }}
+            - name: SCAN_ENGINE_K8S_NODE_SELECTOR
+              value: {{ range $k, $v := . }}{{ $k }}={{ $v }},{{ end }}
+            {{- end }}
+            {{- with .Values.worker.engine.jobs.priorityClassName }}
+            - name: SCAN_ENGINE_K8S_PRIORITY_CLASS
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.worker.engine.jobs.fsGroup }}
+            - name: SCAN_ENGINE_K8S_FS_GROUP
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with include "trustedoss.engine.credentialsSecret" . }}
+            - name: SCAN_ENGINE_K8S_SECRET_NAME
+              value: {{ . | quote }}
+            {{- end }}
+            # Tells two installations in one namespace apart: each reaper only
+            # lists the Jobs that carry its own value.
+            - name: TRUSCA_INSTANCE_ID
+              value: {{ .Release.Name | quote }}
+            {{- include "trustedoss.extraEnv" . | nindent 12 }}
+            {{- range $key, $value := .Values.worker.engine.extraEnv }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+          volumeMounts:
+            {{- if (.Values.worker.containerSecurityContext).readOnlyRootFilesystem }}
+            - name: home
+              mountPath: /home/trustedoss
+            - name: tmp
+              mountPath: /tmp
+            {{- end }}
+            - name: workspace
+              mountPath: {{ .Values.workspace.mountPath }}
+            # Only the path is used (the Jobs mount the claim themselves), and
+            # only read: this worker never writes the database.
+            - name: trivy-cache
+              mountPath: {{ .Values.env.trivy.dbCacheDir }}
+              readOnly: true
+            {{- include "trustedoss.extraVolumeMounts" . | nindent 12 }}
+          # `celery inspect ping` needs remote control, which is off: check
+          # that the worker process is alive instead.
+          livenessProbe:
+            exec:
+              command:
+                - python
+                - -c
+                - "import os,sys; sys.exit(0 if any(b'celery' in open('/proc/'+p+'/cmdline','rb').read() for p in os.listdir('/proc') if p.isdigit() and p != str(os.getpid())) else 1)"
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 15
+          resources:
+            {{- toYaml .Values.worker.engine.resources | nindent 12 }}
+      volumes:
+        {{- if (.Values.worker.containerSecurityContext).readOnlyRootFilesystem }}
+        - name: home
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+        {{- end }}
+        - name: workspace
+          persistentVolumeClaim:
+            claimName: {{ include "trustedoss.workspaceClaim" . }}
+        - name: trivy-cache
+          persistentVolumeClaim:
+            claimName: {{ include "trustedoss.trivyClaim" . }}
+            readOnly: true
+        {{- include "trustedoss.extraVolumes" . | nindent 8 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}
