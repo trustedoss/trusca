@@ -105,6 +105,10 @@ jobs:
       # every `up` in this job agrees, which keeps docker-compose 1.29.x from
       # treating a later `up` as a config change (see install-uat.yml).
       TRUSTEDOSS_SCAN_BACKEND: mock
+      # Compose defaults to the BomLens engine; this job exercises the in-process
+      # pipeline with the mock backend, so it keeps that engine.
+      SCAN_ENGINE: inprocess
+      SCAN_CONTAINER_ENGINE: inprocess
       IMAGE_REGISTRY: ghcr.io/trustedoss
       # The tag the freshly built backend is published under locally. Never
       # `latest` (CLAUDE.md core rule #9), and distinct from any real release

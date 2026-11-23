@@ -754,6 +754,10 @@ jobs:
       # clamp for itself. Raise it if the runner ever gets more cores; the value
       # only has to be ≤ what the runner actually has.
       WORKER_CPU_LIMIT: "2.0"
+      # Compose defaults to the BomLens engine; this job exercises the in-process
+      # pipeline so it keeps that engine.
+      SCAN_ENGINE: inprocess
+      SCAN_CONTAINER_ENGINE: inprocess
       # Run the published images in the app's DEV runtime mode. This is the SAME
       # posture the install-uat boot smoke uses (it boots via docker-compose.dev.yml)
       # and it is deliberate: APP_ENV defaults to `prod` in docker-compose.yml
