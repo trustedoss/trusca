@@ -194,7 +194,7 @@ After the scan reaches `succeeded`:
 
 - The project's **Components** tab lists the packages from the SBOM, and the component count is greater than zero.
 - The **Vulnerabilities** tab shows CVE (Common Vulnerabilities and Exposures) findings that Trivy matched against the components.
-- The **Licenses** tab shows the declared licenses carried in the SBOM.
+- The **Compliance** tab shows the declared licenses carried in the SBOM.
 - The **Overview** tab shows the dependency graph and the project risk score.
 
 If the project has a build gate policy, the gate runs on the uploaded SBOM exactly as it does for a source scan.

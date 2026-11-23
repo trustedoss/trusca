@@ -158,7 +158,7 @@ no-code way to author a policy — it drives the same REST API documented below.
    - **Policy enabled** — master toggle. Off ⇒ the team falls back to the org
      default or the static catalog without losing the policy's contents.
    - **Name** — an optional display label.
-   - **Uncatalogued license posture** — the category for a license in neither the
+   - **Uncataloged license posture**: the category for a license in neither the
      catalog nor the overrides.
    - **Compound expression strategy** — the `AND` / `OR` / `WITH` resolution.
    - **Category overrides** — add / edit / remove rows mapping an SPDX id to a

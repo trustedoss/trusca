@@ -114,7 +114,7 @@ Installation complete
 ## 3. 첫 로그인 + 프로젝트 생성
 
 1. 공개 URL을 브라우저로 열고 부트스트랩 super-admin으로 로그인.
-2. Team 생성 (`/admin/teams` → **New team**).
+2. Team 생성 (`/admin/teams` → **새 팀**).
 3. 실제 Git URL로 프로젝트 생성 (`/projects/new`).
 4. 스캔을 트리거. `/scans`에서 WebSocket 진행 피드가 작은 저장소 기준
    ~5분 안에 **Completed**로 이동해야 합니다.

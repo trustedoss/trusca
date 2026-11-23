@@ -87,9 +87,9 @@ Frontend 팀의 관리자 자리도 가지고 있고, 로그인 화면이 안내
 ## 4. 둘러보기
 
 <!-- docs-uat: id=qs-dashboard kind=ui harness=expectMounted tier=gate -->
-- **Dashboard** (`/`) — 조직 전체 심각도 타일과 최근 스캔.
+- **대시보드** (`/`) — 조직 전체 심각도 타일과 최근 스캔.
 <!-- docs-uat: id=qs-projects kind=ui harness=expectVisibleProjectCount(5) tier=gate -->
-- **Projects → Frontend 팀의 프로젝트** — 데이터가 가장 풍부한 케이스. **Vulnerabilities**
+- **Projects → Frontend 팀의 프로젝트** — 데이터가 가장 풍부한 케이스. **취약점**
   탭을 열어 7단계 VEX 트리아지 흐름을 확인해 보세요.
 - **Components & licenses** — 허용 / 조건부 / 금지 라이선스 비중을 도넛으로 표시합니다.
 - **SBOM** — CycloneDX 또는 SPDX로 다운로드합니다.
@@ -102,15 +102,15 @@ Frontend 팀의 관리자 자리도 가지고 있고, 로그인 화면이 안내
 자기 코드입니다. 데모 스택 그대로 진행합니다.
 
 <!-- docs-uat: id=qs-first-real-scan kind=manual tier=manual -->
-1. 사이드바에서 **Projects**를 클릭하고, 오른쪽 위 **New project**를 클릭합니다.
-2. **Name**과 공개 **Git URL**을 입력하고(락파일이 있는 저장소라면 무엇이든
-   됩니다) **Create**를 클릭합니다.
-3. **Scan**을 클릭하고(프로젝트 목록의 행 끝, 또는 프로젝트 상세 헤더),
-   **Source** 스캔 타입을 그대로 둔 채 **Start scan**을 클릭합니다.
+1. 사이드바에서 **프로젝트**를 클릭하고, 오른쪽 위 **새 프로젝트**를 클릭합니다.
+2. **이름**과 공개 **Git URL**을 입력하고(락파일이 있는 저장소라면 무엇이든
+   됩니다) **프로젝트 생성**을 클릭합니다.
+3. **스캔**을 클릭하고(프로젝트 목록의 행 끝, 또는 프로젝트 상세 헤더),
+   **소스** 스캔 타입을 그대로 둔 채 **스캔 시작**을 클릭합니다.
 4. 드로어가 파이프라인 단계(fetch → cdxgen → scancode → vuln match →
    finalize)를 실시간으로 보여줍니다. 작은 저장소는 몇 분이면 끝나고, 탭을
    닫아도 스캔은 워커에서 계속 실행됩니다.
-5. 스캔이 성공하면 **Components** 탭에 발견된 패키지가, **Vulnerabilities**
+5. 스캔이 성공하면 **컴포넌트** 탭에 발견된 패키지가, **취약점**
    탭에 미해결 결과가 나타납니다. **업그레이드별** 보기로 전환하면 결과를
    해결하는 정확한 버전 인상 목록을 볼 수 있습니다.
 

@@ -421,7 +421,7 @@ against `MIT OR GPL-3.0-only` even though the GPL branch alone would allow it.
 
 ## Declared vs. detected {#declared-vs-detected}
 
-Each license finding has a **kind** that tells you where the license came from. The kind shows as a provenance badge in the components table, the Licenses tab, and the component drawer, and you can filter the Licenses tab by it.
+Each license finding has a **kind** that tells you where the license came from. The kind shows as a provenance badge in the components table, the Compliance tab, and the component drawer, and you can filter the Compliance tab by it.
 
 | Kind | Source | What it tells you |
 |---|---|---|

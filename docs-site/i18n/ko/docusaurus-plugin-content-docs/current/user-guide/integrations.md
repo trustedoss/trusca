@@ -19,21 +19,21 @@ sidebar_position: 9
 
 ## API Key
 
-`/integrations`를 열고 **API keys** 섹션으로 스크롤합니다. 목록은 본인이 관리할 수 있는 모든 Key를 표시합니다 — 라벨, prefix, scope, 만료, 마지막 사용 메타데이터. 마지막 사용 시각은 정확한 요청 시각이 아니라 15분 단위로 반올림됩니다. 이유는 [Key 목록](../admin-guide/api-keys.md#key-목록)을 참고하세요.
+`/integrations`를 열고 **API 키** 섹션으로 스크롤합니다. 목록은 본인이 관리할 수 있는 모든 Key를 표시합니다 — 라벨, prefix, scope, 만료, 마지막 사용 메타데이터. 마지막 사용 시각은 정확한 요청 시각이 아니라 15분 단위로 반올림됩니다. 이유는 [Key 목록](../admin-guide/api-keys.md#key-목록)을 참고하세요.
 
 ![통합 — Create 버튼과 Key 표가 있는 API keys 섹션](/img/screenshots/user-integrations-keys.png)
 
 ### Key 생성
 
-1. **Create API key**를 클릭합니다. 다이얼로그에서 이름과 scope를 입력하고 제출하면 Key가 발급됩니다.
+1. **API 키 생성**을 클릭합니다. 다이얼로그에서 이름과 scope를 입력하고 제출하면 Key가 발급됩니다.
 
    ![통합 — name과 scope 입력이 있는 API key 생성 다이얼로그](/img/screenshots/user-integrations-key-create.png)
 
 2. 폼을 채웁니다.
-   - **Name** — Key 용도를 떠올리게 하는 자유 텍스트(예: `github-action-checkout-service`).
-   - **Scope** — 드롭다운에는 `org`, `team`, `project` 가운데 본인이 발급할 수 있는 scope만 나열됩니다. 낮은 scope가 더 엄격합니다. 필요한 호출을 커버하는 가장 작은 scope를 선택하세요. 폼에는 `team_id`(scope=`team`일 때 필수)와 `project_id`(scope=`project`일 때 필수)를 위한 평문 UUID 입력란이 있습니다. 해당 admin 페이지에서 ID를 복사해 넣으세요.
+   - **이름** — Key 용도를 떠올리게 하는 자유 텍스트(예: `github-action-checkout-service`).
+   - **범위** — 드롭다운에는 `org`, `team`, `project` 가운데 본인이 발급할 수 있는 scope만 나열됩니다. 낮은 scope가 더 엄격합니다. 필요한 호출을 커버하는 가장 작은 scope를 선택하세요. 폼에는 `team_id`(scope=`team`일 때 필수)와 `project_id`(scope=`project`일 때 필수)를 위한 평문 UUID 입력란이 있습니다. 해당 admin 페이지에서 ID를 복사해 넣으세요.
    - [이 키가 할 수 있는 일] - 기본값인 [읽기 전용] 또는 [읽기·쓰기]입니다. 아래 [읽기 전용 키](#read-only-keys)를 참고하세요.
-   - **Expiration** — **Never expires** 또는 30 / 90 / 180 / 365일 프리셋 가운데 하나입니다. 선택한 기간이 지나면 Key는 인증되지 않고, 그 Key를 쓰는 CI 호출은 실패합니다. 파이프라인 로그로 유출된 Key도 누군가 폐기할 때까지 살아 있지 않고 스스로 만료되므로, CI용 Key에는 TTL을 지정하고 주기적으로 교체하세요.
+   - **만료 기간** — **만료 없음** 또는 30 / 90 / 180 / 365일 프리셋 가운데 하나입니다. 선택한 기간이 지나면 Key는 인증되지 않고, 그 Key를 쓰는 CI 호출은 실패합니다. 파이프라인 로그로 유출된 Key도 누군가 폐기할 때까지 살아 있지 않고 스스로 만료되므로, CI용 Key에는 TTL을 지정하고 주기적으로 교체하세요.
 
    각 scope 발급 권한:
 
@@ -43,10 +43,10 @@ sidebar_position: 9
    | `team`   | super-admin, team-admin   |
    | `project`| super-admin, team-admin, developer (소속 팀의 프로젝트 한정) |
 
-3. **Create**를 클릭합니다.
+3. **키 생성**을 클릭합니다.
 
 :::caution 만료를 두지 않은 Key는 폐기할 때까지 살아 있습니다
-폼의 기본값은 **Never expires**이고, 그렇게 발급한 Key는 누군가 **Revoke**를 누를 때까지 유효합니다. 다른 장기 시크릿과 동일하게 취급하세요. CI 시크릿 매니저에 보관하고 소스 컨트롤에는 절대 두지 마세요. 프리셋을 고르면 Key가 유출됐을 때 피해가 이어지는 기간에 상한이 생깁니다.
+폼의 기본값은 **만료 없음**이고, 그렇게 발급한 Key는 누군가 **폐기**를 누를 때까지 유효합니다. 다른 장기 시크릿과 동일하게 취급하세요. CI 시크릿 매니저에 보관하고 소스 컨트롤에는 절대 두지 마세요. 프리셋을 고르면 Key가 유출됐을 때 피해가 이어지는 기간에 상한이 생깁니다.
 :::
 
 ### 읽기 전용 키 {#read-only-keys}
@@ -94,10 +94,10 @@ tos_a1b2c3d4_eaff8b91d36c5e0a2f1c4d7e8a9b0c2d
 ```
 
 :::caution One-time reveal
-전체 Key는 **단 한 번만** 표시됩니다. 모달을 닫으면 prefix만 보입니다. 지금 복사해서 CI의 시크릿 저장소에 붙여 넣은 다음 **Done**을 클릭하세요.
+전체 Key는 **단 한 번만** 표시됩니다. 모달을 닫으면 prefix만 보입니다. 지금 복사해서 CI의 시크릿 저장소에 붙여 넣은 다음 **확인**을 클릭하세요.
 :::
 
-모달에는 **Copy** 버튼과 명시적 경고가 있습니다 — *"This is the only time you will see the full key. If you lose it, you must create a new one."*
+모달에는 **복사** 버튼과 명시적 경고가 있습니다 — *"This is the only time you will see the full key. If you lose it, you must create a new one."*
 
 ### Key 사용
 
@@ -133,7 +133,7 @@ stage('Scan') {
 
 ### Key 폐기
 
-API Key 목록에서 행에 마우스를 올리고 **Revoke**를 클릭한 뒤 다이얼로그에서 확인합니다. 폐기는 즉시 적용되며(인증 캐시 TTL ~5초) 되돌릴 수 없습니다.
+API Key 목록에서 행에 마우스를 올리고 **폐기**를 클릭한 뒤 다이얼로그에서 확인합니다. 폐기는 즉시 적용되며(인증 캐시 TTL ~5초) 되돌릴 수 없습니다.
 
 ## Webhook
 

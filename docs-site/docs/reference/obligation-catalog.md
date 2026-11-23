@@ -1,7 +1,7 @@
 ---
 id: obligation-catalog
 title: Obligation catalog
-description: The structured per-license obligation catalog that powers the Obligations tab and the NOTICE file generator — what each license requires you to do.
+description: The structured per-license obligation catalog that powers the obligations view of the Compliance tab and the NOTICE file generator, and lists what each license requires you to do.
 sidebar_label: Obligation catalog
 sidebar_position: 7
 ---
@@ -11,7 +11,7 @@ sidebar_position: 7
 A **license** tells you *whether* you may use a component. An **obligation**
 tells you *what you must do* in return — reproduce a copyright notice, ship the
 license text, disclose source, and so on. TRUSCA ships a structured,
-per-license **obligation catalog** so the **Obligations** tab and the generated
+per-license **obligation catalog** so the obligations view of the **Compliance** tab and the generated
 **NOTICE** file are populated from real scans, not just demo seed data.
 
 The catalog covers 50+ well-known SPDX licenses the portal classifies (the same
@@ -33,7 +33,7 @@ The catalog is **code-resident** (a single source of truth in the backend) and
 is materialised into the `obligations` table **on demand** for the licenses a
 project's latest scan actually observed:
 
-- When you open the **Obligations** tab or download a **NOTICE**, the portal
+- When you open the obligations view of the **Compliance** tab or download a **NOTICE**, the portal
   ensures every catalog license present in the scan has its obligation rows.
 - Population is **idempotent and additive**: it only ever *adds* missing rows
   and **never overwrites** an obligation you (or a seed) authored by hand for
@@ -79,7 +79,7 @@ which is what `network` captures.
 ## Obligation kinds rendered
 
 The catalog emits obligation rows under these `kind` values (shown in the
-Obligations tab distribution and the NOTICE):
+obligations view distribution and the NOTICE):
 
 - `attribution` — reproduce copyright / author notices.
 - `notice` — include the license text / NOTICE file with redistributions.
@@ -129,7 +129,7 @@ The obligation set tracks the `allowed | conditional | forbidden` categories
 
 ## Where it surfaces
 
-- **Obligations tab** — one row per `(license, obligation kind)` observed in the
+- **Compliance tab, obligations view**: one row per `(license, obligation kind)` observed in the
   project's latest scan, with a per-kind distribution chart.
 - **NOTICE file** — each credited license renders its obligations (attribution,
   source disclosure, patent, …) instead of an empty placeholder, in text,

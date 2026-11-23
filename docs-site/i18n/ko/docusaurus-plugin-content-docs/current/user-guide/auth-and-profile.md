@@ -152,20 +152,20 @@ GitHub 또는 Google이 구성되어 있다면 `/login` 페이지의 이메일 �
 
 ## `/profile`에서 연결된 계정 관리
 
-`/profile` 페이지의 **Connected Accounts** 섹션은 현재 본인 계정에 연결된 OAuth 신원을 나열합니다.
+`/profile` 페이지의 **연결된 계정** 섹션은 현재 본인 계정에 연결된 OAuth 신원을 나열합니다.
 
 - **GitHub** — GitHub로 한 번이라도 로그인한 적이 있으면 표시.
 - **Google** — Google로 한 번이라도 로그인한 적이 있으면 표시.
 
-![프로필 페이지 — 헤더, 신원 카드, Connected Accounts 패널](/img/screenshots/user-profile-mounted.png)
+![프로필 페이지 — 헤더, 신원 카드, 연결된 계정 패널](/img/screenshots/user-profile-mounted.png)
 
-Connected Accounts 패널은 본인 포털 계정에 현재 연결된 모든 외부 신원을 한눈에 보여줍니다:
+연결된 계정 패널은 본인 포털 계정에 현재 연결된 모든 외부 신원을 한눈에 보여줍니다:
 
-![Connected Accounts — 연결된 GitHub 신원이 표시된 패널](/img/screenshots/user-profile-connected-accounts.png)
+![연결된 계정 — 연결된 GitHub 신원이 표시된 패널](/img/screenshots/user-profile-connected-accounts.png)
 
-현재 릴리스에서는 비밀번호 로그인이 Connected Accounts 목록에 별도 행으로 표시되지 않습니다 — 이메일+비밀번호로 가입했거나 비밀번호 재설정을 완료했다면 묵시적으로 활성 상태입니다. OAuth만 사용 중인 계정의 비밀번호 복구는 로드맵 항목입니다. 현재는 운영자 측 `/admin/users/{id}/password-reset` 엔드포인트가 유일한 경로입니다.
+현재 릴리스에서는 비밀번호 로그인이 연결된 계정 목록에 별도 행으로 표시되지 않습니다 — 이메일+비밀번호로 가입했거나 비밀번호 재설정을 완료했다면 묵시적으로 활성 상태입니다. OAuth만 사용 중인 계정의 비밀번호 복구는 로드맵 항목입니다. 현재는 운영자 측 `/admin/users/{id}/password-reset` 엔드포인트가 유일한 경로입니다.
 
-각 Connected Accounts 행에는 **Unlink** 버튼이 있습니다. 포털은 본인이 로그인 수단을 모두 잃는 상황을 방지합니다(마지막 인증 수단 보호).
+각 연결된 계정 행에는 **연결 해제** 버튼이 있습니다. 포털은 본인이 로그인 수단을 모두 잃는 상황을 방지합니다(마지막 인증 수단 보호).
 
 - 연결 해제로 인해 **로그인 수단이 하나도 남지 않게 되면**(예: OAuth 신원 하나만 있고 비밀번호도 설정되지 않은 경우) 요청은 HTTP 409로 거부되며 UI에 알림이 표시됩니다 — *"Set a password before unlinking your last OAuth identity."*
 - 대안 경로는 **Forgot password**입니다. 리셋 링크를 요청해 비밀번호를 설정한 다음 `/profile`로 돌아와 연결을 해제하세요.
@@ -187,7 +187,7 @@ Connected Accounts 패널은 본인 포털 계정에 현재 연결된 모든 외
 <!-- docs-uat: id=auth-oauth-provider-listed kind=manual tier=manual -->
 - OAuth 로그인 후 `/profile`에 사용한 공급자가 나열됩니다.
 <!-- docs-uat: id=auth-unlink-disables-last kind=ui harness=profileUnlinkGithub tier=nightly -->
-- 연결 해제 후 해당 행이 사라지며, 남은 행의 **Unlink** 버튼은 본인을 잠그게 될 경우 비활성화됩니다.
+- 연결 해제 후 해당 행이 사라지며, 남은 행의 **연결 해제** 버튼은 본인을 잠그게 될 경우 비활성화됩니다.
 
 ## `/about`에서 보는 라이선스와 고지
 

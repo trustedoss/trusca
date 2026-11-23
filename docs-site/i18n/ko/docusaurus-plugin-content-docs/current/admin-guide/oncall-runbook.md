@@ -117,7 +117,7 @@ docker-compose -f docker-compose.yml exec backend df -h /opt/trustedoss/backups
 ```
 
 ### 복구
-1. **수동 트리거**(UI: `/admin/backup` → **Run manual backup now**, 또는):
+1. **수동 트리거**(UI: `/admin/backup` → **지금 수동 백업 실행**, 또는):
    ```bash
    curl -fsS -X POST "https://<your-host>/v1/admin/backup/trigger" \
      -H "Authorization: Bearer $ACCESS_TOKEN"

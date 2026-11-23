@@ -71,7 +71,7 @@ GitHub/GitLab → Settings → Webhooks → "Secret"에 붙여 넣습니다.
 
 ### 1. 포털에서 Webhook 활성화
 
-현재 릴리스에서 Webhook 활성화는 운영자 전용입니다. Project Settings 탭은 아직 Webhook 컨트롤을 노출하지 않습니다. 운영자는 서버 측에서 프로젝트별 `webhook_secret`을 부트스트랩하고(`apps/backend/services/webhook_service.py` 참고), 생성된 Webhook URL은 **Integrations** 페이지 → Webhooks 섹션에 표시됩니다. 셀프 서비스 활성화 UI는 로드맵에 있습니다.
+현재 릴리스에서 Webhook 활성화는 운영자 전용입니다. Project Settings 탭은 아직 Webhook 컨트롤을 노출하지 않습니다. 운영자는 서버 측에서 프로젝트별 `webhook_secret`을 부트스트랩하고(`apps/backend/services/webhook_service.py` 참고), 생성된 Webhook URL은 **통합** 페이지 → Webhooks 섹션에 표시됩니다. 셀프 서비스 활성화 UI는 로드맵에 있습니다.
 
 ### 2. GitHub에서 구성
 
@@ -95,7 +95,7 @@ GitHub은 즉시 `ping` 이벤트를 전송합니다. green ("Last delivery was 
 
 ### 1. 포털에서 Webhook 활성화
 
-현재 릴리스에서 Webhook 활성화는 운영자 전용입니다. Project Settings 탭은 아직 Webhook 컨트롤을 노출하지 않습니다. 운영자는 서버 측에서 프로젝트별 `webhook_secret`을 부트스트랩하고(`apps/backend/services/webhook_service.py` 참고), 생성된 Webhook URL은 **Integrations** 페이지 → Webhooks 섹션에 표시됩니다. 셀프 서비스 활성화 UI는 로드맵에 있습니다.
+현재 릴리스에서 Webhook 활성화는 운영자 전용입니다. Project Settings 탭은 아직 Webhook 컨트롤을 노출하지 않습니다. 운영자는 서버 측에서 프로젝트별 `webhook_secret`을 부트스트랩하고(`apps/backend/services/webhook_service.py` 참고), 생성된 Webhook URL은 **통합** 페이지 → Webhooks 섹션에 표시됩니다. 셀프 서비스 활성화 UI는 로드맵에 있습니다.
 
 ### 2. GitLab에서 구성
 

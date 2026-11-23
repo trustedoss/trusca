@@ -22,7 +22,7 @@ sidebar_position: 1
 | **슬러그 (Slug)** | URL-safe 식별자(`[a-z0-9-]+`). 팀 내에서 유일하며, 중복 슬러그는 `409`로 거부됩니다. |
 | **설명 (Description)** | 선택. 프로젝트 목록과 Overview 탭에 노출되는 자유 텍스트 요약. |
 | **Git URL** | 스캔 파이프라인이 클론할 git URL. HTTPS 지원. 사설 저장소는 URL에 자격증명을 포함해야 합니다 — [사설 저장소](#사설-저장소)를 보세요. |
-| **기본 브랜치 (Default branch)** | 스캔 파이프라인이 체크아웃할 브랜치(기본값 `main`). 생성 후 **Project Settings**에서 수정. |
+| **기본 브랜치 (Default branch)** | 스캔 파이프라인이 체크아웃할 브랜치(기본값 `main`). 생성 후 **프로젝트 설정**에서 수정. |
 | **가시성 (Visibility)** | `team` (v0.10.0 시점에서 허용되는 유일한 값 — 소속 팀 멤버만 조회). 생성 시 자동 설정되며 PATCH로만 변경 가능. |
 | **소속 팀 (Owning team)** | 프로젝트가 속한 팀. 글로벌 바에서 선택한 팀이 기본값이며, 여러 팀에 속해 있으면 생성 폼에서 바꿀 수 있습니다. |
 | **소유 조직** | 선택 항목. 본부, 부서, 팀 등 조직에서 부르는 단위를 자유롭게 적습니다. 프로젝트 목록을 좁히는 데 씁니다. |
@@ -55,7 +55,7 @@ sidebar_position: 1
 
 ## 프로젝트 추가 — UI
 
-사이드바의 **Projects** 항목은 프로젝트 목록을 보여줍니다 — 소속 팀으로 닿는 모든 프로젝트, 상태 배지, severity 카운트, 인라인 **Scan** 액션, 그리고 `n scans · m releases · last scan <상대 시간>` 형식의 프로젝트별 컴팩트 메타 행:
+사이드바의 **프로젝트** 항목은 프로젝트 목록을 보여줍니다 — 소속 팀으로 닿는 모든 프로젝트, 상태 배지, severity 카운트, 인라인 **스캔** 액션, 그리고 `n scans · m releases · last scan <상대 시간>` 형식의 프로젝트별 컴팩트 메타 행:
 
 ![/projects 목록 — 팀 범위의 표로 name, 마지막 스캔 상태 배지, severity 카운트, 행별 인라인 Scan 액션](/img/screenshots/user-projects-list.png)
 
@@ -76,21 +76,21 @@ sidebar_position: 1
 이 화면은 한 번에 서버 페이지 하나를 보여 줍니다. 조건에 맞는 프로젝트가 한 페이지보다 많으면 목록 위에 몇 건 중 몇 건을 표시했는지 안내가 나옵니다. 검색어를 좁히면 나머지를 확인할 수 있습니다.
 
 1. 로그인.
-2. 사이드바의 **Projects** 클릭.
-3. 우측 상단 **New project** 클릭.
+2. 사이드바의 **프로젝트** 클릭.
+3. 우측 상단 **새 프로젝트** 클릭.
 4. 폼 작성:
    - **이름** (필수)
    - **설명** (선택)
    - **Git URL** (소스 스캔에 필수)
-5. **Create** 클릭.
+5. **프로젝트 생성** 클릭.
 
    ![New project 폼 — name / description / Git URL 필드 — KO locale](/img/screenshots/user-projects-create-form-ko.png)
 
-프로젝트의 **Overview** 탭으로 이동합니다. 여기서 첫 스캔을 실행할 수 있습니다 — [스캔](./scans.md) 참고.
+프로젝트의 **개요** 탭으로 이동합니다. 여기서 첫 스캔을 실행할 수 있습니다 — [스캔](./scans.md) 참고.
 
 ![프로젝트 상세 — 리스크 게이지와 빠른 액션이 있는 Overview 탭](/img/screenshots/user-project-detail-overview.png)
 
-기본 브랜치(`main`), 가시성(`team`), 소속 팀(글로벌 바에서 선택한 팀)은 서버에서 자동 설정되며 **Project Settings**에서 확인 가능합니다.
+기본 브랜치(`main`), 가시성(`team`), 소속 팀(글로벌 바에서 선택한 팀)은 서버에서 자동 설정되며 **프로젝트 설정**에서 확인 가능합니다.
 
 ### 프로젝트 상세 탭 구성
 
@@ -98,20 +98,17 @@ sidebar_position: 1
 
 | 탭 | 보여주는 내용 |
 |---|---|
-| **Overview** | 리스크 두 축(Security + License), [빌드 게이트 판정](#build-gate-verdict-overview-tab), **Project info** 카드(Git URL, default branch, 소속 팀, 생성 시각, 마지막 스캔 시각), 최근 스캔. |
-| **Releases** | 종단 스캔별 프로젝트 스냅샷 — 스냅샷 목록, "View snapshot" 핀 액션, 릴리스 간 diff 진입점. [Releases 탭](#릴리스-탭) 참고. |
-| **Components** | 스캔이 발견한 모든 컴포넌트. [컴포넌트·라이선스](./components-and-licenses.md) 참고. |
-| **Vulnerabilities** | 열린/트리아지된 CVE 결과. [취약점](./vulnerabilities.md) 참고. |
-| **Licenses** | 같은 데이터를 SPDX 식별자·티어 기준으로 본 뷰. |
-| **Obligations** | 컴포넌트별 의무사항 + NOTICE 파일 생성. [컴포넌트·라이선스 → 의무사항](./components-and-licenses.md#의무사항) 참고. |
-| **SBOM** | CycloneDX / SPDX 익스포트, byte-stable. [SBOM](./sbom.md) 참고. |
-| **Reports** | NOTICE / SBOM / Vuln-PDF / VEX 생성 카드 **+** 프로젝트의 통합 다운로드·익스포트 이력. [Reports 탭](#reports-탭) 참고. |
-| **Source** | 최근 성공한 스캔에서 fetch 된 first-party 소스 트리. 파일 단위 라이선스 결과 하이라이팅. 탭 재정렬로 **Reports**와 **Remediation** 사이로 이동. |
-| **Remediation** | 최근 스캔 기준 컴포넌트별 업그레이드 권고. 선택적 npm 자동 PR 플로 포함. |
-| **Settings** | 프로젝트 메타데이터, 아카이브 액션, CI 연동 헬퍼. |
+| **개요** | 리스크 두 축(Security + License), [빌드 게이트 판정](#build-gate-verdict-overview-tab), **프로젝트 정보** 카드(Git URL, default branch, 소속 팀, 생성 시각, 마지막 스캔 시각), 최근 스캔. |
+| **릴리스** | 종단 스캔별 프로젝트 스냅샷 — 스냅샷 목록, "스냅샷 보기" 핀 액션, 릴리스 간 diff 진입점. [릴리스 탭](#릴리스-탭) 참고. |
+| **컴포넌트** | 스캔이 발견한 모든 컴포넌트. [컴포넌트·라이선스](./components-and-licenses.md) 참고. |
+| **취약점** | 열린/트리아지된 CVE 결과와, 컴포넌트별 업그레이드 권고·선택적 npm 자동 PR 플로를 담은 보안 조치 패널. [취약점](./vulnerabilities.md) 참고. |
+| **소스** | 최근 성공한 스캔에서 fetch 된 first-party 소스 트리. 파일 단위 라이선스 결과 하이라이팅. |
+| **컴플라이언스** | 라이선스 데이터를 두 가지로 봅니다. SPDX 식별자·티어 기준의 라이선스 목록과, 컴포넌트별 의무사항 및 NOTICE 파일 생성입니다. [컴포넌트·라이선스 → 의무사항](./components-and-licenses.md#의무사항) 참고. |
+| **리포트** | NOTICE / SBOM(CycloneDX / SPDX, byte-stable) / Vuln-PDF / VEX 생성 카드 **+** 프로젝트의 통합 다운로드·익스포트 이력. [리포트 탭](#reports-탭)과 [SBOM](./sbom.md) 참고. |
+| **설정** | 프로젝트 메타데이터, 아카이브 액션, CI 연동 헬퍼. |
 
-:::note 탭 순서가 변경되었습니다
-**Source** 탭은 이전에 **Licenses** 바로 뒤에 있었으나, 데이터 출력 클러스터(SBOM / Reports / Source)가 연속되도록 **Reports** 오른쪽으로 이동했습니다. 북마크와 `?tab=source` 딥링크는 슬러그가 동일하므로 계속 동작합니다.
+:::note 이전 탭 링크
+이전 버전에는 라이선스, 의무사항, SBOM, 보안 조치 탭이 따로 있었습니다. `?tab=licenses`, `?tab=obligations`, `?tab=sbom`, `?tab=remediation`을 쓰는 북마크는 지금 그 화면을 담고 있는 탭으로 열립니다.
 :::
 
 ## 프로젝트 추가 — API
@@ -192,7 +189,7 @@ SSH 배포 키는 [로드맵](#로드맵)을 보세요.
 Overview 탭은 이제 하나의 합산 점수 대신 **두 개의** 리스크 축을 게이지에 표시합니다. 두 가지 실패 모드를 독립적으로 읽을 수 있도록 분리했습니다.
 
 - **Security risk (보안 리스크)** — 프로젝트의 열린 취약점 구성에 따라 결정됩니다. 밴드(Critical / High / Medium / Low / Info)는 **가장 심각한** 열린 finding이 정합니다. 밴드 내 점수는 `n / (n + 4)`로 스케일(비포화 — finding이 더 많아진다고 밴드를 한 단계 올리지 못함).
-- **License risk (라이선스 리스크)** — 프로젝트의 라이선스 티어 구성에 따라 결정됩니다. **Forbidden** 라이선스가 밴드를 지배. **Conditional** 행은 밴드 내 점수를 올리지만 단독으로 `Critical`로 승격하지 않습니다(이전의 "Conditional 컴포넌트 하나라도 있으면 Risk 100" 동작은  W1에서 제거).
+- **License risk (라이선스 리스크)** — 프로젝트의 라이선스 티어 구성에 따라 결정됩니다. **금지** 라이선스가 밴드를 지배. **조건부** 행은 밴드 내 점수를 올리지만 단독으로 `Critical`로 승격하지 않습니다(이전의 "Conditional 컴포넌트 하나라도 있으면 Risk 100" 동작은  W1에서 제거).
 
 기존 단일 `risk_score` 필드는 빌드 게이트와 CI 연동의 하위 호환을 위해 API에서 `max(security_axis, license_axis)`로 계속 노출됩니다. UI는 두 축 분해를 사용합니다.
 
@@ -204,7 +201,7 @@ Overview 탭은 이제 하나의 합산 점수 대신 **두 개의** 리스크 �
 
 ## 빌드 게이트 판정 (Overview 탭) {#build-gate-verdict-overview-tab}
 
-**Overview** 탭은 리스크 게이지 옆에 **Build gate**(빌드 게이트) 카드를 표시합니다. CI 연동이 계산하는 것과 동일한 빌드 차단 판정을 노출하므로 — CI 로그를 열지 않고도 포털에서 게이트 결과를 확인할 수 있습니다. 이 카드는 프로젝트의 **주 브랜치**를 기준으로 평가합니다. 프로젝트의 기본 브랜치와 일치하는 브랜치의 가장 최근 성공한 스캔을 쓰고, 기본 브랜치가 비어 있으면 `main`을 가정하며, 둘 다 맞지 않으면 브랜치를 가리지 않고 가장 최근 성공한 스캔으로 물러납니다. 여러 브랜치를 스캔하는 프로젝트에서 판정이 마지막에 끝난 브랜치를 따라 흔들리지 않게 하려는 것입니다.
+**개요** 탭은 리스크 게이지 옆에 **빌드 차단 게이트** 카드를 표시합니다. CI 연동이 계산하는 것과 동일한 빌드 차단 판정을 노출하므로 — CI 로그를 열지 않고도 포털에서 게이트 결과를 확인할 수 있습니다. 이 카드는 프로젝트의 **주 브랜치**를 기준으로 평가합니다. 프로젝트의 기본 브랜치와 일치하는 브랜치의 가장 최근 성공한 스캔을 쓰고, 기본 브랜치가 비어 있으면 `main`을 가정하며, 둘 다 맞지 않으면 브랜치를 가리지 않고 가장 최근 성공한 스캔으로 물러납니다. 여러 브랜치를 스캔하는 프로젝트에서 판정이 마지막에 끝난 브랜치를 따라 흔들리지 않게 하려는 것입니다.
 
 API에서는 CI 작업이 자기 브랜치를 지정하는 편이 좋습니다. `GET /v1/projects/{id}/gate-result?ref=<브랜치>`는 그 브랜치만 평가하므로, 릴리스 브랜치의 critical CVE가 `main` 파이프라인을 막지 못합니다. `refs/heads/main`이나 `$GITHUB_REF` 같은 전체 형식은 스캔 트리거와 같은 방식으로 정규화합니다. 성공한 스캔이 없는 브랜치는 다른 브랜치의 결과를 빌려 오지 않고 신호 없음으로 통과를 반환합니다.
 
@@ -217,11 +214,11 @@ API에서는 CI 작업이 자기 브랜치를 지정하는 편이 좋습니다. 
 | **Pass / Fail 배지** | 최근 성공한 스캔에 critical CVE와 금지 라이선스가 없으면 `Pass`(녹색, 방패 체크), 그렇지 않으면 `Fail`(빨강, 방패 X). |
 | **사유 (Reason)** | `Fail` 일 때 게이트를 트립시킨 원인을 한 줄로 설명. |
 | **Critical CVEs** | 평가된 스캔의 미해결 critical 심각도 결과 수. 미해결 = 상태가 `not_affected`, `fixed`, `false_positive`가 아닌 경우. |
-| **Forbidden licenses** | 금지 등급 라이선스를 하나 이상 가진 고유 컴포넌트 수. |
+| **금지 라이선스** | 금지 등급 라이선스를 하나 이상 가진 고유 컴포넌트 수. |
 | **`EPSS ≥ {threshold}`** | 운영자가 EPSS 게이트를 활성화한 경우(포털에 `GATE_EPSS_THRESHOLD` 설정)에만 표시. EPSS 점수가 임계값 이상인 미해결 결과 수. EPSS 게이트가 비활성(기본값)이면 숨겨집니다. [EPSS로 빌드 게이팅](../ci-integration/github-actions.md#epss로-빌드-게이팅-선택) 참고. |
 
 :::note 스캔 없음 (No scan yet)
-성공한 스캔이 한 번도 없는 프로젝트는 녹색 pass 대신 중립적인 **No scan yet** 상태를 표시합니다 — 평가할 대상이 없기 때문입니다. 스캔을 실행하면([스캔](./scans.md) 참고) 카드가 채워집니다.
+성공한 스캔이 한 번도 없는 프로젝트는 녹색 pass 대신 중립적인 **스캔 전** 상태를 표시합니다 — 평가할 대상이 없기 때문입니다. 스캔을 실행하면([스캔](./scans.md) 참고) 카드가 채워집니다.
 :::
 
 CVE — Common Vulnerabilities and Exposures, EPSS — Exploit Prediction Scoring System. 둘 다 [용어집](../reference/glossary.md)을 보세요.
@@ -230,12 +227,12 @@ CVE — Common Vulnerabilities and Exposures, EPSS — Exploit Prediction Scorin
 
 ## 프로젝트 정보 (Overview 탭) {#project-info-card}
 
-Overview 탭의 리스크 게이지 옆에는 **Project info** 카드가 있습니다. 프로젝트의 식별 메타데이터를 한 블록에 모아 읽기 전용으로 보여줘서, 간단한 조회를 위해 **Settings**까지 들어갈 필요가 없도록 합니다.
+Overview 탭의 리스크 게이지 옆에는 **프로젝트 정보** 카드가 있습니다. 프로젝트의 식별 메타데이터를 한 블록에 모아 읽기 전용으로 보여줘서, 간단한 조회를 위해 **설정**까지 들어갈 필요가 없도록 합니다.
 
 | 필드 | 출처 | 비고 |
 |---|---|---|
 | **Git URL** | 프로젝트 `git_url`. | 클릭해서 복사. PAT가 임베드된 경우 토큰 세그먼트는 `***`로 마스킹되어 표시됩니다. read 엔드포인트는 원본 값을 노출하지 않습니다. |
-| **Default branch** | 프로젝트 `default_branch`. | **Settings**에서 편집 가능. |
+| **기본 브랜치** | 프로젝트 `default_branch`. | **설정**에서 편집 가능. |
 | **Owning team** | 프로젝트 `team`. | 뷰어가 `super_admin` 이면 `/admin/teams/{id}` 관리자 뷰로 링크. |
 | **Created** | 프로젝트 `created_at`. | 호버 시 절대 시각, 표면에는 상대 시간. |
 | **Last scan** | 프로젝트 `last_scan_at`(프로젝트 목록 메타 행과 동일 값). | 첫 스캔이 종단 상태에 도달하기 전까지는 `—`. |
@@ -250,18 +247,18 @@ Overview 탭의 리스크 게이지 옆에는 **Project info** 카드가 있습�
 
 :::
 
-스캔이 `succeeded` 종단 상태에 도달할 때마다 포털은 **release snapshot**을 기록합니다 — 컴포넌트 목록, 라이선스 티어 혼합, 취약점 결과, 스캔 id를 포함한 시점 고정 immutable 뷰. 스캔 완료 시각으로 태깅됩니다. 프로젝트의 **Releases** 탭은 이 스냅샷들을 최신순으로 나열합니다.
+스캔이 `succeeded` 종단 상태에 도달할 때마다 포털은 **release snapshot**을 기록합니다 — 컴포넌트 목록, 라이선스 티어 혼합, 취약점 결과, 스캔 id를 포함한 시점 고정 immutable 뷰. 스캔 완료 시각으로 태깅됩니다. 프로젝트의 **릴리스** 탭은 이 스냅샷들을 최신순으로 나열합니다.
 
 | 컬럼 | 표시 내용 |
 |---|---|
 | **Snapshot** | 스캔 완료 시각 (`yyyy-mm-dd HH:MM`) + 상대 시간. |
-| **Branch** | 스캔이 대상으로 삼은 정규화된 git ref(`main`, `pr-12`). 트리거에 ref가 없었으면 `지정 없음`. |
+| **브랜치** | 스캔이 대상으로 삼은 정규화된 git ref(`main`, `pr-12`). 트리거에 ref가 없었으면 `지정 없음`. |
 | **Scan kind** | `source` 또는 `container`. |
 | **Severity counts** | 스냅샷 시점의 Critical / High / Medium / Low. |
 | **License mix** | 스냅샷 시점의 Allowed / Conditional / Forbidden 바. |
-| **Actions** | **View components**(해당 스캔에 핀된 **Components** 탭으로 이동), **View snapshot**(`?scan=<id>`를 핀하고 Overview를 스냅샷 데이터로 reload). |
+| **작업** | **View components**(해당 스캔에 핀된 **컴포넌트** 탭으로 이동), **스냅샷 보기**(`?scan=<id>`를 핀하고 Overview를 스냅샷 데이터로 reload). |
 
-릴리스 행을 직접 클릭하면 핀된 스냅샷 상태로 **Components** 탭에 도달합니다. 핀은 URL의 `?scan=<id>` 파라미터로 전파되어 reload 후에도 살아남고 동료에게 공유할 수 있습니다 — 프로젝트의 모든 탭(Components, Vulnerabilities, Licenses, …)이 핀을 풀기 전까지 핀된 스냅샷을 데이터 앵커로 읽습니다. 핀을 빵부스러기에서 해제하면 *최근 성공한* 스캔이 모든 곳의 데이터 앵커로 복귀합니다.
+릴리스 행을 직접 클릭하면 핀된 스냅샷 상태로 **컴포넌트** 탭에 도달합니다. 핀은 URL의 `?scan=<id>` 파라미터로 전파되어 reload 후에도 살아남고 동료에게 공유할 수 있습니다 — 프로젝트의 모든 탭(Components, Vulnerabilities, Licenses, …)이 핀을 풀기 전까지 핀된 스냅샷을 데이터 앵커로 읽습니다. 핀을 빵부스러기에서 해제하면 *최근 성공한* 스캔이 모든 곳의 데이터 앵커로 복귀합니다.
 
 다운로드도 핀을 따릅니다. 릴리스를 핀한 상태에서 **NOTICE**를 내려받으면 최신 스캔이 아니라 그 릴리스의 라이선스로 문서를 구성합니다. 이전 릴리스와 함께 출하한 고지 파일을 이후 스캔이 성공한 뒤에도 그대로 받을 수 있다는 뜻입니다. API로는 `GET /v1/projects/{id}/notice?scan_id=<id>`이며, 스냅샷을 앵커로 삼는 다른 조회와 마찬가지로 이 프로젝트의 성공한 스캔이 아닌 id를 주면 `404`를 반환합니다.
 
@@ -281,16 +278,16 @@ API에서는 `GET /v1/projects/{id}/releases?release=4.0`이 그 버전 라벨�
 
 브랜치와 버전은 별개의 축이며 서로를 대신하지 않습니다. 브랜치는 계속 움직여서 새 스캔이 이전 것을 대체하지만, 버전은 출시한 단위의 이름이고 같은 버전을 주장하는 다른 스캔에만 밀려납니다.
 
-Releases 탭 툴바의 **Compare** 버튼(릴리스가 둘 이상일 때 활성화)으로 진입하는 **Compare** 화면은 두 스냅샷 id — **base**와 **target** — 를 받아 그 사이에 무엇이 변했는지 보여줍니다: 추가·제거·버전 변경된 컴포넌트, 새로 발생·해소된 취약점, 그리고 리스크 점수·severity별·라이선스 티어·빌드 게이트 델타. **swap** 컨트롤로 base와 target을 뒤바꿉니다. 버튼은 최신 릴리스(target)를 그 직전 릴리스(base)와 비교하도록 기본 설정되며, 두 id는 URL(`?base=&target=`)에 담겨 특정 비교를 공유할 수 있습니다. "릴리스 X와 Y 사이에 무엇이 변했는가"의 정식 diff 뷰입니다.
+Releases 탭 툴바의 **비교** 버튼(릴리스가 둘 이상일 때 활성화)으로 진입하는 **비교** 화면은 두 스냅샷 id — **base**와 **target** — 를 받아 그 사이에 무엇이 변했는지 보여줍니다: 추가·제거·버전 변경된 컴포넌트, 새로 발생·해소된 취약점, 그리고 리스크 점수·severity별·라이선스 티어·빌드 게이트 델타. **swap** 컨트롤로 base와 target을 뒤바꿉니다. 버튼은 최신 릴리스(target)를 그 직전 릴리스(base)와 비교하도록 기본 설정되며, 두 id는 URL(`?base=&target=`)에 담겨 특정 비교를 공유할 수 있습니다. "릴리스 X와 Y 사이에 무엇이 변했는가"의 정식 diff 뷰입니다.
 
 ## Reports 탭 {#reports-탭}
 
-**Reports** 탭은 프로젝트의 다운로드 가능한 산출물을 통합하는 단일 랜딩 페이지입니다.
+**리포트** 탭은 프로젝트의 다운로드 가능한 산출물을 통합하는 단일 랜딩 페이지입니다.
 
-- **NOTICE**, **SBOM**, **Vulnerability PDF**, **VEX** 네 가지 **generate card**. **NOTICE**와 **Vulnerability PDF** 카드는 바로 내려받습니다. 나머지 둘은 링크입니다. **SBOM 다운로드로 이동**은 아래 SBOM 절로 스크롤하고, **취약점 탭으로 이동**은 VEX 내보내기와 가져오기가 있는 취약점 탭을 엽니다. 현재 고정한 `?scan=` 스냅샷은 이동 후에도 유지되고, 링크이므로 새 탭에서 열 수도 있습니다.
+- **NOTICE**, **SBOM**, **취약점 PDF**, **VEX** 네 가지 **generate card**. **NOTICE**와 **취약점 PDF** 카드는 바로 내려받습니다. 나머지 둘은 링크입니다. **SBOM 다운로드로 이동**은 아래 SBOM 절로 스크롤하고, **취약점 탭으로 이동**은 VEX 내보내기와 가져오기가 있는 취약점 탭을 엽니다. 현재 고정한 `?scan=` 스냅샷은 이동 후에도 유지되고, 링크이므로 새 탭에서 열 수도 있습니다.
 - 카드 아래의 **SBOM 다운로드** 절. 기본 형식인 **CycloneDX JSON 다운로드**가 주 버튼이고, CycloneDX XML, SPDX JSON, SPDX Tag-Value가 그 옆에 있습니다. 그 아래 **서명 및 검증**에서 cosign으로 SBOM을 검증하는 데 쓰는 서명 번들(`.zip`)과 개별 서명 파일을 내려받습니다.
-- 우측 **export history (이력) 표**의 컬럼: **When** (상대 + 절대 시각), **Who** (행위자 이메일 — 감사용으로 익명화 보존된 행은 `—`), **Type** (NOTICE / SBOM / Vulnerability PDF / VEX 중 하나), **Format** (정확한 포맷 문자열 — `cyclonedx-json`, `spdx-tv`, `openvex` 등), **Scan** (스캔 id 앞 8자), **Size** (humanize — 렌더러가 크기를 기록하지 않은 경우 `—`).
-- 툴바의 **Type** 멀티셀렉트 필터와 Prev / Next 페이지네이션. 둘 다 URL에 `?rpt_type=<type>` / `?rpt_page=<n>`으로 미러링되므로 필터된 뷰는 reload 안전·링크 공유 가능합니다.
+- 우측 **export history (이력) 표**의 컬럼: **시간** (상대 + 절대 시각), **작업자** (행위자 이메일 — 감사용으로 익명화 보존된 행은 `—`), **종류** (NOTICE / SBOM / Vulnerability PDF / VEX 중 하나), **형식** (정확한 포맷 문자열 — `cyclonedx-json`, `spdx-tv`, `openvex` 등), **스캔** (스캔 id 앞 8자), **크기** (humanize — 렌더러가 크기를 기록하지 않은 경우 `—`).
+- 툴바의 **종류** 멀티셀렉트 필터와 Prev / Next 페이지네이션. 둘 다 URL에 `?rpt_type=<type>` / `?rpt_page=<n>`으로 미러링되므로 필터된 뷰는 reload 안전·링크 공유 가능합니다.
 
 권한은 SBOM·PDF 익스포트와 동일한 자세입니다 — 팀에 `developer` 이상 멤버는 이력을 읽을 수 있고, 비멤버는 `404`(existence-hide)를 받습니다. 이력 표는 **append-only** 입니다 — 편집·삭제·재실행 액션이 없습니다. 산출물을 다시 다운로드하려면 해당 generate card를 클릭해 도메인 탭에서 재익스포트하세요.
 
@@ -303,7 +300,7 @@ NOTICE와 PDF를 바로 내려받는 경우를 빼면, generate card는 Reports 
 프로젝트 생성 후:
 
 <!-- docs-uat: id=projects-appears-idle kind=ui harness=projectCreateAppearsIdle(docs-uat-new-project) tier=nightly -->
-1. **Projects**에 프로젝트가 **Idle**(스캔 없음) 상태로 표시됩니다.
+1. **프로젝트**에 프로젝트가 **스캔 전** 상태로 표시됩니다.
 <!-- docs-uat: id=projects-overview-zero kind=sql ctx=postgres expect=rows:>=1 tier=nightly -->
 2. Overview 탭은 컴포넌트·취약점 모두 0을 보여줍니다.
 
@@ -346,7 +343,7 @@ NOTICE와 PDF를 바로 내려받는 경우를 빼면, generate card는 Reports 
 
 - 포트폴리오 그룹핑용 프로젝트 태그 — 예정.
 - `organization`(조직 전체) 가시성 — 예정.
-- **Project Settings**에서의 SSH 배포 키 생성 — 예정.
+- **프로젝트 설정**에서의 SSH 배포 키 생성 — 예정.
 - 이름 입력 확인을 동반한 프로젝트 영구 삭제 — 설계 중. 현재는 soft-delete(아카이브)만 가능.
 - 생성 마법사의 SSH(`git@…`, `ssh://…`) URL 수용 — 예정.
 
