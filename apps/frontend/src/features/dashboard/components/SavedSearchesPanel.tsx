@@ -79,7 +79,7 @@ export function SavedSearchesPanel() {
                 >
                   {row.name}
                 </Link>
-                <Badge className="px-1 py-0 text-[10px]">
+                <Badge className="px-1 py-0 text-xs">
                   {t(`tab.${row.kind}`)}
                 </Badge>
                 <button

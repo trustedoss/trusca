@@ -76,7 +76,7 @@ export function OsEolPanel({ metadata }: OsEolPanelProps) {
           />
           <span>{t("container.os_eol.label")}</span>
         </Badge>
-        <span className="font-mono text-[11px] tabular-nums text-muted-foreground">
+        <span className="font-mono text-xs tabular-nums text-muted-foreground">
           {osLabel}
         </span>
       </div>

@@ -221,7 +221,7 @@ export function ColumnsPicker({
                 {column.required ? (
                   <ActionList.TrailingVisual>
                     <span
-                      className="text-[10px] uppercase tracking-wide text-muted-foreground"
+                      className="text-xs font-semibold text-muted-foreground"
                       data-testid={`${baseId}-required-hint-${column.id}`}
                     >
                       {hint}

@@ -213,7 +213,7 @@ export function DesignSystemPreview() {
           <div className="space-y-3">
             <Input placeholder="Search projects…" className="max-w-sm" />
             <div className="overflow-hidden rounded-md border border-border bg-card">
-              <div className="grid grid-cols-[1fr_120px_100px_80px] items-center gap-3 border-b border-border bg-muted px-3 py-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              <div className="grid grid-cols-[1fr_120px_100px_80px] items-center gap-3 border-b border-border bg-muted px-3 py-2 text-xs font-semibold text-muted-foreground">
                 <span>Project</span>
                 <span>Branch</span>
                 <span>Status</span>

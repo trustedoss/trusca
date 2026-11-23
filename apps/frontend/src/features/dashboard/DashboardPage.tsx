@@ -143,7 +143,7 @@ function KpiCard({
     >
       <CardHeader className="px-5 py-4 pb-2">
         <div className="flex items-center justify-between gap-3">
-          <CardDescription className="flex items-center gap-2 text-xs uppercase tracking-wide">
+          <CardDescription className="flex items-center gap-2 text-xs font-semibold">
             <Icon size={16} className="text-muted-foreground" />
             <span>{label}</span>
           </CardDescription>
@@ -704,7 +704,7 @@ export function DashboardPage() {
                       data-testid="dashboard-recent-scans-table"
                     >
                       <thead className="bg-muted/40">
-                        <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
+                        <tr className="border-b text-left text-xs font-semibold text-muted-foreground">
                           <th className="px-6 py-2">
                             {t("recent_scans.column.project")}
                           </th>

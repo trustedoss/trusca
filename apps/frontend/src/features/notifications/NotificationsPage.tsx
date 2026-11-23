@@ -175,7 +175,7 @@ function InboxRow({ item, onActivate }: InboxRowProps) {
           <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
             {text.body}
           </p>
-          <div className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground">
+          <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
             <span data-testid="notifications-row-kind">
               {t(`kind.${item.kind}`)}
             </span>

@@ -200,7 +200,7 @@ export function ScanProgress({
           </h2>
           {release ? (
             <span
-              className="inline-flex shrink-0 items-center rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[11px] font-medium text-foreground"
+              className="inline-flex shrink-0 items-center rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-xs font-medium text-foreground"
               data-testid="scan-progress-release"
               title={t("release.chip_aria", { release })}
               aria-label={t("release.chip_aria", { release })}
@@ -368,7 +368,7 @@ export function ScanProgress({
                     defaultValue: "Per-step log",
                   })}
               <span
-                className="ml-2 inline-flex items-center rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] tabular-nums"
+                className="ml-2 inline-flex items-center rounded bg-muted px-1.5 py-0.5 font-mono text-xs tabular-nums"
                 aria-hidden
               >
                 {logMessages.length > 0
@@ -376,7 +376,7 @@ export function ScanProgress({
                   : messages.length}
               </span>
             </span>
-            <span aria-hidden className="font-mono text-[10px]">
+            <span aria-hidden className="font-mono text-xs">
               {logOpen ? "▼" : "▶"}
             </span>
           </button>
@@ -384,7 +384,7 @@ export function ScanProgress({
             logMessages.length > 0 ? (
               <ol
                 id="scan-progress-log-body"
-                className="max-h-64 overflow-y-auto border-t font-mono text-[11px] leading-snug"
+                className="max-h-64 overflow-y-auto border-t font-mono text-xs leading-snug"
                 data-testid="scan-progress-log-body"
               >
                 {logMessages.map((msg, idx) => (
@@ -394,7 +394,7 @@ export function ScanProgress({
             ) : (
               <ol
                 id="scan-progress-log-body"
-                className="max-h-48 overflow-y-auto border-t font-mono text-[11px] leading-snug"
+                className="max-h-48 overflow-y-auto border-t font-mono text-xs leading-snug"
                 data-testid="scan-progress-log-body"
               >
                 {messages.map((msg, idx) => (

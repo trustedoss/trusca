@@ -905,7 +905,7 @@ function ProjectDetailHeader({
         )}
         <div className="flex items-center gap-3">
           <span
-            className="font-mono text-[10px] text-muted-foreground"
+            className="font-mono text-xs text-muted-foreground"
             data-testid="project-detail-id"
           >
             {projectId}

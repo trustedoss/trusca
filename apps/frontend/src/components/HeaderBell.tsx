@@ -62,7 +62,7 @@ export function HeaderBell({ enabled = true, onInk = false }: HeaderBellProps) {
         <span
           data-testid="header-bell-badge"
           aria-hidden
-          className="pointer-events-none absolute -right-1 -top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-risk-critical px-1 text-[10px] font-semibold leading-none text-white"
+          className="pointer-events-none absolute -right-1 -top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-risk-critical px-1 text-xs font-semibold leading-none text-white"
         >
           {badge}
         </span>

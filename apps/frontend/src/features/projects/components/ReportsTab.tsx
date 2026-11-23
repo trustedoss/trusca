@@ -725,7 +725,7 @@ function HistoryTable({ items, locale }: HistoryTableProps) {
       data-testid="reports-history-table"
     >
       <table className="w-full min-w-[640px] table-fixed text-sm">
-        <thead className="border-b bg-muted/30 text-xs uppercase text-muted-foreground">
+        <thead className="border-b bg-muted/30 text-xs font-semibold text-muted-foreground">
           <tr className="text-left">
             <th className="px-3 py-2 font-medium">
               {t("reports.history.columns.when")}
@@ -799,14 +799,14 @@ function HistoryRow({ row, locale }: HistoryRowProps) {
         </Badge>
       </td>
       <td className="px-3 py-1.5">
-        <span className="font-mono text-[11px] text-muted-foreground">
+        <span className="font-mono text-xs text-muted-foreground">
           {row.format}
         </span>
       </td>
       <td className="px-3 py-1.5">
         {scanShort ? (
           <span
-            className="font-mono text-[11px] text-muted-foreground"
+            className="font-mono text-xs text-muted-foreground"
             title={row.scan_id ?? undefined}
           >
             {scanShort}
@@ -818,7 +818,7 @@ function HistoryRow({ row, locale }: HistoryRowProps) {
         )}
       </td>
       <td className="px-3 py-1.5 text-right">
-        <span className="font-mono text-[11px] text-muted-foreground">
+        <span className="font-mono text-xs text-muted-foreground">
           {row.size_bytes != null
             ? formatBytes(row.size_bytes)
             : t("reports.history.size_unknown")}

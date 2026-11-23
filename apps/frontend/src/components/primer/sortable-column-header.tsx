@@ -153,7 +153,7 @@ export function SortableColumnHeader({
         // tokens (150 ms ease-out-soft) match button / row transitions, and
         // the focus ring uses the same offset 2 + 2 px the rest of W11 uses.
         "group inline-flex items-center gap-1 rounded-sm px-1 -mx-1 py-0.5",
-        "text-xs font-medium uppercase tracking-wider",
+        "text-xs font-semibold",
         "transition-colors duration-fast ease-out-soft",
         "hover:bg-muted hover:text-foreground",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",

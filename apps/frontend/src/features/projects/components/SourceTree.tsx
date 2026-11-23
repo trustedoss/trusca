@@ -275,7 +275,7 @@ function SourceTreeRow({
               <Badge
                 key={spdx}
                 tone="accent"
-                className="px-1 py-0 text-[9px]"
+                className="px-1 py-0 text-xs"
                 data-testid="source-tree-license-badge"
                 data-spdx-id={spdx}
               >
@@ -285,7 +285,7 @@ function SourceTreeRow({
             {entry.license_spdx_ids.length > 2 ? (
               <Badge
                 tone="info"
-                className="px-1 py-0 text-[9px]"
+                className="px-1 py-0 text-xs"
                 data-testid="source-tree-license-overflow"
                 title={entry.license_spdx_ids.join(", ")}
               >

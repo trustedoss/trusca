@@ -94,12 +94,12 @@ function Meta({
 }) {
   return (
     <div>
-      <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
+      <div className="text-xs font-semibold text-muted-foreground">
         {label}
       </div>
       <div className="break-words text-xs">{value}</div>
       {hint ? (
-        <div className="break-all font-mono text-[11px] text-muted-foreground">
+        <div className="break-all font-mono text-xs text-muted-foreground">
           {hint}
         </div>
       ) : null}
@@ -338,7 +338,7 @@ export function ApprovalsDrawer({
               ) : null}
               {approval.decision_note ? (
                 <div className="sm:col-span-2">
-                  <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                  <div className="text-xs font-semibold text-muted-foreground">
                     {t("approvals.drawer.decision_note_label")}
                   </div>
                   <div className="mt-1 rounded-md border bg-muted/30 px-3 py-2 text-xs">

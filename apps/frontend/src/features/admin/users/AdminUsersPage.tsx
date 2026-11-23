@@ -298,7 +298,7 @@ export function AdminUsersPage() {
         ) : (
         <table className="w-full text-sm">
           <thead className="sticky top-0 bg-card">
-            <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
+            <tr className="border-b text-left text-xs font-semibold text-muted-foreground">
               <th className="px-6 py-2">{t("admin.users.column.email")}</th>
               <th className="px-3 py-2">{t("admin.users.column.full_name")}</th>
               <th className="px-3 py-2">{t("admin.users.column.role")}</th>

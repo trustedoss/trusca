@@ -47,7 +47,7 @@ export function ReviewFlagBadge({
       <AlertIcon size={12} />
       <span>{t("licenses.review.badge_label")}</span>
       {showKind ? (
-        <span className="text-[11px] font-normal opacity-80">
+        <span className="text-xs font-normal opacity-80">
           · {t(`licenses.review.short.${flag}`)}
         </span>
       ) : null}

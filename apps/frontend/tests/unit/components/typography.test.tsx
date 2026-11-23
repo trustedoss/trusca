@@ -4,7 +4,7 @@
  * Coverage:
  *   - Each named component renders the correct element (h1/h2/p/span).
  *   - The canonical scale classes are applied (page title 18 px, subtitle muted,
- *     eyebrow uppercase, etc.) so the documented design-system scale is enforced
+ *     eyebrow sentence case, etc.) so the documented design-system scale is enforced
  *     in one place instead of drifting per page.
  *   - `Body` toggles muted foreground via the `muted` prop.
  *   - className overrides merge onto the rendered element.
@@ -72,8 +72,13 @@ describe("Typography", () => {
     const eye = screen.getByTestId("eye");
     expect(cap.tagName).toBe("SPAN");
     expect(cap.className).toContain("text-xs");
-    expect(eye.className).toContain("uppercase");
-    expect(eye.className).toContain("tracking-wide");
+    // Sentence case, semibold, muted: Korean has no case, so the overline
+    // role is carried by weight and colour rather than uppercase + tracking.
+    expect(eye.className).toContain("text-xs");
+    expect(eye.className).toContain("font-semibold");
+    expect(eye.className).toContain("text-muted-foreground");
+    expect(eye.className).not.toContain("uppercase");
+    expect(eye.className).not.toMatch(/tracking-wide/);
   });
 
   it("merges className overrides onto the element", () => {
@@ -87,7 +92,7 @@ describe("Typography", () => {
 
   it("exposes the variant → class map via textVariants", () => {
     expect(textVariants({ variant: "pageTitle" })).toContain("text-lg");
-    expect(textVariants({ variant: "eyebrow" })).toContain("uppercase");
+    expect(textVariants({ variant: "eyebrow" })).toContain("font-semibold");
     // default variant is body
     expect(textVariants()).toContain("text-sm");
   });

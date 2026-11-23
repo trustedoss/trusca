@@ -90,7 +90,7 @@ function Kpi({ label, value, rawValue, testid, emphasize, hint }: KpiProps) {
       >
         {value}
       </p>
-      {hint ? <p className="mt-0.5 text-[11px] text-muted-foreground">{hint}</p> : null}
+      {hint ? <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p> : null}
     </div>
   );
 }
@@ -257,7 +257,7 @@ export function MaliciousPanel() {
       </div>
 
       <p
-        className="mt-3 font-mono text-[11px] text-muted-foreground"
+        className="mt-3 font-mono text-xs text-muted-foreground"
         data-testid="malicious-footer"
       >
         {t("admin.malicious.footer", {

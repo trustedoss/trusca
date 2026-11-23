@@ -234,7 +234,7 @@ function SourceFileHeader({ path, byteSize }: SourceFileHeaderProps) {
       >
         {path}
       </span>
-      <span className="shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground">
+      <span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
         {/* B4: was a bare toLocaleString, so a browser in a locale that does
             not group rendered 2097152 with no separator at all. */}
         {t("source.viewer.byte_size", {
@@ -280,7 +280,7 @@ function SourceLineRow({ line }: SourceLineRowProps) {
       </span>
       {highlighted ? (
         <span
-          className="mt-0.5 shrink-0 rounded-sm border border-brand bg-card px-1 text-[9px] font-medium uppercase tracking-wide text-brand"
+          className="mt-0.5 shrink-0 rounded-sm border border-brand bg-card px-1 text-xs font-medium text-brand"
           data-testid="source-line-license-chip"
           data-spdx-ids={spdxIds}
         >

@@ -189,7 +189,7 @@ export function AdminScanDrawer({
               data-testid="admin-scan-error-section"
               className="space-y-1"
             >
-              <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
+              <span className="text-xs font-semibold text-muted-foreground">
                 {t("admin.scans.drawer.error_label")}
               </span>
               {scan.error_message ? (
@@ -267,7 +267,7 @@ interface MetaProps {
 function Meta({ label, value, testId }: MetaProps) {
   return (
     <div>
-      <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
+      <div className="text-xs font-semibold text-muted-foreground">
         {label}
       </div>
       <div className="text-sm" data-testid={testId}>

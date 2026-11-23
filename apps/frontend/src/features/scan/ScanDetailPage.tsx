@@ -440,7 +440,7 @@ export function ScanDetailPage() {
                   );
                 })}
                 <span
-                  className="ml-auto font-mono text-[11px] tabular-nums text-muted-foreground"
+                  className="ml-auto font-mono text-xs tabular-nums text-muted-foreground"
                   data-testid="scan-detail-page-log-count"
                 >
                   {filteredMessages.length}
@@ -464,7 +464,7 @@ export function ScanDetailPage() {
               <div
                 ref={scrollRef}
                 onScroll={handleScroll}
-                className="flex-1 overflow-y-auto rounded-md border bg-muted/30 font-mono text-[11px] leading-snug"
+                className="flex-1 overflow-y-auto rounded-md border bg-muted/30 font-mono text-xs leading-snug"
                 data-testid="scan-detail-page-log"
                 data-pinned-bottom={pinnedToBottom ? "true" : "false"}
                 role="log"
@@ -611,7 +611,7 @@ function PageHeader({
 
         {release ? (
           <span
-            className="inline-flex shrink-0 items-center rounded-sm border border-border bg-muted px-1.5 py-0.5 font-mono text-[11px] font-medium text-foreground"
+            className="inline-flex shrink-0 items-center rounded-sm border border-border bg-muted px-1.5 py-0.5 font-mono text-xs font-medium text-foreground"
             data-testid="scan-detail-page-release"
             aria-label={t("release.chip_aria", { release })}
             title={t("release.chip_aria", { release })}

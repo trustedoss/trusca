@@ -115,7 +115,7 @@ export function SlaBadge({
       <span>{t(`vulnerabilities.sla.state.${status}`)}</span>
       {showDueDate && date != null ? (
         <span
-          className="font-mono text-[10px] font-normal tabular-nums"
+          className="font-mono text-xs font-normal tabular-nums"
           data-testid="sla-badge-due-date"
         >
           {t("vulnerabilities.sla.due", { date })}

@@ -78,7 +78,7 @@ export function CurrencyBadge({
       <span>{t("components.currency.label")}</span>
       {showDate && currencyLatest ? (
         <span
-          className="font-mono text-[10px] font-normal tabular-nums"
+          className="font-mono text-xs font-normal tabular-nums"
           data-testid="currency-badge-latest"
         >
           {currencyLatestReleaseDate

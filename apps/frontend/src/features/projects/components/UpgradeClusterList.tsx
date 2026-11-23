@@ -133,7 +133,7 @@ function UpgradeClusterCard({
                   {cluster.component_name}@{cluster.current_version}
                 </span>
               </span>
-              <span className="truncate text-[11px] text-muted-foreground">
+              <span className="truncate text-xs text-muted-foreground">
                 {reasonHint(cluster.reason, t)}
               </span>
             </span>
@@ -143,7 +143,7 @@ function UpgradeClusterCard({
         {cluster.direct ? (
           <Badge
             tone="info"
-            className="shrink-0 text-[10px]"
+            className="shrink-0 text-xs"
             data-testid="vulnerability-upgrade-cluster-direct"
           >
             {t("vulnerabilities.upgrade_cluster.direct")}
@@ -160,7 +160,7 @@ function UpgradeClusterCard({
         ) : null}
 
         <span
-          className="shrink-0 rounded bg-muted px-2 py-0.5 text-[11px] font-medium tabular-nums text-muted-foreground"
+          className="shrink-0 rounded bg-muted px-2 py-0.5 text-xs font-medium tabular-nums text-muted-foreground"
           data-testid="vulnerability-upgrade-cluster-fixes"
           data-finding-count={cluster.finding_count}
         >

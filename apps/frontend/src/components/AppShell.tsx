@@ -296,7 +296,7 @@ function NavItemLink({
                 // than one reading it once.
                 aria-hidden
                 className={cn(
-                  "inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold leading-none",
+                  "inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-xs font-semibold leading-none",
                   // Neutral, not the Critical red the bell uses: work in a
                   // queue is normal, and a sidebar with two permanent red
                   // dots would spend the alarm colour on the resting state.
@@ -349,7 +349,7 @@ function SidebarNav({
                 <div className="mx-2 mb-2 border-t" role="separator" />
               ) : null
             ) : (
-              <div className="mb-1 px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              <div className="mb-1 px-3 text-xs font-semibold text-muted-foreground">
                 {t(group.labelKey)}
               </div>
             )}
@@ -381,7 +381,7 @@ function SidebarNav({
               // the admin links visually grouped.
               <div className="my-2 border-t" role="separator" />
             ) : (
-              <div className="mt-5 mb-1 px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              <div className="mt-5 mb-1 px-3 text-xs font-semibold text-muted-foreground">
                 {t("nav.admin.section")}
               </div>
             )}
@@ -743,7 +743,7 @@ function ProfileMenu({
               </ActionList.LeadingVisual>
               {t("shortcuts.title")}
               <ActionList.TrailingVisual>
-                <kbd className="rounded border px-1 font-mono text-[10px]">?</kbd>
+                <kbd className="rounded border px-1 font-mono text-xs">?</kbd>
               </ActionList.TrailingVisual>
             </ActionList.Item>
           </ActionList.Group>

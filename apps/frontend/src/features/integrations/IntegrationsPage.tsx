@@ -402,7 +402,7 @@ export function IntegrationsPage() {
                 aria-busy={keysQuery.isLoading}
               >
                 <thead className="bg-card">
-                  <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
+                  <tr className="border-b text-left text-xs font-semibold text-muted-foreground">
                     <th className="py-2 pl-6 pr-3">{t("api_keys.table.name")}</th>
                     <th className="px-3 py-2">{t("api_keys.table.scope")}</th>
                     <th className="px-3 py-2">{t("api_keys.table.breadth")}</th>

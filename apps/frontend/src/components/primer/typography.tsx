@@ -24,7 +24,12 @@ import { cn } from "@/lib/utils";
  *   body         14 px / regular                     — default body copy
  *   bodyMuted    14 px / regular  / muted            — secondary body copy
  *   caption      12 px / regular  / muted            — dense meta / timestamps
- *   eyebrow      12 px / medium   / uppercase / muted — overlines, col headers
+ *   eyebrow      12 px / semibold / muted            - overlines, col headers
+ *
+ * Labels are sentence case. Uppercase plus wide tracking used to mark
+ * overlines and column headers, but Korean has no case, so the two languages
+ * got different hierarchies; weight and colour carry the role instead.
+ * Nothing in src/ renders text below 12 px (tests/unit/design/typeFloor.test.ts).
  *
  * Heading elements (h1–h4) already inherit `font-semibold tracking-tight` from
  * the base layer in `index.css`; the explicit classes here keep the variant
@@ -40,7 +45,7 @@ export const textVariants = cva("", {
       bodyMuted: "text-sm text-muted-foreground",
       caption: "text-xs text-muted-foreground",
       eyebrow:
-        "text-xs font-medium uppercase tracking-wide text-muted-foreground",
+        "text-xs font-semibold text-muted-foreground",
     },
   },
   defaultVariants: {
@@ -120,7 +125,7 @@ export const Caption = forwardRef<
 ));
 Caption.displayName = "Caption";
 
-/** Uppercase overline / column-group label. */
+/** Sentence-case overline / column-group label. */
 export const Eyebrow = forwardRef<
   HTMLSpanElement,
   HTMLAttributes<HTMLSpanElement>

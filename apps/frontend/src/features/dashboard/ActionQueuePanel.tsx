@@ -70,7 +70,7 @@ function QueueTile({
         active && tone === "warning" && "border-status-warning-border bg-status-warning-subtle",
       )}
     >
-      <span className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+      <span className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
         <Icon size={16} />
         {label}
       </span>
@@ -197,7 +197,7 @@ export function ActionQueuePanel() {
 
         {queue.gate_blocked.length > 0 ? (
           <div data-testid="action-queue-gate-list">
-            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            <h3 className="mb-2 text-xs font-semibold text-muted-foreground">
               {t("action_queue.gate_blocked_detail")}
             </h3>
             <ul className="divide-y rounded-md border">
@@ -228,7 +228,7 @@ export function ActionQueuePanel() {
 
         {queue.stale_projects.length > 0 ? (
           <div data-testid="action-queue-stale-list">
-            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            <h3 className="mb-2 text-xs font-semibold text-muted-foreground">
               {t("action_queue.stale_detail")}
             </h3>
             <ul className="divide-y rounded-md border">

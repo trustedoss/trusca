@@ -454,7 +454,7 @@ export function AdminAuditPage() {
         ) : (
         <table className="w-full text-sm">
           <thead className="sticky top-0 bg-card">
-            <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
+            <tr className="border-b text-left text-xs font-semibold text-muted-foreground">
               <th className="px-6 py-2">{t("admin.audit.column.created_at")}</th>
               <th className="px-3 py-2">{t("admin.audit.column.actor")}</th>
               <th className="px-3 py-2">{t("admin.audit.column.target_table")}</th>
@@ -496,7 +496,7 @@ export function AdminAuditPage() {
                       replaced. Folding to a second line would break the row
                       height, and no visual gate walks this screen.
                     */}
-                    <td className="whitespace-nowrap px-6 font-mono text-[11px] text-muted-foreground">
+                    <td className="whitespace-nowrap px-6 font-mono text-xs text-muted-foreground">
                       {/*
                         B3: was the raw ISO instant, in UTC, beside relative
                         times elsewhere in the product that render in the
@@ -522,13 +522,13 @@ export function AdminAuditPage() {
                     </td>
                     <td className="px-3 font-mono text-xs">{entry.action}</td>
                     <td
-                      className="truncate px-3 font-mono text-[11px] text-muted-foreground"
+                      className="truncate px-3 font-mono text-xs text-muted-foreground"
                       title={entry.target_id ?? undefined}
                     >
                       {entry.target_id ?? "—"}
                     </td>
                     <td
-                      className="truncate pl-3 pr-6 font-mono text-[11px] text-muted-foreground"
+                      className="truncate pl-3 pr-6 font-mono text-xs text-muted-foreground"
                       title={entry.request_id ?? undefined}
                     >
                       {entry.request_id ?? "—"}

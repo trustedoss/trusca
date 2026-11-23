@@ -122,7 +122,7 @@ export function RiskGauge({ score, size = "default", className }: RiskGaugeProps
           </span>
         </span>
         <span
-          className="text-xs uppercase tracking-wide text-muted-foreground"
+          className="text-xs font-semibold text-muted-foreground"
           data-testid="risk-gauge-label"
         >
           {t(severity.i18nKey)}

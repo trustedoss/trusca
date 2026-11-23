@@ -187,7 +187,7 @@ export function PortfolioGrid() {
              *  count needs `shrink-0` so a long team name cannot squeeze it
              *  out of the row. Without both, a phone-width viewport gains a
              *  sideways scrollbar. */}
-            <h3 className="mb-2 flex items-baseline gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            <h3 className="mb-2 flex items-baseline gap-2 text-xs font-semibold text-muted-foreground">
               <Link
                 to={`/groups/${team.team_id}`}
                 className="min-w-0 truncate hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"

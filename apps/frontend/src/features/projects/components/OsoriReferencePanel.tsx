@@ -54,12 +54,12 @@ export function OsoriReferencePanel({
       data-has-own-summary={hasOwnSummary}
     >
       <div className="flex items-baseline justify-between gap-2">
-        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        <span className="text-xs font-semibold text-muted-foreground">
           {t("licenses.drawer.osori.title")}
         </span>
         {/* Said plainly rather than implied by the dashed border: this is
             someone else's reading, not the classification above. */}
-        <span className="text-[11px] text-muted-foreground">
+        <span className="text-xs text-muted-foreground">
           {t("licenses.drawer.osori.reference_only")}
         </span>
       </div>
@@ -112,7 +112,7 @@ export function OsoriReferencePanel({
 
       {/* ODC-By 1.0 is attribution-only, and this is where the attribution
           has to appear for a reader who only ever sees this panel. */}
-      <p className="text-[11px] text-muted-foreground">{osori.source}</p>
+      <p className="text-xs text-muted-foreground">{osori.source}</p>
     </section>
   );
 }

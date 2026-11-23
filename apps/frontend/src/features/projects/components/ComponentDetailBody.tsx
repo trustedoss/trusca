@@ -121,7 +121,7 @@ export function ComponentDetailBody({ detail }: ComponentDetailBodyProps) {
           // spaces to wrap at, so without it the row either overflows the
           // drawer or gets clipped with no sign that it was clipped.
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-xs text-muted-foreground">
-            <span className="uppercase tracking-wide">
+            <span className="font-sans font-semibold">
               {t("drawer.purl_label")}
             </span>
             <span
@@ -147,7 +147,7 @@ export function ComponentDetailBody({ detail }: ComponentDetailBodyProps) {
           className="flex items-center gap-2 text-xs"
           data-testid="component-drawer-dependency-type"
         >
-          <span className="uppercase tracking-wide text-muted-foreground">
+          <span className="font-semibold text-muted-foreground">
             {t("drawer.dependency_type_label")}
           </span>
           <DependencyTypeBadge direct={detail.direct} depth={detail.depth} />
@@ -156,7 +156,7 @@ export function ComponentDetailBody({ detail }: ComponentDetailBodyProps) {
           className="flex items-center gap-2 text-xs"
           data-testid="component-drawer-usage"
         >
-          <span className="uppercase tracking-wide text-muted-foreground">
+          <span className="font-semibold text-muted-foreground">
             {t("drawer.usage_label")}
           </span>
           <DependencyScopeBadge scope={detail.dependency_scope} />
@@ -175,7 +175,7 @@ export function ComponentDetailBody({ detail }: ComponentDetailBodyProps) {
             data-testid="component-drawer-malicious"
           >
             <div className="flex items-center gap-2">
-              <span className="uppercase tracking-wide text-muted-foreground">
+              <span className="font-semibold text-muted-foreground">
                 {t("drawer.malicious_label")}
               </span>
               <MaliciousBadge
@@ -189,7 +189,7 @@ export function ComponentDetailBody({ detail }: ComponentDetailBodyProps) {
               {t("drawer.malicious_action")}
             </p>
             {detail.malicious_source ? (
-              <p className="font-mono text-[10px] text-muted-foreground">
+              <p className="font-mono text-xs text-muted-foreground">
                 {t("drawer.malicious_source", {
                   source: detail.malicious_source,
                 })}
@@ -206,7 +206,7 @@ export function ComponentDetailBody({ detail }: ComponentDetailBodyProps) {
           className="flex items-center gap-2 text-xs"
           data-testid="component-drawer-eol"
         >
-          <span className="uppercase tracking-wide text-muted-foreground">
+          <span className="font-semibold text-muted-foreground">
             {t("drawer.eol_label")}
           </span>
           {detail.eol_state === "eol" ? (
@@ -238,7 +238,7 @@ export function ComponentDetailBody({ detail }: ComponentDetailBodyProps) {
           className="flex items-center gap-2 text-xs"
           data-testid="component-drawer-currency"
         >
-          <span className="uppercase tracking-wide text-muted-foreground">
+          <span className="font-semibold text-muted-foreground">
             {t("drawer.currency_label")}
           </span>
           {detail.currency_state === "outdated" ? (

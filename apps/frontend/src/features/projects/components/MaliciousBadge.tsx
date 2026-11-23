@@ -77,7 +77,7 @@ export function MaliciousBadge({
       <span>{t("components.malicious.label")}</span>
       {showAdvisory && maliciousId ? (
         <span
-          className="font-mono text-[10px] font-normal tabular-nums"
+          className="font-mono text-xs font-normal tabular-nums"
           data-testid="malicious-badge-advisory"
         >
           {maliciousId}

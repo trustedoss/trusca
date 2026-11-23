@@ -382,9 +382,11 @@ OpenType `rlig` · `calt`가 `body`에 활성화되어 Inter가 제대로 렌더
 | `Subtitle` | `p` | 페이지 제목 아래 muted 보조 줄 — 14 px. |
 | `Body` | `p` | 본문 — 14 px (`muted` prop으로 보조 본문). |
 | `Caption` | `span` | 밀집 메타(타임스탬프 · 카운트) — 12 px muted. |
-| `Eyebrow` | `span` | 대문자 overline · 컬럼 그룹 라벨 — 12 px medium. |
+| `Eyebrow` | `span` | overline, 표 머리글, KPI 라벨, 메타 라벨. 12 px semibold muted, 문장형 대소문자. |
 
 어떤 프리미티브로도 안 되는 일회성 인라인 span 에만 raw `text-*` 유틸리티를 쓰고, 페이지 제목은 절대 직접 조합하지 마세요.
+
+**글자 크기는 12 px 아래로 내려가지 않고, 라벨은 문장형 대소문자를 씁니다.** 배지를 포함해 모든 글자는 `text-xs`(12 px) 이상입니다. 배지 높이를 맞춰야 하면 글자를 줄이지 않고 세로 여백을 줄입니다. overline, 표 머리글, KPI 라벨, 메타 라벨은 `text-xs font-semibold text-muted-foreground`를 쓰고 `uppercase`와 넓은 자간을 쓰지 않습니다. 한국어에는 대소문자가 없어서, 대문자 라벨은 영어와 한국어 화면의 위계를 서로 다르게 만들었습니다. 데이터라서 대문자인 글자(CVE ID, `MIT` 같은 SPDX ID, `VEX` 표시)는 데이터나 번역문에 처음부터 대문자로 적습니다. `tests/unit/design/typeFloor.test.ts`가 `src/` 안의 12 px 미만 크기와 `uppercase` 유틸리티를 찾으면 실패합니다.
 
 ## Focus ring
 

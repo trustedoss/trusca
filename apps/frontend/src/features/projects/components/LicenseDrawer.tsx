@@ -219,7 +219,7 @@ function DrawerMetaSection({ detail }: MetaProps) {
       />
 
       <div className="font-mono text-xs text-muted-foreground">
-        <span className="mr-2 uppercase tracking-wide">
+        <span className="mr-2 font-sans font-semibold">
           {t("licenses.drawer.metadata.spdx_id_label")}
         </span>
         <span data-testid="license-drawer-spdx-id">
@@ -229,7 +229,7 @@ function DrawerMetaSection({ detail }: MetaProps) {
 
       {isSafeUrl(detail.reference_url) ? (
         <div className="text-xs">
-          <span className="mr-2 uppercase tracking-wide text-muted-foreground">
+          <span className="mr-2 font-sans font-semibold text-muted-foreground">
             {t("licenses.drawer.reference_url_label")}
           </span>
           <a
@@ -250,7 +250,7 @@ function DrawerMetaSection({ detail }: MetaProps) {
           className="text-xs text-muted-foreground"
           data-testid="license-drawer-reference-unsafe"
         >
-          <span className="mr-2 uppercase tracking-wide">
+          <span className="mr-2 font-sans font-semibold">
             {t("licenses.drawer.reference_url_label")}
           </span>
           <span className="font-mono">{detail.reference_url}</span>
@@ -457,7 +457,7 @@ function DrawerOrtMatchSection({ ortMatch }: OrtMatchProps) {
         >
           {rendered.map(({ key, labelKey, value }) => (
             <div key={key} className="contents">
-              <dt className="uppercase tracking-wide text-muted-foreground">
+              <dt className="font-semibold text-muted-foreground">
                 {t(labelKey)}
               </dt>
               <dd
@@ -568,7 +568,7 @@ function DrawerAffectedSection({
                   className="mt-1 flex items-baseline gap-1.5 text-xs"
                   data-testid="license-drawer-affected-source-path"
                 >
-                  <span className="shrink-0 uppercase tracking-wide text-muted-foreground">
+                  <span className="shrink-0 font-semibold text-muted-foreground">
                     {t("licenses.drawer.affected.source_path_label")}
                   </span>
                   <span

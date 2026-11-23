@@ -74,7 +74,7 @@ export function ActiveFilterChips<S extends string = string>({
         className,
       )}
     >
-      <span className="text-xs uppercase tracking-wide text-muted-foreground">
+      <span className="text-xs font-semibold text-muted-foreground">
         {t("active_filters.heading")}
       </span>
       {sev.map((value) => (

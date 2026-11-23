@@ -397,7 +397,7 @@ function DistributionStrip({ distribution }: DistributionStripProps) {
       className="flex flex-wrap items-center gap-2 border-b px-4 py-3"
       data-testid="obligations-distribution"
     >
-      <span className="text-xs uppercase tracking-wide text-muted-foreground">
+      <span className="text-xs font-semibold text-muted-foreground">
         {t("obligations.distribution.label")}
       </span>
       {entries.map(([kind, count]) => (
@@ -409,7 +409,7 @@ function DistributionStrip({ distribution }: DistributionStripProps) {
           data-count={count}
         >
           {t(`obligations.kind.${kind}`, { defaultValue: kind })}
-          <span className="ml-1 font-mono text-[10px] tabular-nums">
+          <span className="ml-1 font-mono text-xs tabular-nums">
             {count}
           </span>
         </Badge>
@@ -422,7 +422,7 @@ function ObligationsTableHeader() {
   const { t } = useTranslation("project_detail");
   return (
     <div
-      className="flex items-center gap-3 border-b bg-muted/30 px-4 text-xs font-medium uppercase tracking-wide text-muted-foreground"
+      className="flex items-center gap-3 border-b bg-muted/30 px-4 text-xs font-semibold text-muted-foreground"
       style={{ height: "32px" }}
       data-testid="obligations-header"
       role="row"
