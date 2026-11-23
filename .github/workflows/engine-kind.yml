@@ -1,0 +1,188 @@
+name: engine-kind
+
+# Runs the BomLens engine on a real Kubernetes cluster: the Helm chart installed
+# with worker.engine.enabled on a kind cluster whose CNI (Calico) enforces
+# NetworkPolicy, then a source scan and an image scan through the engine
+# worker's own service account, Role, claims and Jobs.
+#
+# NOT a PR gate and not scheduled: it builds the worker image (the heavy SCA
+# toolchain), brings up a cluster and downloads the Trivy database, which is
+# many minutes. Dispatch it on a branch that changes the engine's Kubernetes
+# path (integrations/bomlens/engine.py, charts/trustedoss engine templates).
+# The chart's render tests (tests/integration/test_helm_bomlens_engine.py) are
+# the PR gate; this is what shows they describe a working install.
+#
+# What it checks that rendering cannot: the engine worker can create Jobs with
+# its token and Role, the Jobs mount the workspace by sub-path and write it, a
+# Job without a network cannot reach the internet and one with a network
+# reaches the registries, and an engine Job's pod has no service account token.
+#
+# Single-node kind: the claims are ReadWriteOnce there (local-path storage); a
+# real cluster needs ReadWriteMany (the chart's default).
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: engine-kind-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  engine-kind:
+    name: engine on kind
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      NS: trusca
+      RELEASE: t
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4  # v4.3.1
+
+      - name: Kind cluster without a CNI
+        uses: helm/kind-action@a1b0e391336a6ee6713a0583f8c6240d70863de3  # v1.12.0
+        with:
+          cluster_name: engine
+          config: tests/e2e/engine-kind/kind.yaml
+
+      - name: Calico, so NetworkPolicy is enforced
+        run: |
+          kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.28.2/manifests/calico.yaml
+          kubectl -n kube-system rollout status daemonset/calico-node --timeout=300s
+          kubectl wait --for=condition=Ready nodes --all --timeout=300s
+
+      - name: Build the worker image
+        run: docker build -f apps/backend/Dockerfile.worker -t trusca-worker:ci apps/backend
+
+      - name: Load the worker image into the cluster
+        run: kind load docker-image trusca-worker:ci --name engine
+
+      - name: Namespace at Pod Security baseline
+        run: |
+          kubectl create namespace "$NS"
+          kubectl label namespace "$NS" pod-security.kubernetes.io/enforce=baseline
+
+      - name: Install the chart with the engine
+        run: |
+          API_IP=$(kubectl get endpoints kubernetes -o jsonpath='{.subsets[0].addresses[0].ip}')
+          API_PORT=$(kubectl get endpoints kubernetes -o jsonpath='{.subsets[0].ports[0].port}')
+          cat > /tmp/values.yaml <<VALUES
+          image:
+            workerRepository: trusca-worker
+            tag: ci
+            pullPolicy: Never
+          env:
+            secret:
+              secretKey: ci-engine-kind-secret-key-0123456789abcdef
+              apiKeyHmacSecret: ci-engine-kind-hmac-key-abcdef0123456789
+              githubAppEncryptionKey: ci-engine-kind-github-key-YWJjZGVmMDEyMzQ1Njc4OQ==
+            scan:
+              engine: bomlens
+              containerEngine: bomlens
+          postgres:
+            auth:
+              password: ci-engine-kind
+          ingress:
+            host: engine-kind.invalid
+          workspace:
+            persistence:
+              accessMode: ReadWriteOnce
+          trivyCache:
+            persistence:
+              accessMode: ReadWriteOnce
+          networkPolicy:
+            enabled: true
+            workerEngine:
+              apiServerEgress:
+                - to:
+                    - ipBlock:
+                        cidr: ${API_IP}/32
+                  ports:
+                    - port: ${API_PORT}
+                      protocol: TCP
+          worker:
+            engine:
+              enabled: true
+            scan:
+              replicaCount: 0
+            default:
+              replicaCount: 0
+          backend:
+            replicaCount: 0
+          frontend:
+            replicaCount: 0
+          beat:
+            replicaCount: 0
+          VALUES
+          # No hooks: the migration and config-check Jobs need a database this
+          # check does not use.
+          helm install "$RELEASE" charts/trustedoss -n "$NS" -f /tmp/values.yaml --no-hooks
+          kubectl -n "$NS" rollout status "deployment/$RELEASE-trustedoss-worker-engine" --timeout=300s
+
+      - name: Download the Trivy database into its claim
+        run: |
+          CLAIM=$(kubectl -n "$NS" get pvc -o name | grep trivy-cache | head -1 | cut -d/ -f2)
+          kubectl -n "$NS" apply -f - <<POD
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: trivy-db
+          spec:
+            restartPolicy: Never
+            securityContext:
+              runAsUser: 1000
+              runAsGroup: 1000
+              fsGroup: 1000
+            containers:
+              - name: trivy
+                image: trusca-worker:ci
+                imagePullPolicy: Never
+                command: ["trivy", "image", "--download-db-only", "--cache-dir", "/var/lib/trivy"]
+                volumeMounts:
+                  - name: db
+                    mountPath: /var/lib/trivy
+            volumes:
+              - name: db
+                persistentVolumeClaim:
+                  claimName: ${CLAIM}
+          POD
+          kubectl -n "$NS" wait --for=jsonpath='{.status.phase}'=Succeeded pod/trivy-db --timeout=900s \
+            || { kubectl -n "$NS" logs trivy-db; exit 1; }
+
+      - name: Run a source scan and an image scan through the engine
+        run: |
+          POD=$(kubectl -n "$NS" get pod -l app.kubernetes.io/component=worker-engine -o name | head -1)
+          kubectl -n "$NS" exec -i "$POD" -- sh -c 'cd /app && python -' < tests/e2e/engine-kind/check_engine.py
+
+      - name: The Jobs' pods have no service account token
+        run: |
+          kubectl -n "$NS" run no-token --restart=Never --image=alpine:3.19.0 \
+            --overrides='{"spec":{"serviceAccountName":"'"$RELEASE"'-trustedoss-engine-job"}}' \
+            --command -- sh -c 'test ! -e /var/run/secrets/kubernetes.io/serviceaccount/token'
+          kubectl -n "$NS" wait --for=jsonpath='{.status.phase}'=Succeeded pod/no-token --timeout=120s \
+            || { kubectl -n "$NS" logs no-token; exit 1; }
+
+      - name: A Job without a network reaches nothing, one with a network reaches the registries
+        run: |
+          run_pod() {
+            kubectl -n "$NS" run "$1" --restart=Never --image=alpine:3.19.0 \
+              --labels="app.kubernetes.io/part-of=bomlens-engine,bomlens.engine/network=$2" \
+              --command -- sh -c "$3"
+          }
+          run_pod net-none none 'wget -q -T 8 -O /dev/null https://ghcr.io/v2/ && exit 1 || exit 0'
+          run_pod net-egress egress 'wget -q -T 20 -O /dev/null https://ghcr.io/v2/ 2>/dev/null; test $? -ne 4'
+          for pod in net-none net-egress; do
+            kubectl -n "$NS" wait --for=jsonpath='{.status.phase}'=Succeeded "pod/$pod" --timeout=180s \
+              || { kubectl -n "$NS" logs "$pod"; exit 1; }
+          done
+
+      - name: What the cluster looked like
+        if: always()
+        run: |
+          kubectl -n "$NS" get pods,jobs,pvc,networkpolicy -o wide || true
+          kubectl -n "$NS" logs "deployment/$RELEASE-trustedoss-worker-engine" --tail=200 || true
