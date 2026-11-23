@@ -307,7 +307,7 @@ export function ApprovalsPage() {
       </div>
 
       {/* Inline filters toolbar */}
-      <div className="flex flex-wrap items-end gap-3 border-b bg-card px-6 py-3">
+      <div className="flex flex-wrap items-end gap-x-3 gap-y-2 border-b bg-card px-6 py-3">
         {/* Status filter */}
         <div className="flex flex-col gap-1">
           <Label
@@ -341,10 +341,10 @@ export function ApprovalsPage() {
             OS locale (a Korean macOS shows "2026년 5월 26일"). We do NOT
             want to ship a 50 kB react-day-picker just for this control, so
             instead:
-              1. `lang="en"` forces Chrome / Edge to render an English
-                 datepicker regardless of OS locale (Safari falls back to
-                 OS, Firefox ignores `lang` on `input[type=date]` — both
-                 are then covered by step 2).
+              1. `lang` follows the active UI language. Browsers differ in
+                 whether the native control honors it (Chromium takes the
+                 field order and "mm/dd/yyyy" placeholder from the browser
+                 locale, not from `lang`); step 2 covers that.
               2. The visible value is YYYY-MM-DD (ISO 8601) which is
                  locale-agnostic, so even on a fallback UI the input value
                  itself stays English.
@@ -360,9 +360,9 @@ export function ApprovalsPage() {
             id="approval-from-dt"
             data-testid="approval-from-dt"
             type="date"
-            lang="en"
+            lang={i18n.resolvedLanguage}
             placeholder="YYYY-MM-DD"
-            className="h-8 w-36 text-sm"
+            className="h-8 w-32 text-sm"
             value={fromDt}
             onChange={(e) => {
               setFromDt(e.target.value);
@@ -382,9 +382,9 @@ export function ApprovalsPage() {
             id="approval-to-dt"
             data-testid="approval-to-dt"
             type="date"
-            lang="en"
+            lang={i18n.resolvedLanguage}
             placeholder="YYYY-MM-DD"
-            className="h-8 w-36 text-sm"
+            className="h-8 w-32 text-sm"
             value={toDt}
             onChange={(e) => {
               setToDt(e.target.value);
@@ -429,8 +429,9 @@ export function ApprovalsPage() {
             "1 / 4" and nothing said how many rows that was. Absent while the
             request is in flight or after it failed: "0 requests" would be a
             count nobody counted. */}
+        <div className="ml-auto flex items-end gap-3">
         {approvalsQuery.isSuccess ? (
-          <div className="ml-auto flex flex-col gap-1">
+          <div className="flex flex-col gap-1">
             <span className="text-xs text-muted-foreground">&nbsp;</span>
             <span
               className="flex h-8 items-center text-sm text-muted-foreground"
@@ -450,13 +451,14 @@ export function ApprovalsPage() {
         >
           {t("approvals.action.refresh")}
         </Button>
+        </div>
       </div>
 
       {/* List region. It always renders and carries `aria-busy`, so the
           harness has one node to wait on whether it ends up holding the
           table or the empty state. */}
       <div
-        className="flex-1 overflow-y-auto"
+        className="flex-1 overflow-x-auto overflow-y-auto"
         data-testid="approvals-list"
         aria-busy={approvalsQuery.isLoading}
       >
@@ -512,7 +514,7 @@ export function ApprovalsPage() {
           />
         ) : (
           <table
-            className="w-full text-sm"
+            className="w-full min-w-[46rem] text-sm"
             data-testid="approvals-table"
             aria-busy={approvalsQuery.isLoading}
           >
@@ -521,7 +523,7 @@ export function ApprovalsPage() {
                 <th className="px-6 py-2">
                   {t("approvals.column.component")}
                 </th>
-                <th className="px-3 py-2">
+                <th className="min-w-[9rem] px-3 py-2">
                   {t("approvals.column.project")}
                 </th>
                 <th className="px-3 py-2">
@@ -533,7 +535,7 @@ export function ApprovalsPage() {
                 <th className="px-3 py-2">
                   {t("approvals.column.requested_at")}
                 </th>
-                <th className="py-2 pl-3 pr-6 text-right">
+                <th className="sticky right-0 whitespace-nowrap bg-card py-2 pl-3 pr-6 text-right">
                   {t("approvals.column.actions")}
                 </th>
               </tr>
@@ -570,7 +572,7 @@ export function ApprovalsPage() {
                           purl in a smaller line below; fall back to the legacy
                           UUID prefix when the BE didn't supply the labels (e.g.
                           a single-row endpoint or a hard-deleted referent). */}
-                      <td className="px-6">
+                      <td className="max-w-[16rem] px-6">
                         {item.component_name ? (
                           <div className="flex flex-col">
                             <span className="text-sm font-medium text-foreground">
@@ -595,7 +597,7 @@ export function ApprovalsPage() {
                       {/* P1 #6 - Project column: link to /projects/{id} when
                           BE surfaced the name. Stop click propagation so the
                           link doesn't also trip the row's drawer-open handler. */}
-                      <td className="px-3">
+                      <td className="min-w-[9rem] px-3">
                         {item.project_name ? (
                           <a
                             href={`/projects/${item.project_id}`}
@@ -657,7 +659,7 @@ export function ApprovalsPage() {
                       </td>
 
                       {/* Actions */}
-                      <td className="pl-3 pr-6 text-right">
+                      <td className="sticky right-0 whitespace-nowrap bg-card pl-3 pr-6 text-right">
                         <Button
                           size="sm"
                           variant="ghost"
