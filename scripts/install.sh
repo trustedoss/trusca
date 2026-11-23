@@ -303,6 +303,19 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# 2-engine. The BomLens engine is the default scan engine: write the volume names
+# it needs into .env and create its egress network. An offline install keeps the
+# in-process engine. See scripts/lib/engine_env.sh.
+# ---------------------------------------------------------------------------
+# shellcheck source=scripts/lib/engine_env.sh
+source "$ROOT_DIR/scripts/lib/engine_env.sh"
+if [[ -n "$OFFLINE_BUNDLE" ]]; then
+  engine_env_prepare offline
+else
+  engine_env_prepare
+fi
+
+# ---------------------------------------------------------------------------
 # 2a. Offline bundle - pin .env to the bundle's own image tag (#400-S2
 # follow-up). Whatever `.env` just got (the .env.example default, or an
 # operator-provided one from the reuse path above) has no reason to name the

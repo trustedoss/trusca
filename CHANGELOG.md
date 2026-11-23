@@ -9,6 +9,25 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Upgrade notes
 
+- **The BomLens engine is now the default scan engine under Docker Compose.**
+  `docker-compose.yml` sets `SCAN_ENGINE` and `SCAN_CONTAINER_ENGINE` to
+  `bomlens`, and `worker-engine` and `docker-socket-proxy` start with the stack
+  instead of behind the `bomlens-engine` profile. The code, the Helm chart and
+  the demo keep `inprocess`. `scripts/install.sh` and `scripts/upgrade.sh` write
+  `SCAN_WORKSPACE_VOLUME` and `SCAN_TRIVY_CACHE_VOLUME` into `.env` when they are
+  empty and create the `trustedoss-scan-egress` network; if you run
+  `docker-compose` without them, set the two volumes (`<project>_workspace`,
+  `<project>_trivy-cache`) and create the network yourself (see the
+  administrator guide). Scans now pull the BomLens and cdxgen images from
+  ghcr.io the first time they need them, take longer than the in-process engine
+  (stage 1 starts a container; a source scan is typically 1 to 6 times slower),
+  and a container image scan refuses an image whose registry has a stored
+  credential. To keep the previous behaviour set `SCAN_ENGINE=inprocess` and
+  `SCAN_CONTAINER_ENGINE=inprocess` in `.env`; this return path stays for at
+  least one release. An air-gapped install (`install.sh --offline`, or an older
+  one with `TRIVY_DB_BOOTSTRAP_ON_START=false`) is kept on `inprocess` by the
+  scripts. Scans queued before the upgrade finish on the engine they were queued
+  for, so upgrade while no scan is running.
 - **The BomLens engine runs through the `bomlens-runner` package.**
   TRUSCA's own runner and plan reader are gone; the engine's containers are
   run, checked and removed by the package BomLens publishes. What changes for

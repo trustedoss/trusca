@@ -109,7 +109,8 @@ def test_only_worker_engine_reaches_the_docker_api() -> None:
         n for n, s in services.items() if "DOCKER_HOST" in ((s or {}).get("environment") or {})
     )
     assert with_host == ["worker-engine"]
-    assert services["worker-engine"]["profiles"] == ["bomlens-engine"]
+    # Always started: a scan queued for the engine waits for this worker.
+    assert "profiles" not in services["worker-engine"]
     assert services["worker-engine"]["environment"]["DOCKER_HOST"] == (
         "tcp://docker-socket-proxy:2375"
     )

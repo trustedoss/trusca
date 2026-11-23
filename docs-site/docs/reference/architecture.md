@@ -31,7 +31,7 @@ The production stack runs eight container services:
 
 Image tags are pinned (`CLAUDE.md` rule #9 — never `:latest`).
 
-The optional `bomlens-engine` profile adds `worker-engine` and `docker-socket-proxy`. See [Which worker runs what](../admin-guide/dynamic-scan-executor.md#engine-workers).
+`worker-engine` and `docker-socket-proxy` start with the stack and run the BomLens engine, the default scan engine under compose. See [Which worker runs what](../admin-guide/dynamic-scan-executor.md#engine-workers).
 
 :::note Dependency-Track was removed in v0.10.0
 Earlier releases shipped Dependency-Track as an additional optional service. v0.10.0 removed it in favour of Trivy as the single vulnerability engine: the Trivy DB does the same SBOM-to-CVE matching with a ~500 MB footprint instead of a 4 GB JVM and an H2 database. See [Vulnerability data (Trivy DB)](../admin-guide/vulnerability-data.md) and the [v0.10.0 release notes](../release-notes/v0.10.0.md). The Trivy DB lives on the `trivy-cache` volume, which `worker-scan` and `worker-default` share and the backend mounts read-only; there is no separate vulnerability-engine service.

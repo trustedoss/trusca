@@ -59,9 +59,8 @@ services:
 Compose가 `docker-compose.override.yml`을 자동으로 읽으므로, 업그레이드가
 `docker-compose.yml`을 교체해도 이 설정은 그대로 남습니다. 이 변수들은 각
 서비스의 기존 환경에 더해지며, 기존 환경을 대체하지 않습니다. 바꾼 뒤에는
-`docker-compose up -d`로 반영합니다. `bomlens-engine` 프로필을 쓴다면
-`worker-engine`에도 같은 항목을 추가합니다. 이 서비스는 그 프로필로 시작하지
-않으면 실행되지 않습니다.
+`docker-compose up -d`로 반영합니다. BomLens 엔진을 쓴다면(compose의 기본값)
+`worker-engine`에도 같은 항목을 추가합니다.
 
 이 파일에는 사내 인증기관과 공용 루트 인증서를 함께 이어 붙여 둡니다. 이유는
 다음 절에 있습니다.
@@ -195,7 +194,7 @@ Compose는 이 값을 각 서비스의 기존 환경에 더하며, 기존 환경
 두 묶음을 함께 지정합니다.
 
 `NO_PROXY`는 스택 안의 연결이 프록시로 가지 않게 합니다. 예시의 서비스 이름은
-서로 통신하는 컨테이너들이고, `docker-socket-proxy`는 `bomlens-engine` 프로필을
+서로 통신하는 컨테이너들이고, `docker-socket-proxy`는 BomLens 엔진을
 쓸 때만 필요합니다. 프록시가 닿지 못하는 사내 Git 호스트, 레지스트리, 패키지
 미러도 추가합니다. 앞에 점을 붙이면 도메인 전체가 해당됩니다.
 

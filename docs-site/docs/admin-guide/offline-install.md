@@ -159,17 +159,20 @@ cache separately.
 ## BomLens engine images {#bomlens-engine-images}
 
 The bundle does not contain the [BomLens scan engine](./dynamic-scan-executor.md#scan-engine)
-(`SCAN_ENGINE=bomlens`, a preview). The engine worker pulls its images when a
-scan needs them, so to use the engine in an air-gapped install, copy them
-into a registry that the target host's Docker daemon can reach:
+(the default under compose). The engine worker pulls its images when a
+scan needs them, so an air-gapped install keeps the in-process engine:
+`scripts/install.sh --offline` writes `SCAN_ENGINE=inprocess` and
+`SCAN_CONTAINER_ENGINE=inprocess` into `.env`. To use the engine in an air-gapped
+install, copy its images into a registry that the target host's Docker daemon can
+reach, then remove those two lines from `.env`:
 
 - the BomLens image `ghcr.io/sktelecom/bomlens`
 - the BomLens image `ghcr.io/sktelecom/bomlens-deep-license`
 - the cdxgen language images under `ghcr.io/cdxgen/` that the execution plan
   chooses for stage 1 (see [Stage 1 images](#bomlens-stage1-images))
 
-The `docker-socket-proxy` image that the `bomlens-engine` compose profile
-starts is not in the bundle either.
+The `docker-socket-proxy` image that the engine worker reaches Docker through
+is not in the bundle either.
 
 TRUSCA runs the BomLens images by digest. Each is a multi-platform index, so
 copy the whole index; a copy of one platform's image has a different

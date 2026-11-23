@@ -31,7 +31,7 @@ sidebar_position: 1
 
 이미지 태그는 핀되어 있습니다(CLAUDE.md 규칙 #9 — `:latest` 절대 금지).
 
-선택 프로필 `bomlens-engine`을 켜면 `worker-engine`과 `docker-socket-proxy`가 추가됩니다. [워커별 실행 범위](../admin-guide/dynamic-scan-executor.md#engine-workers)를 참고하십시오.
+`worker-engine`과 `docker-socket-proxy`는 스택과 함께 시작되어 compose의 기본 스캔 엔진인 BomLens 엔진을 실행합니다. [워커별 실행 범위](../admin-guide/dynamic-scan-executor.md#engine-workers)를 참고하십시오.
 
 :::note v0.10.0에서 Dependency-Track 제거
 이전 릴리스는 Dependency-Track을 별도의 선택 서비스로 제공했습니다. v0.10.0은 Trivy를 단일 취약점 엔진으로 채택하면서 DT를 제거했습니다. Trivy DB는 4GB JVM과 H2 DB 대신 약 500MB 용량으로 같은 SBOM ↔ CVE 매칭을 수행합니다. [취약점 데이터 (Trivy DB)](../admin-guide/vulnerability-data.md)와 [v0.10.0 릴리스 노트](../release-notes/v0.10.0.md)를 참고하세요. Trivy DB는 `worker-scan`과 `worker-default`가 함께 쓰고 backend가 읽기 전용으로 마운트하는 `trivy-cache` 볼륨에 있으며, 별도의 취약점 엔진 서비스는 없습니다.

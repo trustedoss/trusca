@@ -384,17 +384,20 @@ x-backend-env: &backend-env
   # source_dir resolution breaks.
   SCAN_WORKSPACE_MOUNT: ${SCAN_WORKSPACE_MOUNT:-/workspace}
   SCAN_WORKSPACE_VOLUME: ${SCAN_WORKSPACE_VOLUME:-}
-  # BomLens scan engine (preview, off by default). SCAN_ENGINE=bomlens also
-  # needs the bomlens-engine profile (worker-engine + docker-socket-proxy),
-  # SCAN_WORKSPACE_VOLUME and SCAN_TRIVY_CACHE_VOLUME (the compose project's
-  # `workspace` and `trivy-cache` volume names), and the egress network
-  # below created once with `docker network create`. The image pins live in
-  # core/config.py; leave SCAN_BOMLENS_IMAGE / _DEEP_LICENSE_IMAGE empty to
-  # use them. See docs-site admin-guide/dynamic-scan-executor.md#scan-engine.
-  SCAN_ENGINE: ${SCAN_ENGINE:-inprocess}
+  # BomLens scan engine (the default here; `inprocess` is the way back).
+  # It runs on worker-engine behind docker-socket-proxy, both always started,
+  # and needs SCAN_WORKSPACE_VOLUME and SCAN_TRIVY_CACHE_VOLUME (the compose
+  # project's `workspace` and `trivy-cache` volume names) and the egress
+  # network below. scripts/install.sh and scripts/upgrade.sh write the two
+  # volume names into .env and create the network; an offline install keeps
+  # `inprocess` (the engine pulls its images from ghcr.io when a scan needs
+  # them). The image pins live in core/config.py; leave SCAN_BOMLENS_IMAGE /
+  # _DEEP_LICENSE_IMAGE empty to use them. See docs-site
+  # admin-guide/dynamic-scan-executor.md#scan-engine.
+  SCAN_ENGINE: ${SCAN_ENGINE:-bomlens}
   # The same choice for container image scans (MODE=IMAGE), with the same
-  # profile and volumes; it also needs the egress network below.
-  SCAN_CONTAINER_ENGINE: ${SCAN_CONTAINER_ENGINE:-inprocess}
+  # volumes and the egress network below.
+  SCAN_CONTAINER_ENGINE: ${SCAN_CONTAINER_ENGINE:-bomlens}
   SCAN_BOMLENS_IMAGE_TIMEOUT_SECONDS: ${SCAN_BOMLENS_IMAGE_TIMEOUT_SECONDS:-1800}
   SCAN_BOMLENS_IMAGE: ${SCAN_BOMLENS_IMAGE:-}
   SCAN_BOMLENS_DEEP_LICENSE_IMAGE: ${SCAN_BOMLENS_DEEP_LICENSE_IMAGE:-}
@@ -1212,8 +1215,10 @@ services:
           memory: 256M
 
   # ---------------------------------------------------------------------------
-  # BomLens scan engine worker (SCAN_ENGINE=bomlens, preview). Off unless
-  # started with `docker-compose --profile bomlens-engine up -d`.
+  # BomLens scan engine worker (SCAN_ENGINE=bomlens, the default). Always
+  # started: a scan queued for the engine waits for it. With both engines set
+  # to `inprocess` it only idles; stop it with
+  # `docker-compose stop worker-engine docker-socket-proxy`.
   #
   # The only service that can reach the Docker API (docker-socket-proxy
   # below), and so the only one that never runs code from a scanned
@@ -1225,7 +1230,6 @@ services:
   # ---------------------------------------------------------------------------
   worker-engine:
     image: ${IMAGE_REGISTRY:-ghcr.io/trustedoss}/trusca-backend-worker:${IMAGE_TAG:-0.23.1}
-    profiles: ["bomlens-engine"]
     restart: unless-stopped
     logging: *logging
     command: celery -A tasks.celery_app worker --loglevel=info --concurrency=${ENGINE_CONCURRENCY:-2} -Q ${WORKER_ENGINE_QUEUES:-trustedoss.engine}
@@ -1280,7 +1284,7 @@ services:
           memory: 1G
 
   # ---------------------------------------------------------------------------
-  # Docker API for worker-engine (profile bomlens-engine, as above).
+  # Docker API for worker-engine (always started, as above).
   #
   # The socket is mounted into this proxy alone. `:ro` on a socket does not
   # make the API read-only (writing to a socket is not a file write); what
@@ -1295,12 +1299,10 @@ services:
   # what a compromised worker-engine could reach; it is not the boundary.
   #
   # Reachable only on `docker-api`, an internal network shared with
-  # worker-engine alone. `restart: unless-stopped` keeps it running after an
-  # `up` without the profile; see the guide for how to switch it off.
+  # worker-engine alone.
   # ---------------------------------------------------------------------------
   docker-socket-proxy:
     image: ghcr.io/tecnativa/docker-socket-proxy:0.3.0@sha256:9e4b9e7517a6b660f2cc903a19b257b1852d5b3344794e3ea334ff00ae677ac2
-    profiles: ["bomlens-engine"]
     restart: unless-stopped
     logging: *logging
     environment:

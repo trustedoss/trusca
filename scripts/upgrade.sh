@@ -454,6 +454,11 @@ ok "WORKER_CPU_LIMIT=${worker_cpu_limit} (host has ${host_cpus} online CPU(s))"
 # ---------------------------------------------------------------------------
 title "Recreating containers"
 note "The portal will be briefly unavailable (typically <30s)."
+# The BomLens engine is the default scan engine: make sure its volume names and
+# egress network exist before the services that use them start.
+# shellcheck source=scripts/lib/engine_env.sh
+source "$ROOT_DIR/scripts/lib/engine_env.sh"
+engine_env_prepare
 docker-compose "${COMPOSE_ARGS[@]}" up -d
 ok "containers running"
 

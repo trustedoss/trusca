@@ -152,9 +152,13 @@ class TestOverlay:
     def test_the_socket_proxy_matches_production(self) -> None:
         mine = _overlay()["services"]["docker-socket-proxy"]
         prod = _prod()["services"]["docker-socket-proxy"]
-        for key in ("image", "environment", "cap_drop", "security_opt", "volumes", "profiles"):
+        for key in ("image", "environment", "cap_drop", "security_opt", "volumes"):
             assert mine[key] == prod[key], key
         assert mine["networks"] == ["docker-api"]
+        # Production starts it with the stack; the dev stack the comparison runs on
+        # has no engine, so the overlay keeps it behind the profile the run selects.
+        assert "profiles" not in prod
+        assert mine["profiles"] == ["bomlens-engine"]
 
     def test_only_the_proxy_mounts_the_docker_socket(self) -> None:
         for name, svc in _overlay()["services"].items():
@@ -170,7 +174,7 @@ class TestOverlay:
         assert env[remote] == prod["environment"][remote]
         assert env["CELERY_WORKER_REMOTE_CONTROL"] == "false"
         assert mine["healthcheck"] == prod["healthcheck"]
-        assert mine["profiles"] == prod["profiles"]
+        assert "profiles" not in prod and mine["profiles"] == ["bomlens-engine"]
         assert mine["stop_grace_period"] == prod["stop_grace_period"]
         # Consumes the engine queue and nothing else, as production's default.
         assert mine["command"].split("-Q ")[1] == "trustedoss.engine"
