@@ -62,7 +62,7 @@ W11은 Severity 팔레트 (Critical / High / Medium / Low / Info)를 바꾸지 �
 | `--muted` | `#f4f4f5` | `240 5% 96%` | 미묘한 fill — 테이블 헤더 · 사이드바 tint · placeholder · disabled input. |
 | `--muted-foreground` | `#6c6c75` | `240 4% 44%` | 보조 텍스트 · caption · 테이블 컬럼 헤더. |
 | `--border` | `#e7e7e9` | `240 5% 91%` | Hairline border. 장식용 separator 만 — UI 영역 식별의 유일한 수단이 되지 않습니다. |
-| `--input` | `#e7e7e9` | `240 5% 91%` | Input outline. |
+| `--input` | `#85858e` | `240 4% 54%` | 컨트롤 경계선: 입력창·버튼 윤곽선, 스위치 꺼짐 트랙. `--card`와 `--background` 위에서 3:1 이상(WCAG 1.4.11). |
 | `--primary` | `#1d4ed8` | `224.3 76.3% 48%` | Primary CTA, "이 페이지의 중요 액션". 액센트와 같은 색상의 네이비 채움이며 두 테마에서 같습니다. |
 | `--primary-foreground` | `#ffffff` | `0 0% 100%` | Primary 위 텍스트, 6.70:1. |
 | `--destructive` | `#dc2626` | `0 72% 50.6%` | Destructive CTA. `--risk-critical`와 같아서 destructive 버튼이 severity와 같은 시각 언어. 소수점이 의미를 갖습니다 — `51%`는 `#dc2828`로 렌더되어 그 hex가 아닙니다. |
@@ -232,7 +232,7 @@ Zinc가 아니라 slate 입니다. 라이트 테마는 zinc(hue 240, 중립 회�
 | `--muted` | `#1c2740` | `222 39% 18%` | 테이블 헤더 · 사이드바 tint · disabled input. |
 | `--muted-foreground` | `#94a3b8` | `215 20% 65%` | 캔버스 위 7.62:1, 카드 위 6.76:1, `--muted` 위 5.79:1 — 라이트 테마가 걸렸던 그 표면입니다. |
 | `--border` | `#2d3b53` | `218 30% 25%` | 카드 경계를 맡습니다. |
-| `--input` | `#2d3b53` | `218 30% 25%` | |
+| `--input` | `#566b8f` | `218 25% 45%` | 컨트롤 경계선, `--card`와 `--background` 위에서 3:1 이상. |
 | `--primary` | `#1d4ed8` | `224.3 76.3% 48%` | 반전하지 않습니다. 라이트와 같은 네이비 채움과 흰 라벨이며 6.70:1 입니다. 어두운 바탕 위 액센트 텍스트는 `--brand`를 씁니다. 네이비 텍스트는 카드 위에서 2.61:1 입니다. |
 | `--primary-foreground` | `#ffffff` | `0 0% 100%` | |
 | `--secondary` | `#1c2740` | `222 39% 18%` | |

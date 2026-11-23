@@ -76,6 +76,8 @@
   --button-default-bgColor-hover: hsl(var(--accent));
   --button-default-bgColor-active: hsl(var(--accent));
   --button-default-fgColor-rest: hsl(var(--foreground));
+  --control-borderColor-rest: hsl(var(--input));
+  --control-borderColor-emphasis: hsl(var(--input));
   --button-default-borderColor-rest: hsl(var(--input));
   --button-default-borderColor-hover: hsl(var(--input));
   --button-default-borderColor-active: hsl(var(--input));

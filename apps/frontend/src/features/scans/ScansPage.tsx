@@ -25,6 +25,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { PageHeader } from "@/components/PageHeader";
 import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Badge } from "@/components/primer/badge";
+import { StatusPill, type StatusPillTone } from "@/components/primer/status-pill";
 import { Button } from "@/components/primer/Button";
 import { SegmentedControl } from "@/components/primer/SegmentedControl";
 import { TableRowsSkeleton } from "@/components/primer/skeletons";
@@ -32,7 +33,6 @@ import { ScanCancelButton } from "@/features/scans/ScanCancelButton";
 import { useScans } from "@/features/scans/useScans";
 import { useClampPage, usePageParam, useUrlEnum } from "@/hooks/useUrlState";
 import RelativeTime from "@/components/RelativeTime";
-import { cn } from "@/lib/utils";
 import { type ScanPublic, type ScanStatus } from "@/lib/projectsApi";
 
 const PAGE_SIZE = 20;
@@ -55,33 +55,26 @@ function statusTone(
   return status;
 }
 
+const PILL_TONE: Record<ReturnType<typeof statusTone>, StatusPillTone> = {
+  succeeded: "success",
+  running: "progress",
+  queued: "warning",
+  failed: "danger",
+  cancelled: "neutral",
+};
+
 function StatusBadge({ status }: { status: ScanStatus }) {
   const { t } = useTranslation("scans");
   const tone = statusTone(status);
   return (
-    <Badge
-      variant="outline"
+    <StatusPill
+      tone={PILL_TONE[tone]}
       data-testid="scans-status-badge"
       data-status={status}
       data-tone={tone}
-      className={cn(
-        "gap-1 font-mono text-xs",
-        // Status surface tokens (G0-1) — the shade a scan pill uses is a
-        // design-system decision, not a per-file one.
-        tone === "succeeded" &&
-          "border-status-success-border bg-status-success-subtle text-status-success-foreground",
-        tone === "running" &&
-          "border-status-info-border bg-status-info-subtle text-status-info-foreground",
-        tone === "queued" &&
-          "border-status-warning-border bg-status-warning-subtle text-status-warning-foreground",
-        tone === "failed" &&
-          "border-status-danger-border bg-status-danger-subtle text-status-danger-foreground",
-        tone === "cancelled" &&
-          "border-muted bg-muted text-muted-foreground",
-      )}
     >
       {t(`page.status.${status}`)}
-    </Badge>
+    </StatusPill>
   );
 }
 

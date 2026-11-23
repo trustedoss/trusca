@@ -2,8 +2,7 @@
 // Copyright 2026 TRUSCA contributors
 import { useTranslation } from "react-i18next";
 
-import { Badge } from "@/components/primer/badge";
-import { cn } from "@/lib/utils";
+import { StatusPill } from "@/components/primer/status-pill";
 import type { ScanStatus } from "@/lib/projectsApi";
 
 /**
@@ -20,7 +19,7 @@ export interface ProjectStatusBadgeProps {
   className?: string;
 }
 
-type Tone = "info" | "progress" | "high" | "critical" | "success";
+type Tone = "neutral" | "progress" | "warning" | "danger" | "success";
 
 interface Visual {
   tone: Tone;
@@ -37,7 +36,7 @@ interface Visual {
 export function visualFor(status: ProjectStatusBadgeProps["status"]): Visual {
   switch (status) {
     case "queued":
-      return { tone: "info", i18nKey: "status.queued", testid: "queued" };
+      return { tone: "neutral", i18nKey: "status.queued", testid: "queued" };
     case "running":
       return { tone: "progress", i18nKey: "status.running", testid: "running" };
     case "succeeded":
@@ -47,30 +46,22 @@ export function visualFor(status: ProjectStatusBadgeProps["status"]): Visual {
         testid: "succeeded",
       };
     case "failed":
-      return { tone: "critical", i18nKey: "status.failed", testid: "failed" };
+      return { tone: "danger", i18nKey: "status.failed", testid: "failed" };
     case "cancelled":
       // PR-6 catalog guard fix: was `status.failed` — a cancelled scan
       // rendered the word "Failed". `status.cancelled` existed in both
       // locales all along.
       return {
-        tone: "high",
+        tone: "warning",
         i18nKey: "status.cancelled",
         testid: "cancelled",
       };
     case "idle":
     case null:
     default:
-      return { tone: "info", i18nKey: "status.idle", testid: "idle" };
+      return { tone: "neutral", i18nKey: "status.idle", testid: "idle" };
   }
 }
-
-const DOT_COLOR_BY_TONE: Record<Tone, string> = {
-  info: "bg-risk-info",
-  progress: "bg-status-info",
-  high: "bg-risk-high",
-  critical: "bg-risk-critical",
-  success: "bg-status-success",
-};
 
 export function ProjectStatusBadge({
   status,
@@ -79,20 +70,13 @@ export function ProjectStatusBadge({
   const { t } = useTranslation("projects");
   const visual = visualFor(status);
   return (
-    <Badge
+    <StatusPill
       tone={visual.tone}
       data-testid={`project-status-${visual.testid}`}
       data-status={status ?? "idle"}
-      className={cn("gap-1.5", className)}
+      className={className}
     >
-      <span
-        aria-hidden
-        className={cn(
-          "inline-block h-1.5 w-1.5 rounded-full",
-          DOT_COLOR_BY_TONE[visual.tone],
-        )}
-      />
-      <span>{t(visual.i18nKey)}</span>
-    </Badge>
+      {t(visual.i18nKey)}
+    </StatusPill>
   );
 }

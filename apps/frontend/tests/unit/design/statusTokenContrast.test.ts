@@ -551,6 +551,27 @@ describe("dark theme contrast", () => {
 });
 
 /**
+ * WCAG 1.4.11 - the boundary of a control (input, button outline, the off
+ * track of a switch) needs 3:1 against what it sits on. `--border` stays the
+ * soft divider colour; only `--input` is held to the floor.
+ */
+describe("control boundary contrast", () => {
+  it("light --input clears 3:1 on --card and --background", () => {
+    expect(contrast(token("input"), token("card"))).toBeGreaterThanOrEqual(3);
+    expect(contrast(token("input"), token("background"))).toBeGreaterThanOrEqual(3);
+  });
+
+  it("dark --input clears 3:1 on --card and --background", () => {
+    expect(contrast(dark("input"), dark("card"))).toBeGreaterThanOrEqual(3);
+    expect(contrast(dark("input"), dark("background"))).toBeGreaterThanOrEqual(3);
+  });
+
+  it("leaves --border as the softer divider", () => {
+    expect(contrast(token("border"), token("card"))).toBeLessThan(3);
+  });
+});
+
+/**
  * 2026-11 - the two non-severity Badge tones.
  *
  * Categories and in-progress states used to borrow `tone="low"`, which read

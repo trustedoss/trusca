@@ -25,7 +25,7 @@ import { useSearchParams } from "react-router-dom";
 import { EmptyState } from "@/components/EmptyState";
 import { PageHeader } from "@/components/PageHeader";
 import { Alert, AlertDescription } from "@/components/primer/alert";
-import { Badge } from "@/components/primer/badge";
+import { StatusPill, type StatusPillTone } from "@/components/primer/status-pill";
 import { Button } from "@/components/primer/Button";
 import { Input } from "@/components/primer/Input";
 import { Label } from "@/components/primer/Label";
@@ -103,6 +103,13 @@ function parsePageParam(v: string | null): number {
 // Status badge — inline to avoid a cross-feature import
 // ---------------------------------------------------------------------------
 
+const APPROVAL_PILL_TONE: Record<ApprovalStatus, StatusPillTone> = {
+  pending: "warning",
+  under_review: "progress",
+  approved: "success",
+  rejected: "danger",
+};
+
 function StatusBadge({
   status,
   t,
@@ -110,20 +117,10 @@ function StatusBadge({
   status: ApprovalStatus;
   t: (key: string) => string;
 }) {
-  const colorMap: Record<ApprovalStatus, string> = {
-    pending: "border-status-warning-border bg-status-warning-subtle text-status-warning-foreground",
-    under_review: "border-status-info-border bg-status-info-subtle text-status-info-foreground",
-    approved: "border-status-success-border bg-status-success-subtle text-status-success-foreground",
-    rejected: "border-status-danger-border bg-status-danger-subtle text-status-danger-foreground",
-  };
   return (
-    <Badge
-      variant="outline"
-      className={cn(colorMap[status])}
-      data-status={status}
-    >
+    <StatusPill tone={APPROVAL_PILL_TONE[status]} data-status={status}>
       {t(`approvals.status.${status}`)}
-    </Badge>
+    </StatusPill>
   );
 }
 

@@ -24,14 +24,13 @@ import { useTranslation } from "react-i18next";
 
 import { Spinner } from "@/components/primer/Spinner";
 import { Alert, AlertDescription } from "@/components/primer/alert";
-import { Badge } from "@/components/primer/badge";
+import { StatusPill, type StatusPillTone } from "@/components/primer/status-pill";
 import { Button } from "@/components/primer/Button";
 import { PrimerDialog } from "@/components/primer/PrimerDialog";
 import { Skeleton } from "@/components/primer/Skeleton";
 import { useApprovalDetail, useTransitionApproval } from "@/features/approvals/useApprovals";
 import { usePermissions } from "@/hooks/usePermissions";
 import RelativeTime from "@/components/RelativeTime";
-import { cn } from "@/lib/utils";
 import type { ApprovalAction, ApprovalStatus } from "@/lib/approvalsApi";
 
 // ---------------------------------------------------------------------------
@@ -56,26 +55,22 @@ interface StatusBadgeProps {
   t: (key: string) => string;
 }
 
+const APPROVAL_PILL_TONE: Record<ApprovalStatus, StatusPillTone> = {
+  pending: "warning",
+  under_review: "progress",
+  approved: "success",
+  rejected: "danger",
+};
+
 function StatusBadge({ status, t }: StatusBadgeProps) {
-  const colorMap: Record<ApprovalStatus, string> = {
-    pending:
-      "border-status-warning-border bg-status-warning-subtle text-status-warning-foreground",
-    under_review:
-      "border-status-info-border bg-status-info-subtle text-status-info-foreground",
-    approved:
-      "border-status-success-border bg-status-success-subtle text-status-success-foreground",
-    rejected:
-      "border-status-danger-border bg-status-danger-subtle text-status-danger-foreground",
-  };
   return (
-    <Badge
-      variant="outline"
-      className={cn(colorMap[status])}
+    <StatusPill
+      tone={APPROVAL_PILL_TONE[status]}
       data-testid="approval-status-badge"
       data-status={status}
     >
       {t(`approvals.status.${status}`)}
-    </Badge>
+    </StatusPill>
   );
 }
 

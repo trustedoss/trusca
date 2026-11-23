@@ -81,6 +81,10 @@ const badgeVariants = cva(
         // warning. `medium` is the Medium severity and nothing else.
         warning:
           "border-transparent bg-status-warning-subtle text-status-warning-foreground",
+        danger:
+          "border-transparent bg-status-danger-subtle text-status-danger-foreground",
+        // A state with nothing to report: cancelled, inactive, idle.
+        neutral: "border-transparent bg-muted text-muted-foreground",
       },
     },
     defaultVariants: {

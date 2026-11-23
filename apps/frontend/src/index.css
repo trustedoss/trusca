@@ -80,7 +80,10 @@
 
     /* Border / input outline — softer than slate-200, more neutral. */
     --border: 240 5% 91%; /* #e7e7e9 */
-    --input: 240 5% 91%;
+    /* Control boundary (inputs, buttons, the switch's off track): WCAG 1.4.11
+     * asks 3:1 against the card and the page. #85858e measures 3.66:1 on
+     * --card and 3.50:1 on --background. Dividers keep --border. */
+    --input: 240 4% 54%; /* #85858e */
 
     /* Primary CTA (2026-11): a navy fill, the same hue as the accent
      * (`--brand`), so the important action and the active marks read as one
@@ -420,7 +423,8 @@
 
     /* Carrying the card edge, not decorating it — see note 1 above. */
     --border: 218 30% 25%; /* #2d3b53 */
-    --input: 218 30% 25%;
+    /* Control boundary: 3.24:1 on --card, 3.63:1 on --background. */
+    --input: 218 25% 45%; /* #566b8f */
 
     /* The primary CTA does not invert (2026-11): the same navy fill and
      * white label as light, 6.70:1, so "the important action on the page"
