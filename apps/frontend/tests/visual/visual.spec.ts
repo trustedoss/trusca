@@ -82,8 +82,6 @@ function volatileRegions(page: Page) {
     page.locator("time"),
     // The dashboard's "last updated" stamp is plain text, not a <time>.
     page.getByTestId("dashboard-last-updated"),
-    // The project's uuid, rendered under the heading on every project tab.
-    page.getByTestId("project-detail-id"),
   ];
 }
 

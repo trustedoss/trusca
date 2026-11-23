@@ -263,7 +263,12 @@ describe("ProjectDetailPage", () => {
         "Demo Project",
       );
     });
-    expect(screen.getByTestId("project-detail-id").textContent).toBe("proj-1");
+    // The raw id is not printed under the title; the root still carries it.
+    expect(screen.queryByTestId("project-detail-id")).toBeNull();
+    expect(screen.getByTestId("project-detail-page")).toHaveAttribute(
+      "data-project-id",
+      "proj-1",
+    );
   });
 
   it("shows an 'unavailable' breadcrumb, not a stuck 'Loading…', on a 404 (BUG-004)", async () => {

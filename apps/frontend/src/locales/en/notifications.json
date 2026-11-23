@@ -75,6 +75,30 @@
     "mfa_cleared_by_admin": {
       "title": "Your second factor was removed",
       "body": "An administrator cleared the authenticator app on your account. If you did not ask for this, tell your administrator and set up two-factor sign-in again straight away."
+    },
+    "scan_completed": {
+      "title": "Scan completed for {{project_name}}",
+      "body": "{{components}} components found, {{critical}} critical vulnerabilities."
+    },
+    "scan_failed": {
+      "title": "Scan failed for {{project_name}}",
+      "body": "The scan did not complete."
+    },
+    "cve_detected": {
+      "title": "New CVE found in {{component}}",
+      "body": "{{cve_id}} affects {{component}}. Open the project to triage it."
+    },
+    "license_violation": {
+      "title": "Forbidden license found",
+      "body": "{{license_id}} was found in {{component}}. Review it before the next release."
+    },
+    "policy_gate_failed": {
+      "title": "Build gate blocked a build",
+      "body": "The build gate blocked {{project_name}}: a forbidden license or a critical vulnerability was found."
+    },
+    "approval_pending": {
+      "title": "Component approval waiting",
+      "body": "A component approval request is waiting for your review."
     }
   },
   "prefs": {

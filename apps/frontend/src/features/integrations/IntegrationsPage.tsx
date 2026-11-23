@@ -287,13 +287,7 @@ export function IntegrationsPage() {
   return (
     <div className="flex h-full flex-col" data-testid="integrations-page">
       <PageHeader
-        title={
-          <>
-            <KeyIcon size={16} />
-            {t("page.title")}
-          </>
-        }
-        titleProps={{ className: "flex items-center gap-2" }}
+        title={t("page.title")}
         description={t("page.subtitle")}
       />
 

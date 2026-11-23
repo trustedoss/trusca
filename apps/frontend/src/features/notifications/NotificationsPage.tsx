@@ -34,7 +34,6 @@
  */
 import {
   AlertIcon,
-  BellIcon,
   BellSlashIcon,
   CheckCircleIcon,
   ChecklistIcon,
@@ -176,12 +175,9 @@ function InboxRow({ item, onActivate }: InboxRowProps) {
             {text.body}
           </p>
           <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
-            <span data-testid="notifications-row-kind">
-              {t(`kind.${item.kind}`)}
-            </span>
-            <span aria-hidden>·</span>
-            {/* M-19 — the guide promises the absolute timestamp on hover; the
-                shared RelativeTime component keeps that tooltip consistent
+            {/* The kind is not printed: the icon and the title already say
+                it, and the label repeated the title. The guide promises the absolute
+                timestamp on hover (M-19); the shared RelativeTime component keeps that tooltip consistent
                 with every other relative display. */}
             <RelativeTime
               data-testid="notifications-row-time"
@@ -415,13 +411,7 @@ export function NotificationsPage() {
   return (
     <div className="flex h-full flex-col" data-testid="notifications-page">
       <PageHeader
-        title={
-          <>
-            <BellIcon size={16} />
-            {t("page.title")}
-          </>
-        }
-        titleProps={{ className: "flex items-center gap-2" }}
+        title={t("page.title")}
         description={t("page.subtitle")}
       />
 

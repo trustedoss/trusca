@@ -38,7 +38,7 @@ Click the bell to navigate directly to the **`/notifications`** inbox. The bell 
 
 `/notifications` is the full list of every notification you have received, newest first. Pages of 20 are loaded one at a time; use the **Previous** / **Next** controls at the bottom to walk through history.
 
-![Notifications inbox at /notifications — read/unread rows with kind badges and pagination controls](/img/screenshots/user-notifications-inbox.png)
+![Notifications inbox at /notifications: read/unread rows and pagination controls](/img/screenshots/user-notifications-inbox.png)
 
 Each row shows:
 

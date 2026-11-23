@@ -355,7 +355,7 @@ export function ReportsTab({
         aria-labelledby="reports-history-heading"
         data-testid="reports-history"
       >
-        <div className="flex items-end justify-between gap-3">
+        <div className="flex items-start justify-between gap-3">
           <div>
             <h2
               id="reports-history-heading"

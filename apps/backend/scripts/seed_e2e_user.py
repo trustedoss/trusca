@@ -1241,20 +1241,48 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
                     "approval_pending",
                     "license_violation",
                 )
-                _bodies = {
-                    "scan_completed": "Project scan completed successfully.",
-                    "cve_detected": "New CVE-2099-EXAMPLE detected in component X.",
-                    "policy_gate_failed": "Build gate blocked: forbidden license found.",
-                    "approval_pending": "Component approval request pending review.",
-                    "license_violation": "Conditional license requires legal review.",
+                # kind -> (English title, English body, params). The kind is
+                # also the message_key, so the SPA renders each row from its
+                # catalog in the reader's language.
+                _texts: dict[str, tuple[str, str, dict[str, str | int]]] = {
+                    "scan_completed": (
+                        "Scan completed for demo-app",
+                        "12 components found, 0 critical vulnerabilities.",
+                        {"project_name": "demo-app", "components": 12, "critical": 0},
+                    ),
+                    "cve_detected": (
+                        "New CVE found in example-lib@1.0.0",
+                        "CVE-2099-0001 affects example-lib@1.0.0. Open the project to triage it.",
+                        {"component": "example-lib@1.0.0", "cve_id": "CVE-2099-0001"},
+                    ),
+                    "policy_gate_failed": (
+                        "Build gate blocked a build",
+                        "The build gate blocked demo-app: a forbidden license or a "
+                        "critical vulnerability was found.",
+                        {"project_name": "demo-app"},
+                    ),
+                    "approval_pending": (
+                        "Component approval waiting",
+                        "A component approval request is waiting for your review.",
+                        {},
+                    ),
+                    "license_violation": (
+                        "Forbidden license found",
+                        "AGPL-3.0-only was found in example-lib@1.0.0. "
+                        "Review it before the next release.",
+                        {"component": "example-lib@1.0.0", "license_id": "AGPL-3.0-only"},
+                    ),
                 }
                 for i in range(with_notifications):
                     kind = _kinds[i % len(_kinds)]
+                    _title, _body, _params = _texts[kind]
                     n = Notification(
                         user_id=user.id,
                         kind=kind,
-                        title=f"{kind.replace('_', ' ').title()} #{i + 1}",
-                        body=_bodies[kind],
+                        title=_title,
+                        body=_body,
+                        message_key=kind,
+                        params=_params,
                         link="/projects" if kind != "approval_pending" else "/approvals",
                         created_at=_notification_created_at(i),
                     )

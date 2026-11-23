@@ -12,6 +12,17 @@
       "edit_team_hint_ready": "Opens this team's license policy and build gate.",
       "edit_org": "Edit org default"
     },
+    "builtin": {
+      "heading": "Built-in rules in effect",
+      "description": "These apply to every team until a policy overrides them. Examples only; the full catalog is longer. Pick a team below to override them.",
+      "allowed_effect": "Passes",
+      "allowed_examples": "MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, Unlicense, CC0-1.0",
+      "conditional_effect": "Needs legal review and approval",
+      "conditional_examples": "LGPL-2.1, LGPL-3.0, MPL-2.0, EPL-2.0, CDDL-1.0",
+      "forbidden_effect": "Blocks the build",
+      "forbidden_examples": "GPL-2.0, GPL-3.0, AGPL-3.0, SSPL-1.0, BUSL-1.1, CC-BY-NC-4.0",
+      "gate": "Build gate default: a build fails when the latest scan has an open critical vulnerability or a component with a forbidden license. A team can add stricter conditions in its build gate settings."
+    },
     "column": {
       "scope": "Scope",
       "name": "Name",

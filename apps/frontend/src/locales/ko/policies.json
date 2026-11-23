@@ -12,6 +12,17 @@
       "edit_team_hint_ready": "이 팀의 라이선스 정책과 빌드 게이트를 엽니다.",
       "edit_org": "조직 기본값 편집"
     },
+    "builtin": {
+      "heading": "적용 중인 기본 규칙",
+      "description": "정책으로 바꾸기 전까지 모든 팀에 적용됩니다. 예시이며 전체 목록은 더 깁니다. 바꾸려면 아래에서 팀을 고르세요.",
+      "allowed_effect": "통과",
+      "allowed_examples": "MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, Unlicense, CC0-1.0",
+      "conditional_effect": "법무 검토와 승인 필요",
+      "conditional_examples": "LGPL-2.1, LGPL-3.0, MPL-2.0, EPL-2.0, CDDL-1.0",
+      "forbidden_effect": "빌드 차단",
+      "forbidden_examples": "GPL-2.0, GPL-3.0, AGPL-3.0, SSPL-1.0, BUSL-1.1, CC-BY-NC-4.0",
+      "gate": "빌드 게이트 기본값: 최근 스캔에 해결되지 않은 치명적 취약점이나 금지 라이선스 구성요소가 있으면 빌드가 실패합니다. 팀은 빌드 게이트 설정에서 조건을 더 엄격하게 만들 수 있습니다."
+    },
     "column": {
       "scope": "범위",
       "name": "이름",
