@@ -157,6 +157,7 @@
       "files_count_other": "파일 {{count}}개 선택됨",
       "hint": "폴더는 업로드 전에 브라우저에서 압축됩니다. 최대 {{max}}.",
       "selected": "파일 {{count}}개 선택됨 ({{size}})",
+      "selected_other": "파일 {{count}}개 선택됨 ({{size}})",
       "too_large": "선택한 폴더가 {{max}} 제한을 초과합니다. 큰 디렉터리를 제거하고 다시 시도하세요.",
       "noisy": "큰 디렉터리가 감지되었습니다: {{dirs}}. 업로드 크기가 커질 수 있으니 제외를 고려하세요."
     },
@@ -245,7 +246,8 @@
       "tally": {
         "present": "{{present}} / {{autoTotal}} 충족",
         "advisory": "권고 {{count}}건",
-        "review": "사람 검토 필요 {{count}}건"
+        "review": "사람 검토 필요 {{count}}건",
+        "review_other": "사람 검토 필요 {{count}}건"
       },
       "review_note": "자동 검사 출처가 없는 요소는 SBOM만으로 확인할 수 없으므로 사람의 검토가 필요합니다.",
       "source": {
@@ -272,7 +274,9 @@
       "tally": {
         "present": "{{present}} / {{total}} 충족",
         "gap": "결측 {{count}}건",
+        "gap_other": "결측 {{count}}건",
         "review": "사람 검토 필요 {{count}}건",
+        "review_other": "사람 검토 필요 {{count}}건",
         "failed": "실패 {{count}}건"
       }
     },
@@ -295,6 +299,7 @@
     "cisa": {
       "title": "2026 SBOM 최소 요소",
       "count": "검사 {{count}}종",
+      "count_other": "검사 {{count}}종",
       "intro": "모두 권고이며 위의 판정을 바꾸지 않습니다. 모든 CycloneDX 문서에 적용하며, 2026 요소는 2021년 NTIA 최소 요소를 대체합니다.",
       "cluster": {
         "cisa-metadata": "SBOM 메타데이터",

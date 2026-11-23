@@ -543,6 +543,7 @@
         "flagged_total": "지목된 컴포넌트",
         "snapshot": "스냅샷",
         "snapshot_hint": "패키지 {{count}}개 수록",
+        "snapshot_hint_other": "패키지 {{count}}개 수록",
         "next_tick": "다음 확인",
         "refresh_on": "재생성 켜짐",
         "refresh_off": "재확인만, 재생성 안 함"
@@ -553,6 +554,7 @@
       "title": "이행을 기다리는 익명화",
       "description": "최고 관리자 두 명이 승인한 삭제입니다. 운영자가 서버에서 명령을 실행해야 실제로 지워지므로, 각 항목은 아직 이행하지 않은 약속입니다.",
       "waiting": "{{count}}일 대기",
+      "waiting_other": "{{count}}일 대기",
       "status": {
         "clear": "대기 중인 항목 없음",
         "waiting": "운영자 이행 대기",

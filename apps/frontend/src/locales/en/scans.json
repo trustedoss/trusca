@@ -119,7 +119,7 @@
   "release": {
     "label": "Version",
     "placeholder": "v1.2.3",
-    "hint": "Optional. Names the shipped unit, e.g. v1.2.3. A labelled release is exempt from retention.",
+    "hint": "Optional. Names the shipped unit, e.g. v1.2.3. A labeled release is exempt from retention.",
     "chip_aria": "Version {{release}}"
   },
   "verbose": {
@@ -156,7 +156,8 @@
       "files_count": "{{count}} file selected",
       "files_count_other": "{{count}} files selected",
       "hint": "The folder is zipped in your browser before upload, up to {{max}}.",
-      "selected": "{{count}} files selected ({{size}})",
+      "selected": "{{count}} file selected ({{size}})",
+      "selected_other": "{{count}} files selected ({{size}})",
       "too_large": "The selected folder exceeds the {{max}} limit. Remove large directories and try again.",
       "noisy": "Large directories detected: {{dirs}}. These will inflate the upload — consider excluding them."
     },
@@ -245,7 +246,8 @@
       "tally": {
         "present": "{{present}} / {{autoTotal}} present",
         "advisory": "{{count}} advisory",
-        "review": "{{count}} need human review"
+        "review": "{{count}} needs human review",
+        "review_other": "{{count}} need human review"
       },
       "review_note": "Elements marked \"No automated source\" cannot be verified from the SBOM alone and require human review.",
       "source": {
@@ -271,8 +273,10 @@
       "intro": "Informational only — this maps the checks above to the regulatory documentation elements they touch. It is not a compliance determination.",
       "tally": {
         "present": "{{present}} / {{total}} present",
-        "gap": "{{count}} gaps",
-        "review": "{{count}} need human review",
+        "gap": "{{count}} gap",
+        "gap_other": "{{count}} gaps",
+        "review": "{{count}} needs human review",
+        "review_other": "{{count}} need human review",
         "failed": "{{count}} failed"
       }
     },
@@ -294,7 +298,8 @@
     "fragment_summary": "How to satisfy this",
     "cisa": {
       "title": "2026 SBOM minimum elements",
-      "count": "{{count}} checks",
+      "count": "{{count}} check",
+      "count_other": "{{count}} checks",
       "intro": "Advisory throughout — these never move the verdict above. Measured on every CycloneDX document; the 2026 elements replace the NTIA minimum elements of 2021.",
       "cluster": {
         "cisa-metadata": "SBOM metadata",

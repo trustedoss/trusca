@@ -142,9 +142,9 @@ def _notification_descriptors(
         recipients.add(row.approved_by_user_id)
     recipients.update(super_admin_ids)
 
-    title = "Anonymisation request expired"
+    title = "Anonymization request expired"
     body = (
-        f"The anonymisation request for user {row.subject_user_id} expired "
+        f"The anonymization request for user {row.subject_user_id} expired "
         f"unapproved on {row.expires_at.date().isoformat()}. It can no longer "
         "be approved - open a new request if the erasure is still needed."
     )

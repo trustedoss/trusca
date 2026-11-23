@@ -10,8 +10,11 @@
     },
     "row": {
       "subgroups": "하위 그룹 {{count}}개",
+      "subgroups_other": "하위 그룹 {{count}}개",
       "projects": "프로젝트 {{count}}개",
+      "projects_other": "프로젝트 {{count}}개",
       "members": "멤버 {{count}}명",
+      "members_other": "멤버 {{count}}명",
       "open_detail": "상세 보기",
       "open_detail_aria": "{{name}} 상세 보기",
       "drill_aria": "{{name}}의 하위 그룹 열기"

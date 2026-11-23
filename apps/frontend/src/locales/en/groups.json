@@ -9,9 +9,12 @@
       "root": "All groups"
     },
     "row": {
-      "subgroups": "{{count}} subgroups",
-      "projects": "{{count}} projects",
-      "members": "{{count}} members",
+      "subgroups": "{{count}} subgroup",
+      "subgroups_other": "{{count}} subgroups",
+      "projects": "{{count}} project",
+      "projects_other": "{{count}} projects",
+      "members": "{{count}} member",
+      "members_other": "{{count}} members",
       "open_detail": "View details",
       "open_detail_aria": "View details for {{name}}",
       "drill_aria": "Open {{name}}'s subgroups"

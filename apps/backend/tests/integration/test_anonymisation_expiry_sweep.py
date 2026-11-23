@@ -187,7 +187,7 @@ def test_sweep_notifies_requester_and_super_admins(
     requester_rows = _notifications_for(sync_session, [requester_id])
     assert len(requester_rows) == 1
     row = requester_rows[0]
-    assert row.title == "Anonymisation request expired"
+    assert row.title == "Anonymization request expired"
     assert row.target_table == "user_anonymisation_requests"
     assert row.target_id == request_id
 

@@ -141,7 +141,7 @@ def _descriptor(*, request_id: str | None = None) -> dict[str, Any]:
         "kind": "approval_pending",
         "context": {"request_id": "x", "subject_user_id": "y"},
         "user_id": str(uuid.uuid4()),
-        "title": "Anonymisation request expired",
+        "title": "Anonymization request expired",
         "body": "expired",
         "link": "/admin/users",
         "request_id": request_id or str(uuid.uuid4()),

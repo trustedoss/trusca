@@ -49,7 +49,7 @@
         "placeholder": "e.g. Engineering policy"
       },
       "unknown": {
-        "label": "Uncatalogued license posture",
+        "label": "Uncataloged license posture",
         "help": "Category applied to a license that is in neither the built-in catalog nor the overrides below."
       },
       "compound": {

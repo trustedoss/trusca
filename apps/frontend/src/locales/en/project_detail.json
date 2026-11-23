@@ -166,7 +166,7 @@
       "security_counts": "{{critical}} Critical · {{high}} High",
       "license_counts": "{{forbidden}} Forbidden · {{conditional}} Conditional",
       "empty_sbom_unsupported_title": "This scan found no components",
-      "empty_sbom_unsupported_body": "The scan succeeded but produced nothing, and the source carried no dependency manifest we recognise. Every count on this page is 0 for that reason, not because the project has no dependencies. Check that TRUSCA supports this project's build system before treating the result as clean.",
+      "empty_sbom_unsupported_body": "The scan succeeded but produced nothing, and the source carried no dependency manifest we recognize. Every count on this page is 0 for that reason, not because the project has no dependencies. Check that TRUSCA supports this project's build system before treating the result as clean.",
       "empty_sbom_manifests_title": "This scan found no components, but the source declares dependencies",
       "empty_sbom_manifests_body": "The scan succeeded and produced nothing even though the source carries dependency manifests. That points at a failure during the scan rather than an empty project. Open the scan log to see which stage came up empty, then re-run it."
     },
@@ -319,8 +319,10 @@
   },
   "components": {
     "summary": "{{loaded}} of {{total}} components loaded.",
-    "summary_scope_filtered": "{{count}} dev/test components excluded by the runtime-scope filter",
-    "vulns_link_aria": "View {{count}} CVEs for {{name}} in the Vulnerabilities tab",
+    "summary_scope_filtered": "{{count}} dev/test component excluded by the runtime-scope filter",
+    "summary_scope_filtered_other": "{{count}} dev/test components excluded by the runtime-scope filter",
+    "vulns_link_aria": "View {{count}} CVE for {{name}} in the Vulnerabilities tab",
+    "vulns_link_aria_other": "View {{count}} CVEs for {{name}} in the Vulnerabilities tab",
     "distribution_toggle": "Distribution charts",
     "col": {
       "name": "Component",
@@ -509,7 +511,7 @@
     },
     "remediation": {
       "heading": "Remediation",
-      "subheading": "Preview proposed npm version bumps for this project and, when authorised, open a remediation pull request.",
+      "subheading": "Preview proposed npm version bumps for this project and, when authorized, open a remediation pull request.",
       "expand": "Open remediation",
       "collapse": "Close remediation"
     },
@@ -944,7 +946,7 @@
       },
       "review": {
         "title": "AI review flag",
-        "disclaimer": "This flag surfaces the restriction class only. Whether it applies to your use is a human/legal judgement."
+        "disclaimer": "This flag surfaces the restriction class only. Whether it applies to your use is a human/legal judgment."
       },
       "reference_url_label": "Reference",
       "ort_match": {
@@ -988,7 +990,7 @@
       "conflict": {
         "title": "Outbound license",
         "strength": "Classified as {{strength}}.",
-        "disclaimer": "This compares license terms as a documentation aid. Whether a combination is permissible in your case is a human and legal judgement."
+        "disclaimer": "This compares license terms as a documentation aid. Whether a combination is permissible in your case is a human and legal judgment."
       }
     },
     "conflict": {
@@ -1037,7 +1039,7 @@
       "category": "Category",
       "kind": "Kind",
       "affected_count": "Components",
-      "fulfilment": "Fulfilment"
+      "fulfilment": "Fulfillment"
     },
     "toolbar": {
       "search_label": "Search",
@@ -1095,7 +1097,7 @@
       "translation_advisory": "Show the original English (authoritative)"
     },
     "fulfilment": {
-      "section": "Fulfilment",
+      "section": "Fulfillment",
       "help": "Whether this project has met the obligation. Recorded here, not in the generated notice: the notice states what the license asks, and nothing on this panel changes it.",
       "status": {
         "unrecorded": "Not recorded",
@@ -1180,7 +1182,7 @@
   "source": {
     "empty": {
       "title": "No source files to browse",
-      "description": "This viewer needs a scan that kept a copy of the analysed files, and none is available for this view."
+      "description": "This viewer needs a scan that kept a copy of the analyzed files, and none is available for this view."
     },
     "tree": {
       "empty_dir": "Empty directory",
@@ -1223,7 +1225,7 @@
         "outputs-only": "Outputs only (the model is not distributed)"
       },
       "business_unit": "Owning part of the organization",
-      "business_unit_help": "A division, a cost centre, a squad: whatever your organization calls it. Used to narrow the project list.",
+      "business_unit_help": "A division, a cost center, a squad: whatever your organization calls it. Used to narrow the project list.",
       "owner_contact": "Who to ask about this project",
       "distribution_model": "How this software reaches its users",
       "distribution_model_unset": "Not decided",
@@ -1450,7 +1452,7 @@
   "reports": {
     "generate": {
       "heading": "Generate",
-      "subheading": "Generate or export a project artefact. Each shortcut opens the domain tab where the action lives."
+      "subheading": "Generate or export a project artifact. Each shortcut opens the domain tab where the action lives."
     },
     "sbom": {
       "heading": "SBOM downloads",
@@ -1540,7 +1542,8 @@
       "hint": "Click a node for details. Type to highlight matching packages."
     },
     "selection": {
-      "vulnCount": "{{count}} known vulnerabilities"
+      "vulnCount": "{{count}} known vulnerability",
+      "vulnCount_other": "{{count}} known vulnerabilities"
     },
     "tree": {
       "collapse": "Collapse",
