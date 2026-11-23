@@ -124,7 +124,7 @@ SCAN_ANDROID_IMAGE_TAG=v1.0.0                            # semver 또는 sha256:
 ## 스캔 엔진(미리 보기) {#scan-engine}
 
 :::info 미리 보기 기능이며 기본값은 꺼짐입니다
-`SCAN_ENGINE`은 미리 보기 설정입니다. compose 배포에서 BomLens 엔진을 시험해 볼 때가 아니면 설정하지 않은 채로 두십시오. Helm 차트에서는 아직 실행되지 않습니다.
+`SCAN_ENGINE`은 미리 보기 설정입니다. compose 배포에서, 또는 Helm 차트에서 `worker.engine.enabled`로 BomLens 엔진을 시험해 볼 때가 아니면 설정하지 않은 채로 두십시오([엔진 켜기(Helm)](#engine-helm) 참고).
 :::
 
 위의 `SCAN_EXECUTOR`는 cdxgen을 어디에서 실행할지를 정합니다. `SCAN_ENGINE`은 스캔 결과를 어느 엔진이 만들지를 정합니다. 기본값 `inprocess`는 워커가 빌드 준비, cdxgen, scancode, Trivy를 직접 실행하는 기존 방식입니다. `bomlens`는 SBOM 생성, 라이선스 탐지, 취약점 매칭을 BomLens 이미지에 맡기고, 그 결과로 하는 일(저장, 서명, 라이선스 정책, 승인, 빌드 게이트, 알림)은 TRUSCA가 그대로 맡습니다. BomLens 스캔에는 `SCAN_EXECUTOR`가 적용되지 않습니다.
@@ -246,6 +246,57 @@ done
 엔진 컨테이너는 컨테이너 안에서 root로 실행됩니다. 데몬의 `userns-remap` 설정이나 rootless Docker 데몬을 쓰면 그 root가 호스트에서는 권한 없는 사용자가 되어, 컨테이너를 탈출하더라도 접근할 수 있는 범위가 줄어듭니다. 둘 다 TRUSCA 밖의 데몬 설정이니, 호스트가 허용하면 둘 중 하나를 켜십시오.
 :::
 
+### 엔진 켜기(Helm) {#engine-helm}
+
+차트는 같은 엔진을 Kubernetes에서 실행합니다. Docker API 대신 엔진 워커가 자신의 ServiceAccount 토큰으로 Kubernetes API를 불러, 엔진 컨테이너마다 파드 하나짜리 Job을 자기 네임스페이스에 만듭니다.
+
+켜기 전에 확인할 것은 다음과 같습니다.
+
+- **공유 저장소.** 작업 공간과 Trivy 데이터베이스가 영속 클레임(`workspace.persistence.enabled`, `trivyCache.persistence.enabled`)에 있어야 하고, 여러 파드가 동시에 마운트할 수 있어야 합니다(`ReadWriteMany`, 차트 기본값). Job은 아무 노드에서나 실행되며 워커와 같은 클레임을 필요한 하위 경로로 마운트합니다. `emptyDir`은 공유할 수 없으므로 차트가 렌더를 거부합니다. root를 squash하는 NFS 저장소에서는 1단계의 소유권 변경이 실패할 수 있으니, 의존하기 전에 쓰는 저장소에서 스캔을 한 번 확인하십시오.
+- **NetworkPolicy를 집행하는 CNI**(Calico, Cilium 등)와 `networkPolicy.enabled: true`. 네트워크가 없어야 하는 Job(실행 계획, 2단계, 소스 복원)은 러너가 붙인 라벨로 선택되어 수신과 송신이 모두 막힙니다. 정책을 집행하지 않는 클러스터에서는 정책이 받아들여지기만 하고 효과가 없어 그 Job이 격리되지 않습니다. 차트는 이를 알 수 없으므로 직접 확인하십시오.
+- **네임스페이스의 Pod Security는 `baseline` 이하의 제한.** 1단계는 다른 권한을 모두 버린 뒤 `CHOWN`, `DAC_OVERRIDE`, `FOWNER`, `SETGID`, `SETUID`를 가진 root로 실행되는데, `restricted`는 이를 거부합니다. Job은 엔진 워커의 네임스페이스, 즉 릴리스의 네임스페이스에 만들어집니다. TRUSCA 설치본마다 네임스페이스를 따로 쓰십시오.
+- **Kubernetes API로 가는 경로.** 차트는 API 서버가 어디에 있는지 알 수 없으므로 `networkPolicy.workerEngine.apiServerEgress`가 필수입니다. 주소와 포트는 `kubectl get endpoints kubernetes`로 확인합니다.
+
+values에서 엔진을 켜고 스캔을 엔진으로 보냅니다.
+
+```yaml
+worker:
+  engine:
+    enabled: true
+env:
+  scan:
+    engine: bomlens
+    containerEngine: bomlens
+networkPolicy:
+  enabled: true
+  workerEngine:
+    apiServerEgress:
+      - to:
+          - ipBlock:
+              cidr: 10.0.0.1/32      # `kubectl get endpoints kubernetes`의 값
+        ports:
+          - port: 6443
+            protocol: TCP
+```
+
+`worker.engine.enabled`가 false이면 `env.scan.engine`과 `env.scan.containerEngine`은 거부됩니다. 엔진으로 큐에 들어간 스캔은 엔진 워커를 기다리고, 큐에 스캔이 있는 프로젝트는 다른 스캔을 시작하지 않기 때문입니다.
+
+차트가 만드는 것은 다음과 같습니다.
+
+- 엔진 큐(`trustedoss.engine`)만 소비하는 `worker-engine` Deployment. compose와 같이 Celery 원격 제어를 끕니다.
+- Job은 `create`, `get`, `list`, `delete`, 파드는 `get`, `list`, `delete`, 파드 로그는 `get`만 허용하는 네임스페이스 범위 Role. 엔진 워커의 ServiceAccount에만 묶습니다. 토큰을 받는 워크로드는 엔진 워커뿐이고, 다른 ServiceAccount와 Job의 ServiceAccount에는 토큰이 없습니다. 네임스페이스 밖의 권한은 주지 않습니다.
+- Role도 토큰도 없는 Job용 ServiceAccount. Job 안에서 실행되는 빌드가 API에 닿을 수 없게 합니다.
+- NetworkPolicy. 엔진 워커용(DNS, 데이터스토어, API 서버만 허용하고 수신과 인터넷은 막음), 네트워크가 없는 Job용(전부 차단), 네트워크가 있는 Job용(DNS와 443, 80 포트의 레지스트리만 허용하고 사설 대역은 제외). 내부 미러나 프록시 같은 추가 규칙은 `networkPolicy.engineJobs`와 `networkPolicy.workerEngine`에 둡니다.
+
+여기서는 지정할 네트워크 이름이 없습니다. `SCAN_BOMLENS_NETWORK`는 Docker 설정이라 차트가 쓰지 않으며, 클러스터의 정책이 그 역할을 합니다.
+
+**프록시 자격 증명.** 로그인 정보가 든 프록시 주소는 Job에 Secret을 가리키는 참조로만 넘길 수 있습니다. `worker.engine.credentials.existingSecret`을 주거나, 차트가 Secret을 만들게 `worker.engine.credentials.data`를 주십시오. 키는 채우는 변수 이름(`HTTPS_PROXY`)을 씁니다. 둘 다 없는데 워커 환경에 로그인 정보가 든 프록시 주소가 있으면, 존재하지 않는 Secret을 가리키는 파드를 시작하는 대신 스캔 실행을 거부합니다. 로그인 정보가 없는 프록시 주소는 설정이 필요 없습니다.
+
+Job의 설정은 `worker.engine.jobs`(pull secret, 노드 선택자, 우선순위 클래스, `fsGroup`)에 있고, 환경변수 레퍼런스의 `SCAN_ENGINE_K8S_*` 변수가 됩니다. 끄는 순서는 compose와 같습니다. 두 엔진을 먼저 `inprocess`로 되돌리고, 엔진으로 큐에 들어간 스캔이 끝나거나 취소되게 한 뒤 `worker.engine.enabled: false`로 바꾸십시오.
+
+<!-- docs-uat: id=dynamic-scan-executor-engine-helm-verify kind=manual tier=manual -->
+클러스터에서 확인하려면 `kubectl -n <네임스페이스> get deployment <릴리스>-trustedoss-worker-engine`으로 Deployment를 확인하고, 스캔을 실행하면서 `kubectl -n <네임스페이스> get jobs -l app.kubernetes.io/part-of=bomlens-engine`를 보십시오. 엔진 컨테이너마다 Job이 하나씩 나타나고, 끝나고 약 10분 안에 사라집니다. 저장소의 `engine-kind` 워크플로가 이를 임시 클러스터에서 소스 스캔, 이미지 스캔, 네트워크와 토큰 확인으로 수행합니다.
+
 ### 엔진 이미지의 라이선스 {#engine-image-licences}
 
 엔진 이미지는 TRUSCA 이미지, Helm 차트, 오프라인 번들 어디에도 들어 있지 않습니다. 엔진 워커가 스캔에 필요할 때 이미지를 받아 각각 별도 컨테이너로 실행합니다. 이미지마다 라이선스 조건이 따로 있으며, 요약은 `THIRD_PARTY_NOTICES.md` 4절에 있습니다.
@@ -302,7 +353,6 @@ docker-compose --profile bomlens-engine rm -f worker-engine docker-socket-proxy
 
 ### 이번 미리 보기에 없는 것 {#engine-not-yet}
 
-- Helm 차트(Kubernetes Job 실행기는 이후 단계입니다).
 - 의존성이 바뀌지 않은 경우 이전 스캔의 SBOM을 재사용하는 기능. BomLens 스캔은 항상 엔진을 실행합니다.
 - 1단계의 사설 패키지 레지스트리 인증 정보(기존 파이프라인이 읽는 `/etc/trusca/registry` 파일)와 SCANOSS 단계.
 - 이미지 스캔의 사설 컨테이너 레지스트리. 인증 정보가 저장된 레지스트리의 이미지는 거부합니다([엔진으로 실행하는 컨테이너 이미지 스캔](#engine-container-scans) 참고).

@@ -124,7 +124,7 @@ On a graceful scan finish the executor removes its sidecar. On a hard `SIGKILL` 
 ## Scan engine (preview) {#scan-engine}
 
 :::info Preview, off by default
-`SCAN_ENGINE` is a preview setting. Leave it unset unless you are trying the BomLens engine on a compose deployment. The Helm chart does not run it yet.
+`SCAN_ENGINE` is a preview setting. Leave it unset unless you are trying the BomLens engine on a compose deployment or, with `worker.engine.enabled`, on the Helm chart (see [Turn on the engine (Helm)](#engine-helm)).
 :::
 
 `SCAN_EXECUTOR` above decides where cdxgen runs. `SCAN_ENGINE` decides which engine produces the scan result at all: `inprocess` (the default) is the worker's own pipeline of build preparation, cdxgen, scancode and Trivy; `bomlens` hands SBOM generation, licence detection and vulnerability matching to the BomLens image, and TRUSCA keeps everything it does with the result (persistence, signing, licence policy, approvals, the build gate, notifications). `SCAN_EXECUTOR` has no effect on a BomLens scan.
@@ -248,6 +248,57 @@ The scope filter settings carry over: with `SCAN_SCOPE_FILTER_NON_DEPLOYABLE_ENA
 The engine's containers run as root inside the container. With the daemon's `userns-remap` setting, or a rootless Docker daemon, that root is an unprivileged user on the host, which limits what a container escape could reach. Both are daemon settings outside TRUSCA; turn one on where the host allows it.
 :::
 
+### Turn on the engine (Helm) {#engine-helm}
+
+The chart runs the same engine on Kubernetes. Instead of the Docker API, the engine worker creates one Job of one Pod for each engine container in its own namespace, through the Kubernetes API with its own ServiceAccount token.
+
+Before you turn it on:
+
+- **Shared storage.** The workspace and the Trivy database must be on persistent claims (`workspace.persistence.enabled` and `trivyCache.persistence.enabled`) that several pods can mount at once (`ReadWriteMany`, the chart's default). The Jobs run on any node and mount the same claims the worker does, each by the sub-path it needs. An `emptyDir` cannot be shared, so the chart refuses to render. On NFS-backed storage that squashes root, stage 1's ownership changes can fail; check a scan on your storage before you rely on it.
+- **A CNI that enforces NetworkPolicy** (Calico, Cilium and others), and `networkPolicy.enabled: true`. The Jobs that must have no network (the execution plan, stage 2, the source restore) are selected by the label the runner puts on them and get no ingress and no egress. On a cluster that does not enforce NetworkPolicy the policies are accepted and do nothing, so those Jobs are not isolated. The chart cannot tell, so this is yours to check.
+- **Pod Security `baseline` or looser for the namespace.** Stage 1 runs as root with `CHOWN`, `DAC_OVERRIDE`, `FOWNER`, `SETGID` and `SETUID` after every other capability is dropped, which `restricted` refuses. The Jobs are created in the engine worker's namespace, which is the namespace of the release. Give each TRUSCA installation its own namespace.
+- **A route to the Kubernetes API.** The chart cannot know where the API server is, so `networkPolicy.workerEngine.apiServerEgress` is required. `kubectl get endpoints kubernetes` shows the address and port.
+
+Turn it on, and point the scans at it, in your values:
+
+```yaml
+worker:
+  engine:
+    enabled: true
+env:
+  scan:
+    engine: bomlens
+    containerEngine: bomlens
+networkPolicy:
+  enabled: true
+  workerEngine:
+    apiServerEgress:
+      - to:
+          - ipBlock:
+              cidr: 10.0.0.1/32      # from `kubectl get endpoints kubernetes`
+        ports:
+          - port: 6443
+            protocol: TCP
+```
+
+`env.scan.engine` and `env.scan.containerEngine` are refused unless `worker.engine.enabled` is true: a scan queued for the engine waits for the engine worker, and a project with a queued scan does not start another.
+
+What the chart creates for it:
+
+- A `worker-engine` Deployment that consumes only the engine queue (`trustedoss.engine`), with Celery remote control off, as in compose.
+- A namespaced Role that allows `create`, `get`, `list` and `delete` on Jobs, `get`, `list` and `delete` on Pods and `get` on Pod logs, bound to the engine worker's ServiceAccount and no other. The engine worker is the only workload that is given a token; every other ServiceAccount, and the Jobs' own, has none. Nothing is granted outside the namespace.
+- A ServiceAccount for the Jobs with no Role and no token, so a build that runs inside a Job cannot reach the API.
+- NetworkPolicies for the engine worker (DNS, the datastores and the API server; no ingress and no internet), for the Jobs without a network (nothing at all) and for the Jobs with one (DNS and the registries on ports 443 and 80, never the private ranges). `networkPolicy.engineJobs` and `networkPolicy.workerEngine` hold their extras, for an internal mirror or a proxy.
+
+The engine has no network name to set here: `SCAN_BOMLENS_NETWORK` is a Docker setting and the chart does not use it. The cluster's policies take its place.
+
+**Proxy credentials.** A proxy address with a login can only be handed to a Job as a reference into a Secret. Give `worker.engine.credentials.existingSecret`, or `worker.engine.credentials.data` for the chart to create one, with a key named after each variable (`HTTPS_PROXY`). With neither, a worker whose environment holds a proxy address with a login refuses to run a scan rather than start Pods that point at a Secret that does not exist. A proxy address without a login needs nothing.
+
+The Jobs' own settings are under `worker.engine.jobs` (pull secrets, node selector, priority class, `fsGroup`) and become the `SCAN_ENGINE_K8S_*` variables in the environment reference. Turn the engine off the same way as on compose: set both engines back to `inprocess` first, let the queued engine scans finish or cancel them, then set `worker.engine.enabled: false`.
+
+<!-- docs-uat: id=dynamic-scan-executor-engine-helm-verify kind=manual tier=manual -->
+To check it on a cluster: `kubectl -n <namespace> get deployment <release>-trustedoss-worker-engine`, run a scan, and watch `kubectl -n <namespace> get jobs -l app.kubernetes.io/part-of=bomlens-engine`: each engine container appears as a Job and is gone within about ten minutes of ending. The `engine-kind` workflow in the repository does this on a throwaway cluster, with a source scan, an image scan, and checks of the network and the token.
+
 ### Licences of the engine images {#engine-image-licences}
 
 The engine images are not part of TRUSCA's images, Helm chart or offline bundle. The engine worker pulls them when a scan needs them and runs each as a separate container. Each image carries its own licence terms, which are summarised in section 4 of `THIRD_PARTY_NOTICES.md`.
@@ -304,7 +355,6 @@ Scans already queued for the engine stay queued until the engine worker runs aga
 
 ### Not in this preview {#engine-not-yet}
 
-- The Helm chart (a Kubernetes Job runner is a later step).
 - Reusing the SBOM of an earlier scan with an unchanged dependency set: a BomLens scan always runs the engine.
 - Private package-registry credentials for stage 1 (the `/etc/trusca/registry` files the in-process pipeline reads), and the SCANOSS step.
 - Private container registries for image scans: an image whose registry has a stored credential is refused (see [Container image scans on the engine](#engine-container-scans)).
