@@ -45,8 +45,9 @@
       "category": "분류",
       "affected": "영향",
       "obligations": "의무사항",
-      "notice_required": "NOTICE",
-      "override_source": "재정의"
+      "notice_required": "NOTICE 파일",
+      "override_source": "재정의",
+      "waiver": "면제"
     },
     "filter": {
       "search": "검색",
@@ -79,7 +80,7 @@
       "not_required": "—"
     },
     "notice_download": {
-      "format_label": "NOTICE",
+      "format_label": "NOTICE 파일",
       "format_text": "텍스트",
       "format_html": "HTML",
       "action": "다운로드",
@@ -1336,18 +1337,21 @@
     "readonly_tooltip": "읽기 전용 과거 스냅샷"
   },
   "waive": {
-    "strip_label": "면제:",
-    "waive_button": "면제",
+    "waive_button": "면제…",
     "waiving": "면제 처리 중…",
     "submit": "컴포넌트 면제",
     "cancel": "취소",
-    "waive_button_aria": "이 컴포넌트의 라이선스 면제",
+    "waive_button_aria": "컴포넌트 하나의 {{spdx_id}} 라이선스 면제",
     "waived_badge": "면제됨",
     "waived_tooltip": "면제됨: {{reason}}",
+    "waived_count": "{{count}}개 면제됨",
+    "waived_count_item": "{{component}}: {{reason}}",
     "unwaive_button": "면제 해제",
     "unwaiving": "면제 해제 중…",
-    "dialog_title": "이 컴포넌트의 라이선스 면제",
-    "dialog_description": "{{spdx_id}} 라이선스임에도 {{component}}을(를) 빌드 게이트에서 통과시킵니다. 이 컴포넌트에만 적용됩니다.",
+    "dialog_title": "컴포넌트 하나의 라이선스 면제",
+    "dialog_description": "{{spdx_id}} 라이선스인데도 빌드 게이트를 통과시킬 컴포넌트를 고르세요. 면제는 고른 컴포넌트에만 적용됩니다.",
+    "target_label": "컴포넌트",
+    "all_waived": "이 라이선스의 컴포넌트가 모두 면제되어 있습니다. 다시 빌드 게이트를 적용하려면 면제를 해제하세요.",
     "reason_label": "사유",
     "reason_placeholder": "이 컴포넌트에 대해 이 라이선스를 허용하는 이유는 무엇인가요?",
     "reason_hint": "사유는 필수이며 이 면제의 감사 기록으로 보관됩니다.",
@@ -1357,7 +1361,6 @@
     "expires_required_hint": "금지 라이선스는 한시적으로만 면제할 수 있습니다. 만료일을 지정하세요.",
     "role_gated": "팀 관리자만 라이선스를 면제할 수 있습니다.",
     "no_team": "프로젝트 팀을 불러오는 중입니다.",
-    "no_purl": "이 컴포넌트에는 면제 범위를 지정할 패키지 URL이 없습니다.",
     "error_forbidden": "이 팀의 라이선스를 면제할 권한이 없습니다.",
     "error_malformed": "면제가 거부되었습니다. 사유를 확인한 후 다시 시도하세요.",
     "error_generic": "면제를 업데이트하지 못했습니다. 다시 시도하세요."

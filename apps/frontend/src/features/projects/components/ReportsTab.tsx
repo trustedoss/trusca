@@ -39,7 +39,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Select } from "@primer/react";
 import { useTranslation } from "react-i18next";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 
 import { EmptyState as SharedEmptyState } from "@/components/EmptyState";
 import { Alert, AlertDescription } from "@/components/primer/alert";
@@ -254,6 +254,20 @@ export function ReportsTab({
     );
   }
 
+  // The address each deeplink card points at. The cards are links, not
+  // buttons, because they move the reader somewhere rather than doing
+  // something; a real href is what lets them open in a new tab or be copied.
+  // A plain click still goes through deeplinkToTab above, which also scrolls.
+  function deeplinkHref(target: ReportTypeUiMeta["targetTab"]): string {
+    const merged = new URLSearchParams(searchParams);
+    if (target === "reports") {
+      merged.set("rpt_section", "sbom");
+      return `?${merged.toString()}#sbom`;
+    }
+    merged.set("tab", target);
+    return `?${merged.toString()}`;
+  }
+
   // W4-C #21 — when the URL carries `?rpt_section=sbom`, scroll to the SBOM
   // section once it mounts. This handles the redirect from the old `?tab=sbom`
   // URL (rewritten by ProjectDetailPage::setTab) so a deep-link still lands
@@ -323,12 +337,14 @@ export function ReportsTab({
           <GenerateCard
             slug="sbom"
             target="reports"
+            href={deeplinkHref("reports")}
             onDeeplink={deeplinkToTab}
           />
           <VulnPdfCard projectId={projectId} />
           <GenerateCard
             slug="vex"
             target="vulnerabilities"
+            href={deeplinkHref("vulnerabilities")}
             onDeeplink={deeplinkToTab}
           />
         </section>
@@ -471,10 +487,12 @@ export function ReportsTab({
 interface GenerateCardProps {
   slug: "notice" | "sbom" | "vuln-pdf" | "vex";
   target: ReportTypeUiMeta["targetTab"];
+  /** Where the link points, for a new tab or a copied address. */
+  href: string;
   onDeeplink: (target: ReportTypeUiMeta["targetTab"]) => void;
 }
 
-function GenerateCard({ slug, target, onDeeplink }: GenerateCardProps) {
+function GenerateCard({ slug, target, href, onDeeplink }: GenerateCardProps) {
   const { t } = useTranslation("project_detail");
   // i18n keys live under reports.cards.<slug>.{title,description,action}.
   const titleKey = `reports.cards.${slug}.title` as const;
@@ -487,15 +505,28 @@ function GenerateCard({ slug, target, onDeeplink }: GenerateCardProps) {
         <CardDescription className="text-xs">{t(descKey)}</CardDescription>
       </CardHeader>
       <CardContent className="p-4 pt-0">
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          onClick={() => onDeeplink(target)}
+        <Link
+          to={href}
+          onClick={(event) => {
+            // A modified click (new tab, new window) keeps the browser's own
+            // behaviour; a plain one stays in the page and scrolls.
+            if (
+              event.button !== 0 ||
+              event.metaKey ||
+              event.ctrlKey ||
+              event.shiftKey ||
+              event.altKey
+            ) {
+              return;
+            }
+            event.preventDefault();
+            onDeeplink(target);
+          }}
+          className="rounded-sm text-sm font-medium text-brand hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           data-testid={`reports-card-${slug}-deeplink`}
         >
           {t(actionKey)}
-        </Button>
+        </Link>
       </CardContent>
     </Card>
   );

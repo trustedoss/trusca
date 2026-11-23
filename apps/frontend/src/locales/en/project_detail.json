@@ -45,8 +45,9 @@
       "category": "Category",
       "affected": "Affected",
       "obligations": "Obligations",
-      "notice_required": "NOTICE",
-      "override_source": "Override"
+      "notice_required": "NOTICE file",
+      "override_source": "Override",
+      "waiver": "Waiver"
     },
     "filter": {
       "search": "Search",
@@ -79,7 +80,7 @@
       "not_required": "—"
     },
     "notice_download": {
-      "format_label": "NOTICE",
+      "format_label": "NOTICE file",
       "format_text": "Text",
       "format_html": "HTML",
       "action": "Download",
@@ -1336,18 +1337,21 @@
     "readonly_tooltip": "Read-only historical snapshot"
   },
   "waive": {
-    "strip_label": "Waive:",
-    "waive_button": "Waive",
+    "waive_button": "Waive…",
     "waiving": "Waiving…",
     "submit": "Waive component",
     "cancel": "Cancel",
-    "waive_button_aria": "Waive this component's license",
+    "waive_button_aria": "Waive the {{spdx_id}} license for a component",
     "waived_badge": "Waived",
     "waived_tooltip": "Waived: {{reason}}",
+    "waived_count": "{{count}} waived",
+    "waived_count_item": "{{component}}: {{reason}}",
     "unwaive_button": "Un-waive",
     "unwaiving": "Un-waiving…",
-    "dialog_title": "Waive license for this component",
-    "dialog_description": "Allow {{component}} past the build gate despite its {{spdx_id}} license. This affects only this component.",
+    "dialog_title": "Waive a license for one component",
+    "dialog_description": "Choose the component to let past the build gate despite its {{spdx_id}} license. The waiver affects only that component.",
+    "target_label": "Component",
+    "all_waived": "Every component under this license is already waived. Un-waive one to put it back under the build gate.",
     "reason_label": "Reason",
     "reason_placeholder": "Why is this license acceptable for this component?",
     "reason_hint": "A reason is required and is kept as the audit record for this waiver.",
@@ -1357,7 +1361,6 @@
     "expires_required_hint": "A forbidden license can only be waived temporarily — set an expiry date.",
     "role_gated": "Only team admins can waive a license.",
     "no_team": "Project team is still loading.",
-    "no_purl": "This component has no package URL to scope a waiver to.",
     "error_forbidden": "You do not have permission to waive licenses for this team.",
     "error_malformed": "The waiver was rejected — check the reason and try again.",
     "error_generic": "Could not update the waiver. Please try again."

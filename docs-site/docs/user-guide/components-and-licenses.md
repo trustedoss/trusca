@@ -320,6 +320,28 @@ it off with `LICENSE_FETCH_ENABLED=false` (see
 [Environment variables](../reference/env-variables.md)), and then such
 components stay `unknown` because the registry is unreachable.
 
+### Waiving a forbidden license for one component {#license-waiver}
+
+A **Forbidden** row on the **Compliance** tab has a **Waive…** button in its
+**Waiver** column. A waiver lets one component past the build gate despite
+that license, and is recorded as a component-scoped exception in the team's
+[license policy](../reference/license-policies.md).
+
+1. Click **Waive…** on the forbidden row. The dialog lists every component
+   under that license that has a package URL.
+2. Choose the component to waive. A component that is already waived shows a
+   **Waived** badge with its reason on hover, and an **Un-waive** button that
+   puts it back under the build gate.
+3. Enter a **Reason**, which is kept as the audit record, and an **Expires**
+   date. A forbidden license can only be waived temporarily, so the expiry is
+   required and capped by `LICENSE_WAIVE_MAX_DAYS`.
+4. Click **Waive component**. The row then shows a count such as **1 waived**;
+   hover it to see each waived component and its reason.
+
+Only team admins and super admins can waive. Other members see the button
+disabled with the reason on hover, and so does anyone viewing a pinned
+historical scan.
+
 ## AI license review flags {#ai-license-review-flags}
 
 Some licenses restrict *how* you may use a component in ways the four-tier legal classification above does not capture — and that standard open-source compliance tooling often misses. TRUSCA surfaces two such restriction classes as an amber **Review needed** flag, shown next to the license tier badge and filterable on the Compliance tab.
@@ -461,7 +483,7 @@ Each license carries **obligations**: duties you must honor when redistributing 
 - **Dynamic linking** — LGPL-style: end-users must be able to relink against a modified library.
 - **No endorsement** — do not use the project name to endorse derivatives without permission.
 
-The **Compliance** tab with the **Has obligations** toggle on consolidates obligations across components. Pick a NOTICE format (**text** or **HTML**) on the toolbar and click **Download NOTICE** to save a NOTICE document summarizing every attribution and license. The endpoint also serves a `markdown` variant via the API. The document carries a copyright line per component (falling back to the component's registry URL when the SBOM recorded no holder) and closes with a **License Texts** section embedding the full text of every license in the project — so the `license_text_inclusion_required` obligation is satisfied by the NOTICE itself. See [SBOM → NOTICE file](./sbom.md#notice-file) for the format / MIME / extension table and the section-by-section contents.
+The **Compliance** tab with the **Has obligations** toggle on consolidates obligations across components. The **NOTICE file** group at the right end of the toolbar exports it: pick a format (**Text** or **HTML**) and click **Download** to save a NOTICE document summarizing every attribution and license. The endpoint also serves a `markdown` variant via the API. The document carries a copyright line per component (falling back to the component's registry URL when the SBOM recorded no holder) and closes with a **License Texts** section embedding the full text of every license in the project, so the `license_text_inclusion_required` obligation is satisfied by the NOTICE itself. See [SBOM → NOTICE file](./sbom.md#notice-file) for the format / MIME / extension table and the section-by-section contents.
 
 ![Project detail — Compliance tab with the Has obligations toggle on, showing the per-component obligations distribution](/img/screenshots/user-obligations-distribution.png)
 

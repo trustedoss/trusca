@@ -80,14 +80,15 @@ describe("SbomSignatureSection", () => {
     ).createObjectURL.mock.calls.length;
   }
 
-  it("renders the primary bundle button, secondary artifacts, and verify link", () => {
+  it("renders the bundle button, individual artifacts, and verify link", () => {
     render(<SbomSignatureSection projectId="proj-1" />);
     expect(
       screen.getByTestId("sbom-signature-section"),
     ).toBeInTheDocument();
+    // Secondary: the SBOM section above owns the screen's primary action.
     expect(
       screen.getByTestId("sbom-signature-download-bundle"),
-    ).toBeInTheDocument();
+    ).not.toHaveAttribute("data-variant", "primary");
     for (const suffix of [
       "signature",
       "public-key",

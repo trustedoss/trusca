@@ -95,14 +95,16 @@ import { useCompliance } from "@/features/projects/api/useCompliance";
 import {
   findComponentException,
   useTeamLicensePolicy,
-  type LicenseException,
 } from "@/features/projects/api/useLicenseWaive";
 import { useNotice } from "@/features/projects/api/useNotice";
 import { ConflictVerdictBadge } from "@/features/projects/components/ConflictVerdictBadge";
 import { LicenseCategoryBadge } from "@/features/projects/components/LicenseCategoryBadge";
 import { LicenseDrawer } from "@/features/projects/components/LicenseDrawer";
 import { ObligationDrawer } from "@/features/projects/components/ObligationDrawer";
-import { LicenseWaiveAction } from "@/features/projects/components/LicenseWaiveAction";
+import {
+  LicenseWaiveAction,
+  type LicenseWaiveTarget,
+} from "@/features/projects/components/LicenseWaiveAction";
 import { useAdvisoryTranslation } from "@/lib/advisoryTranslation";
 import type { LicensePolicyOut } from "@/lib/licensePoliciesApi";
 import { problemMessage } from "@/lib/problemMessage";
@@ -478,7 +480,7 @@ export function ComplianceTab({
       />
 
       <div
-        className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-2 text-xs text-muted-foreground"
+        className="flex flex-wrap items-center justify-between gap-2 border-b px-6 py-2 text-xs text-muted-foreground"
         data-testid="compliance-summary"
         data-total={total}
         data-loaded={items.length}
@@ -728,11 +730,18 @@ function ComplianceToolbar({
 }: ComplianceToolbarProps) {
   const { t } = useTranslation("project_detail");
   return (
+    // px-6 is the gutter every other tab's toolbar starts on. The filters sit
+    // in one group and the NOTICE export in another at the right end, so the
+    // export is not read as one more filter and the filters keep to one line.
     <div
-      className="flex flex-col gap-3 border-b bg-background px-4 py-3 lg:flex-row lg:items-end lg:gap-4"
+      className="flex flex-col gap-3 border-b bg-background px-6 py-3 lg:flex-row lg:items-end lg:gap-4"
       data-testid="compliance-toolbar"
     >
-      <div className="flex-1">
+      <div
+        className="flex min-w-0 flex-1 flex-col gap-3 lg:flex-row lg:items-end lg:gap-4"
+        data-testid="compliance-filters"
+      >
+      <div className="min-w-0 flex-1">
         <label
           htmlFor="compliance-search"
           className="block text-xs font-medium text-muted-foreground"
@@ -863,6 +872,8 @@ function ComplianceToolbar({
         </Select>
       </div>
 
+      </div>
+
       <ComplianceNoticeDownload
         projectId={projectId}
         projectName={projectName}
@@ -897,7 +908,10 @@ function ComplianceNoticeDownload({
   });
   const [format, setFormat] = useState<NoticeFormat>("text");
   return (
-    <div className="flex flex-col" data-testid="compliance-notice-download">
+    <div
+      className="flex shrink-0 flex-col lg:border-l lg:pl-4"
+      data-testid="compliance-notice-download"
+    >
       <label
         htmlFor="compliance-notice-format"
         className="text-xs font-medium text-muted-foreground"
@@ -957,7 +971,7 @@ function ComplianceTableHeader({ showConflict }: { showConflict: boolean }) {
   const { t } = useTranslation("project_detail");
   return (
     <div
-      className="flex items-center gap-3 border-b bg-muted/30 px-4 text-xs font-medium uppercase tracking-wide text-muted-foreground"
+      className="flex items-center gap-3 border-b bg-muted/30 px-6 text-xs font-medium text-muted-foreground"
       style={{ height: "32px" }}
       data-testid="compliance-header"
       role="row"
@@ -986,6 +1000,9 @@ function ComplianceTableHeader({ showConflict }: { showConflict: boolean }) {
       <span className="w-32" role="columnheader">
         {t("compliance.column.override_source")}
       </span>
+      <span className={WAIVE_COLUMN} role="columnheader">
+        {t("compliance.column.waiver")}
+      </span>
     </div>
   );
 }
@@ -1006,6 +1023,8 @@ interface ComplianceGridRowProps {
 }
 
 const AFFECTED_PREVIEW_CAP = 3;
+/** Fixed width of the waiver column, shared by header and row. */
+const WAIVE_COLUMN = "flex w-40 shrink-0 justify-end";
 const OBLIGATIONS_PREVIEW_CAP = 3;
 
 /**
@@ -1050,12 +1069,23 @@ function ComplianceGridRow({
   // allowed / unknown rows have no gate-blocking semantics to override here.
   const isWaivable = row.category === "forbidden";
   // Only components carrying a purl can be scoped by the exception API.
-  const waivableComponents = isWaivable
-    ? row.affected_components.filter((c) => c.purl != null)
+  const waiveTargets: LicenseWaiveTarget[] = isWaivable
+    ? row.affected_components.flatMap((c) =>
+        c.purl == null
+          ? []
+          : [
+              {
+                key: c.component_version_id,
+                label: `${c.name}@${c.version}`,
+                purl: c.purl,
+                existing: findComponentException(policy, row.spdx_id, c.purl),
+              },
+            ],
+      )
     : [];
 
-  // The row is a non-button container so the per-component waive controls
-  // (which are themselves buttons) can live inside without nesting <button>s.
+  // The row is a non-button container so the waive control (itself a
+  // button) can live inside without nesting <button>s.
   //
   // The drawer-open affordance used to be one button wrapping every read-only
   // column. It could not stay once the row became a real `row`: a row owns
@@ -1074,7 +1104,14 @@ function ComplianceGridRow({
       data-has-obligations={row.obligations.length > 0}
       data-notice-required={row.notice_required}
       data-row-index={rowIndex}
-      data-waivable={isWaivable ? "true" : undefined}
+      data-waivable={waiveTargets.length > 0 ? "true" : undefined}
+      // Space separated, so a test can find the row of one component with
+      // the `~=` attribute selector. purls carry no spaces.
+      data-waivable-purls={
+        waiveTargets.length > 0
+          ? waiveTargets.map((tg) => tg.purl).join(" ")
+          : undefined
+      }
       role="row"
       // +2: the header occupies row 1, and aria-rowindex is 1-based.
       aria-rowindex={rowIndex + 2}
@@ -1084,7 +1121,7 @@ function ComplianceGridRow({
     >
       <div
         onClick={onSelect}
-        className={cn("flex w-full items-center gap-3 px-4 text-left text-sm")}
+        className={cn("flex w-full items-center gap-3 px-6 text-left text-sm")}
         style={{ height: "var(--table-row)" }}
       >
         <span
@@ -1206,55 +1243,31 @@ function ComplianceGridRow({
         >
           {row.category_override_source ?? t("compliance.override.none")}
         </span>
+        <span
+          className={WAIVE_COLUMN}
+          role="cell"
+          data-testid="compliance-row-waive"
+          // The waive dialog renders in a portal, but React still bubbles its
+          // clicks through this tree; without the stop, every click inside the
+          // dialog would also open the licence drawer behind it.
+          onClick={(e) => e.stopPropagation()}
+        >
+          {waiveTargets.length > 0 ? (
+            <LicenseWaiveAction
+              projectId={projectId}
+              teamId={teamId}
+              projectRole={projectRole}
+              spdxId={row.spdx_id}
+              targets={waiveTargets}
+              // Only forbidden rows are waivable here, and a waiver on them
+              // relaxes the build gate, so a capped expiry is required.
+              requireExpiry
+              readOnly={readOnly}
+            />
+          ) : null}
+        </span>
       </div>
 
-      {waivableComponents.length > 0 ? (
-        // A second visual line, but structurally still part of this row, so it
-        // is a cell. Without the role it would be an unowned child of a `row`,
-        // which is the same violation the wrapping button caused.
-        <div
-          className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 pb-2 pl-[12.25rem] text-xs"
-          role="cell"
-          data-testid="compliance-row-waive-strip"
-        >
-          <span className="text-muted-foreground">
-            {t("waive.strip_label")}
-          </span>
-          {waivableComponents.map((c) => {
-            const existing: LicenseException | null = findComponentException(
-              policy,
-              row.spdx_id,
-              c.purl,
-            );
-            return (
-              <span
-                key={c.component_version_id}
-                className="inline-flex items-center gap-1.5"
-                data-testid="compliance-waive-component"
-                data-component-purl={c.purl ?? ""}
-              >
-                <span
-                  className="max-w-[12rem] truncate font-mono text-muted-foreground"
-                  title={`${c.name}@${c.version}`}
-                >{`${c.name}@${c.version}`}</span>
-                <LicenseWaiveAction
-                  projectId={projectId}
-                  teamId={teamId}
-                  projectRole={projectRole}
-                  spdxId={row.spdx_id}
-                  componentLabel={`${c.name}@${c.version}`}
-                  componentPurl={c.purl}
-                  existing={existing}
-                  // The strip only renders for forbidden rows, so a waiver here
-                  // always relaxes the build gate → a capped expiry is required.
-                  requireExpiry={row.category === "forbidden"}
-                  readOnly={readOnly}
-                />
-              </span>
-            );
-          })}
-        </div>
-      ) : null}
     </div>
   );
 }
