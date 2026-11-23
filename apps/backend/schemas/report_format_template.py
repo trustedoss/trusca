@@ -11,6 +11,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from core.plural import noun
 from models import REPORT_COMPONENT_COLUMNS, REPORT_VULNERABILITY_COLUMNS
 
 #: Mirrors the NOTICE template clamp's spirit: a stability bound on a plain
@@ -84,7 +85,9 @@ def _validate_column_subset(
         raise ValueError(f"{field_name} may not be an empty list; omit it (null) instead")
     unknown = sorted(set(columns) - set(canonical))
     if unknown:
-        raise ValueError(f"{field_name} contains unknown column(s): {unknown}")
+        raise ValueError(
+            f"{field_name} contains unknown {noun(len(unknown), 'column')}: {unknown}"
+        )
 
 
 class ReportFormatTemplateOut(BaseModel):

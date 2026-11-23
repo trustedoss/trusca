@@ -172,6 +172,15 @@ def test_probe_celery_workers_present() -> None:
     assert component.value == 1
     assert component.detail_code == "celery.workers_responded"
     assert component.detail_params == {"count": 1}
+    # The English fallback names the right noun form, not "worker(s)".
+    assert component.detail == "1 worker responded"
+
+
+def test_probe_celery_several_workers_uses_plural() -> None:
+    fake = _FakeCelery(replies=[{"w1": {"ok": "pong"}}, {"w2": {"ok": "pong"}}])
+    component = _probe_celery(celery_app_override=fake)
+    assert component.value == 2
+    assert component.detail == "2 workers responded"
 
 
 def test_probe_celery_no_workers() -> None:
@@ -230,6 +239,9 @@ async def test_probe_active_scans_counts_queued_and_running(
     assert int(component.value) >= 1
     assert component.detail_code == "active_scans.count"
     assert component.detail_params == {"count": int(component.value)}
+    assert component.detail is not None
+    assert "(s)" not in component.detail
+    assert component.detail.endswith(" queued or running")
 
 
 async def test_probe_active_scans_flags_backlog(
@@ -279,6 +291,8 @@ async def test_probe_last_24h_errors_counts_recent_failures(db_session: AsyncSes
     assert int(component.value) >= 1
     assert component.detail_code == "last_24h_errors.count"
     assert component.detail_params == {"count": int(component.value)}
+    assert component.detail is not None
+    assert "(s)" not in component.detail
 
 
 # ---------------------------------------------------------------------------

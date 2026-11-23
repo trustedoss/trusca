@@ -158,7 +158,7 @@ def test_the_target_component_is_measured_with_the_rest() -> None:
     }
     row = _rows(doc)["cisa-component-name"]
     assert row.status == "warn"
-    assert row.detail == "1/2 component(s)"
+    assert row.detail == "1/2 components"
 
 
 def test_an_identifier_may_be_a_purl_a_cpe_a_hash_or_a_swhid() -> None:

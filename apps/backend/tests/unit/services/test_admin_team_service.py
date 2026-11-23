@@ -494,6 +494,7 @@ async def test_delete_team_with_live_projects_is_refused(
         await delete_team(db_session, actor=actor, team_id=team.id)
     assert excinfo.value.status_code == 409
     assert excinfo.value.extensions == {"team_has_projects": True, "project_count": 2}
+    assert "2 non-archived projects; archive them" in str(excinfo.value)
 
 
 async def test_delete_team_with_child_group_is_refused(
@@ -520,6 +521,7 @@ async def test_delete_team_with_child_group_is_refused(
         await delete_team(db_session, actor=actor, team_id=parent.id)
     assert excinfo.value.status_code == 409
     assert excinfo.value.extensions == {"team_has_children": True, "child_count": 1}
+    assert "1 child group; move or delete it" in str(excinfo.value)
 
 
 async def test_delete_team_with_only_archived_projects_succeeds(

@@ -51,6 +51,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from core.plural import count_noun
 from services import sbom_component_walk
 
 # ---------------------------------------------------------------------------
@@ -489,7 +490,8 @@ def _cdx_checks(doc: dict[str, Any]) -> _ScoreResult:
     # this check can detect, so it at least shows the shape it measured.
     excluded_count = tot - ptot
     _MEASURED = (
-        f" [{ptot} package component(s) measured, {excluded_count} file/data excluded]"
+        f" [{count_noun(ptot, 'package component')} measured,"
+        f" {excluded_count} file/data excluded]"
         if excluded_count
         else ""
     )
@@ -502,7 +504,7 @@ def _cdx_checks(doc: dict[str, Any]) -> _ScoreResult:
         Check("timestamp", "Timestamp (metadata.timestamp)", True,
               "pass" if ts else "fail", str(ts)),
         Check("tools", "Tool info (metadata.tools)", True,
-              "pass" if n_tools > 0 else "fail", f"{n_tools} tool(s)"),
+              "pass" if n_tools > 0 else "fail", count_noun(n_tools, "tool")),
         Check("top-component", "Top-level component name+version", True,
               "pass" if top.get("name") and top.get("version") else "fail",
               f"{top.get('name') or '(none)'}@{top.get('version') or ''}"),
@@ -519,7 +521,7 @@ def _cdx_checks(doc: dict[str, Any]) -> _ScoreResult:
               "pass" if not generic else "fail",
               f"{len(generic)} offending", _cap([str(g) for g in generic])),
         Check("transitive", "Transitive dependencies (graph edges)", True,
-              "pass" if dep_edges > 0 else "fail", f"{dep_edges} edge(s)"),
+              "pass" if dep_edges > 0 else "fail", count_noun(dep_edges, "edge")),
         Check("license", f"License coverage (>= {licmin}%, recommended)", False,
               "pass" if lic_pct >= licmin else "warn", f"{lic_pct}% ({lic_ok}/{tot})"),
         Check("hash", f"Hash coverage (>= {hashmin}%, recommended)", False,
@@ -648,7 +650,7 @@ def _spdx_json_checks(doc: dict[str, Any]) -> _ScoreResult:
         Check("timestamp", "Timestamp (creationInfo.created)", True,
               "pass" if ts else "fail", str(ts)),
         Check("tools", "Tool info (creationInfo.creators Tool:)", True,
-              "pass" if n_tools > 0 else "fail", f"{n_tools} tool(s)"),
+              "pass" if n_tools > 0 else "fail", count_noun(n_tools, "tool")),
         Check("top-component", "Document name + described root", True,
               "pass" if docname and (describes > 0 or tot > 0) else "fail",
               str(docname)),
@@ -663,7 +665,7 @@ def _spdx_json_checks(doc: dict[str, Any]) -> _ScoreResult:
               "pass" if not generic else "fail",
               f"{len(generic)} offending", _cap(generic)),
         Check("transitive", "Transitive dependencies (DEPENDS_ON)", True,
-              "pass" if dep_edges > 0 else "fail", f"{dep_edges} edge(s)"),
+              "pass" if dep_edges > 0 else "fail", count_noun(dep_edges, "edge")),
         Check("license", f"License coverage (>= {licmin}%, recommended)", False,
               "pass" if lic_pct >= licmin else "warn", f"{lic_pct}% ({lic_ok}/{tot})"),
         Check("hash", f"Hash coverage (>= {hashmin}%, recommended)", False,
@@ -694,23 +696,23 @@ def _spdx_tv_checks(text: str) -> _ScoreResult:
         Check("timestamp", "Timestamp (Created:)", True,
               "pass" if ts > 0 else "fail", f"{ts} found"),
         Check("tools", "Tool info (Creator: Tool:)", True,
-              "pass" if n_tools > 0 else "fail", f"{n_tools} tool(s)"),
+              "pass" if n_tools > 0 else "fail", count_noun(n_tools, "tool")),
         Check("top-component", "Document/package present", True,
-              "pass" if names > 0 else "fail", f"{names} package(s)"),
+              "pass" if names > 0 else "fail", count_noun(names, "package")),
         Check("name-version", "PackageName + PackageVersion present", True,
               "pass" if names > 0 and vers >= names else "fail",
               f"names={names}, versions={vers}"),
         Check("purl", "PURL external refs present", True,
               "pass" if purls > 0 and purls >= names else "fail",
-              f"{purls} purl ref(s) for {names} package(s)"),
+              f"{count_noun(purls, 'purl ref')} for {count_noun(names, 'package')}"),
         Check("no-generic", "No pkg:generic / custom PURL (0)", True,
               "pass" if generic == 0 else "fail", f"{generic} offending"),
         Check("transitive", "Transitive dependencies (DEPENDS_ON)", True,
-              "pass" if deps > 0 else "fail", f"{deps} relationship(s)"),
+              "pass" if deps > 0 else "fail", count_noun(deps, "relationship")),
         Check("license", "License present (recommended)", False,
-              "pass" if lics > 0 else "warn", f"{lics} license field(s)"),
+              "pass" if lics > 0 else "warn", count_noun(lics, "license field")),
         Check("hash", "Checksums present (recommended)", False,
-              "pass" if hashes > 0 else "warn", f"{hashes} checksum(s)"),
+              "pass" if hashes > 0 else "warn", count_noun(hashes, "checksum")),
     ]
     return checks, names, None, None, None
 

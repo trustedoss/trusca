@@ -49,6 +49,7 @@ from core.authz import assert_team_access
 from core.db import get_db
 from core.errors import problem_response
 from core.pagination import PAGE_MAX
+from core.plural import noun
 from core.ratelimit import limiter
 from core.security import CurrentUser, require_role
 from models import REPORT_COMPONENT_COLUMNS, REPORT_VULNERABILITY_COLUMNS, Team
@@ -170,7 +171,9 @@ def _validate_requested_columns(
         return None
     unknown = sorted(set(requested) - set(canonical))
     if unknown:
-        raise _InvalidReportColumns(f"{field_name} contains unknown column(s): {unknown}")
+        raise _InvalidReportColumns(
+            f"{field_name} contains unknown {noun(len(unknown), 'column')}: {unknown}"
+        )
     return requested
 
 

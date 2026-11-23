@@ -36,6 +36,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import redis_url
+from core.plural import count_noun, noun
 from models import Scan
 from schemas.admin_ops import (
     HealthComponent,
@@ -137,7 +138,7 @@ def _probe_celery(*, celery_app_override: Any | None = None) -> HealthComponent:
         return HealthComponent(
             name="celery",
             status="ok",
-            detail=f"{count} worker(s) responded",
+            detail=f"{count_noun(count, 'worker')} responded",
             detail_code="celery.workers_responded",
             detail_params={"count": count},
             value=count,
@@ -237,7 +238,7 @@ async def _probe_active_scans(session: AsyncSession) -> HealthComponent:
     return HealthComponent(
         name="active_scans",
         status=status,
-        detail=f"{count} scan(s) queued or running",
+        detail=f"{count_noun(count, 'scan')} queued or running",
         detail_code="active_scans.count",
         detail_params={"count": count},
         value=count,
@@ -268,7 +269,7 @@ async def _probe_last_24h_errors(session: AsyncSession) -> HealthComponent:
     return HealthComponent(
         name="last_24h_errors",
         status="ok",
-        detail=f"{count} failed scan(s) in the last 24h",
+        detail=f"{count} failed {noun(count, 'scan')} in the last 24h",
         detail_code="last_24h_errors.count",
         detail_params={"count": count},
         value=count,

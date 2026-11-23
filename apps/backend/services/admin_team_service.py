@@ -45,6 +45,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.audit import audit_context
 from core.config import demo_read_only
+from core.plural import count_noun, noun
 from core.security import CurrentUser, forget_principal
 from core.sql_safety import escape_like
 from models import Membership, Organization, Project, Scan, Team, User
@@ -668,7 +669,8 @@ async def delete_team(
     if live_projects:
         raise TeamHasProjects(
             f"team {team_id} still owns {len(live_projects)} non-archived "
-            "project(s); archive them before deleting the team",
+            f"{noun(len(live_projects), 'project')}; archive "
+            f"{'it' if len(live_projects) == 1 else 'them'} before deleting the team",
             project_count=len(live_projects),
         )
 
@@ -685,8 +687,8 @@ async def delete_team(
     ).scalar_one()
     if child_count:
         raise TeamHasChildren(
-            f"team {team_id} still has {child_count} child group(s); "
-            "move or delete them before deleting this group",
+            f"team {team_id} still has {count_noun(child_count, 'child group')}; "
+            f"move or delete {'it' if child_count == 1 else 'them'} before deleting this group",
             child_count=child_count,
         )
 

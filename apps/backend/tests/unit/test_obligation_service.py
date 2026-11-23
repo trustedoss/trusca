@@ -23,6 +23,7 @@ Read-only domain — no mutation cases.
 
 from __future__ import annotations
 
+import re
 import uuid
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
@@ -737,7 +738,7 @@ def test_render_notice_records_omitted_component_count(fmt: str) -> None:
             obligations_by_license={lic_id: []},
             fmt=fmt,
         )
-    assert "12345 more component(s) omitted" in body
+    assert "12345 more components omitted" in body
     # The credited components we DID keep are still present (NOTICE stays
     # legally complete for the normal head of the list).
     assert "a @ 1" in body and "b @ 2" in body
@@ -770,7 +771,7 @@ def test_render_notice_no_omitted_note_when_under_cap(fmt: str) -> None:
             obligations_by_license={lic_id: []},
             fmt=fmt,
         )
-    assert "more component(s) omitted" not in body
+    assert not re.search(r"more components? omitted", body)
 
 
 def test_clamp_obligation_text_caps_at_byte_budget() -> None:
@@ -806,7 +807,7 @@ def test_notice_license_and_obligation_caps_are_sane() -> None:
 
 @pytest.mark.parametrize("fmt", ["text", "markdown", "html"])
 def test_render_notice_records_omitted_license_count(fmt: str) -> None:
-    """The license cap fires → every format records '+N more license(s) omitted'."""
+    """The license cap fires → every format records '+N more licenses omitted'."""
     when = datetime(2026, 5, 22, 12, 0, 0, tzinfo=UTC)
     lic_id = uuid.uuid4()
     entry = {
@@ -835,7 +836,7 @@ def test_render_notice_records_omitted_license_count(fmt: str) -> None:
             fmt=fmt,
             licenses_omitted=777,
         )
-    assert "777 more license(s) omitted" in body
+    assert "777 more licenses omitted" in body
     # The license section we DID keep is still rendered (legally complete head).
     assert "MIT" in body and "a @ 1" in body
 
@@ -870,7 +871,7 @@ def test_render_notice_no_license_omitted_note_under_cap(fmt: str) -> None:
             fmt=fmt,
             licenses_omitted=0,
         )
-    assert "more license(s) omitted" not in body
+    assert not re.search(r"more licenses? omitted", body)
 
 
 @pytest.mark.parametrize("fmt", ["text", "markdown", "html"])
@@ -904,7 +905,7 @@ def test_render_notice_records_omitted_obligations_per_license(fmt: str) -> None
             obligations_by_license={lic_id: obs},
             fmt=fmt,
         )
-    assert "42 more obligation(s) omitted" in body
+    assert "42 more obligations omitted" in body
     # The obligation we DID keep is still rendered.
     assert "Keep this notice." in body
 
@@ -938,7 +939,7 @@ def test_render_notice_no_obligations_omitted_note_under_cap(fmt: str) -> None:
             obligations_by_license={lic_id: obs},
             fmt=fmt,
         )
-    assert "more obligation(s) omitted" not in body
+    assert not re.search(r"more obligations? omitted", body)
 
 
 # ---------------------------------------------------------------------------
@@ -1242,7 +1243,7 @@ def test_render_notice_license_text_cap_records_omitted(
 
     monkeypatch.setattr(svc, "_NOTICE_LICENSE_TEXT_CAP", 1)
     body = _render(fmt, [_mit_entry(spdx_id="MIT OR Apache-2.0", name="Dual")])
-    assert "1 more license text(s) omitted" in body
+    assert "1 more license text omitted" in body
     # The kept head (Apache-2.0, spdx-asc) is present; MIT's text is clipped.
     if fmt == "html":
         assert "<h3>Apache-2.0</h3>" in body
@@ -2325,7 +2326,7 @@ async def test_generate_notice_caps_obligations_per_license_with_omitted_note(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """When a license carries more obligations than the per-license cap, the
-    NOTICE body keeps the head, records an honest '+N more obligation(s) omitted'
+    NOTICE body keeps the head, records an honest '+N more obligations omitted'
     note, and the inspection ``obligation_count`` reflects the TRUE total."""
     import services.obligation_service as svc
 
@@ -2352,7 +2353,7 @@ async def test_generate_notice_caps_obligations_per_license_with_omitted_note(
         db_session, project_id=project.id, actor=actor, fmt="text"
     )
     body = payload["body"]
-    assert "3 more obligation(s) omitted" in body
+    assert "3 more obligations omitted" in body
     # The kept head (first 2 by kind) is present; the omitted tail is not.
     assert "duty 0" in body and "duty 1" in body
     # Inspection count reports the TRUE total (5), not the rendered (2).
@@ -2364,7 +2365,7 @@ async def test_generate_notice_caps_license_count_with_omitted_footer(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """When the scan surfaces more distinct licenses than the license cap, the
-    NOTICE renders the head sections + an honest '+N more license(s) omitted'
+    NOTICE renders the head sections + an honest '+N more licenses omitted'
     footer, and ``license_count`` reflects the TRUE total."""
     import services.obligation_service as svc
 
@@ -2391,7 +2392,7 @@ async def test_generate_notice_caps_license_count_with_omitted_footer(
         db_session, project_id=project.id, actor=actor, fmt="text"
     )
     body = payload["body"]
-    assert "2 more license(s) omitted" in body
+    assert "2 more licenses omitted" in body
     # Inspection count reports the TRUE total (4), not the rendered (2).
     assert payload["license_count"] == 4
 

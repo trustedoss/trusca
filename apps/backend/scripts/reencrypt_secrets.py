@@ -43,6 +43,10 @@ def _database_url() -> str:
     return (os.getenv("DATABASE_URL_OWNER") or os.getenv("DATABASE_URL") or "").strip()
 
 
+def _rows(count: int) -> str:
+    return f"{count} {'row' if count == 1 else 'rows'}"
+
+
 def _print_report(report: RotationReport, *, rewrote: bool) -> None:
     for progress in report.columns:
         line = (
@@ -90,7 +94,7 @@ async def _main() -> int:
 
     if report.unreadable_total:
         print(
-            f"\n{report.unreadable_total} row(s) could not be opened by any "
+            f"\n{_rows(report.unreadable_total)} could not be opened by any "
             "configured key. A key they were written under is missing from "
             "GITHUB_APP_ENCRYPTION_KEY. Add it back before doing anything "
             "else; those rows cannot be recovered without it.",
@@ -104,7 +108,8 @@ async def _main() -> int:
             return 0
         movable = report.stale_total - report.unreadable_total
         print(
-            f"\n{report.stale_total} row(s) are still on an older key "
+            f"\n{_rows(report.stale_total)} "
+            f"{'is' if report.stale_total == 1 else 'are'} still on an older key "
             f"({movable} the rewrite can move). Run with MODE=rewrite. Do NOT "
             "remove a key while this is above zero.",
             file=sys.stderr,
@@ -114,10 +119,11 @@ async def _main() -> int:
     # A rewrite pass reports what is left rather than what it did, because
     # what is left is the number the removal decision turns on.
     remaining = sum(c.remaining for c in report.columns)
-    print(f"\nrewrote {report.rewritten_total} row(s)")
+    print(f"\nrewrote {_rows(report.rewritten_total)}")
     if remaining:
         print(
-            f"{remaining} row(s) were not moved. Run MODE=count to see whether "
+            f"{_rows(remaining)} {'was' if remaining == 1 else 'were'} not moved. "
+            "Run MODE=count to see whether "
             "anything is still on an older key.",
             file=sys.stderr,
         )

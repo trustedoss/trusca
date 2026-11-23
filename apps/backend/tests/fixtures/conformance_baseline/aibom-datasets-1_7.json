@@ -9,7 +9,7 @@
       "status": "pass"
     },
     {
-      "detail": "1 tool(s)",
+      "detail": "1 tool",
       "id": "tools",
       "label": "Tool info (metadata.tools)",
       "missing": [],
@@ -25,7 +25,7 @@
       "status": "pass"
     },
     {
-      "detail": "1/1 [1 package component(s) measured, 2 file/data excluded]",
+      "detail": "1/1 [1 package component measured, 2 file/data excluded]",
       "id": "name-version",
       "label": "Component name+version coverage (100%)",
       "missing": [],
@@ -33,7 +33,7 @@
       "status": "pass"
     },
     {
-      "detail": "100% (1/1) [1 package component(s) measured, 2 file/data excluded]",
+      "detail": "100% (1/1) [1 package component measured, 2 file/data excluded]",
       "id": "purl",
       "label": "PURL coverage (>= 90%)",
       "missing": [],
@@ -49,7 +49,7 @@
       "status": "pass"
     },
     {
-      "detail": "2 edge(s)",
+      "detail": "2 edges",
       "id": "transitive",
       "label": "Transitive dependencies (graph edges)",
       "missing": [],
@@ -213,7 +213,7 @@
     },
     {
       "cluster": "cisa-component",
-      "detail": "4/4 component(s)",
+      "detail": "4/4 components",
       "id": "cisa-component-name",
       "label": "Component name",
       "missing": [],
@@ -223,7 +223,7 @@
     },
     {
       "cluster": "cisa-component",
-      "detail": "4/4 component(s)",
+      "detail": "4/4 components",
       "id": "cisa-component-version",
       "label": "Component version",
       "missing": [],
@@ -233,7 +233,7 @@
     },
     {
       "cluster": "cisa-component",
-      "detail": "0/4 component(s)",
+      "detail": "0/4 components",
       "id": "cisa-component-producer",
       "label": "Component producer",
       "missing": [
@@ -248,7 +248,7 @@
     },
     {
       "cluster": "cisa-component",
-      "detail": "2/4 component(s)",
+      "detail": "2/4 components",
       "id": "cisa-component-identifiers",
       "label": "Component identifiers",
       "missing": [
@@ -261,7 +261,7 @@
     },
     {
       "cluster": "cisa-component",
-      "detail": "2/4 component(s)",
+      "detail": "2/4 components",
       "id": "cisa-component-license",
       "label": "Component license",
       "missing": [
@@ -274,7 +274,7 @@
     },
     {
       "cluster": "cisa-component",
-      "detail": "1/4 component(s)",
+      "detail": "1/4 components",
       "id": "cisa-component-hash-value",
       "label": "Component hash value",
       "missing": [
@@ -288,7 +288,7 @@
     },
     {
       "cluster": "cisa-component",
-      "detail": "4/4 component(s)",
+      "detail": "4/4 components",
       "id": "cisa-component-hash-algorithm",
       "label": "Component hash algorithm",
       "missing": [],
@@ -577,7 +577,7 @@
     },
     {
       "cluster": "models",
-      "detail": "1/1 model component(s)",
+      "detail": "1/1 model component",
       "id": "g7-model-name",
       "label": "Model name",
       "missing": [],
@@ -588,7 +588,7 @@
     },
     {
       "cluster": "models",
-      "detail": "1/1 model component(s)",
+      "detail": "1/1 model component",
       "evidence": [
         "pkg:huggingface/distilbert/distilbert-base-uncased-finetuned-sst-2-english@1.0"
       ],
@@ -602,7 +602,7 @@
     },
     {
       "cluster": "models",
-      "detail": "1/1 model component(s)",
+      "detail": "1/1 model component",
       "id": "g7-model-version",
       "label": "Model version",
       "missing": [],
@@ -613,7 +613,7 @@
     },
     {
       "cluster": "models",
-      "detail": "0/1 model component(s)",
+      "detail": "0/1 model component",
       "id": "g7-model-timestamp",
       "label": "Model timestamp",
       "missing": [
@@ -626,7 +626,7 @@
     },
     {
       "cluster": "models",
-      "detail": "0/1 model component(s)",
+      "detail": "0/1 model component",
       "id": "g7-model-producer",
       "label": "Model producer",
       "missing": [
@@ -639,7 +639,7 @@
     },
     {
       "cluster": "models",
-      "detail": "0/1 model component(s)",
+      "detail": "0/1 model component",
       "id": "g7-model-description",
       "label": "Model description",
       "missing": [
@@ -652,7 +652,7 @@
     },
     {
       "cluster": "models",
-      "detail": "0/1 model component(s)",
+      "detail": "0/1 model component",
       "id": "g7-model-hash-value",
       "label": "Model hash value",
       "missing": [
@@ -665,7 +665,7 @@
     },
     {
       "cluster": "models",
-      "detail": "0/1 model component(s)",
+      "detail": "0/1 model component",
       "id": "g7-model-hash-alg",
       "label": "Model hash algorithm",
       "missing": [
@@ -678,7 +678,7 @@
     },
     {
       "cluster": "models",
-      "detail": "0/1 model component(s)",
+      "detail": "0/1 model component",
       "id": "g7-model-card",
       "label": "Model properties (model card)",
       "missing": [
@@ -691,7 +691,7 @@
     },
     {
       "cluster": "models",
-      "detail": "0/1 model component(s)",
+      "detail": "0/1 model component",
       "id": "g7-model-io",
       "label": "Model input-output properties",
       "missing": [
@@ -704,7 +704,7 @@
     },
     {
       "cluster": "models",
-      "detail": "0/1 model component(s)",
+      "detail": "0/1 model component",
       "id": "g7-model-training",
       "label": "Model training properties",
       "missing": [
@@ -717,7 +717,7 @@
     },
     {
       "cluster": "models",
-      "detail": "1/1 model component(s)",
+      "detail": "1/1 model component",
       "evidence": [
         "Apache-2.0"
       ],
@@ -742,7 +742,7 @@
     },
     {
       "cluster": "models",
-      "detail": "0/1 model component(s)",
+      "detail": "0/1 model component",
       "id": "g7-model-extref",
       "label": "Model external references",
       "missing": [
