@@ -84,9 +84,9 @@ byte-stability 달성 방법:
 
 ## UI에서 다운로드
 
-1. 프로젝트 열기.
-2. **SBOM** 탭 클릭.
-3. 4개 포맷 버튼 중 하나(CycloneDX JSON, CycloneDX XML, SPDX JSON, SPDX Tag-Value)를 클릭하여 다운로드.
+1. 프로젝트를 엽니다.
+2. **리포트** 탭을 클릭하고 **SBOM 다운로드** 절로 내려갑니다. **SBOM** 카드의 **SBOM 다운로드로 이동** 링크를 눌러도 그 위치로 갑니다.
+3. 기본 형식이자 이 절의 주 버튼인 **CycloneDX JSON 다운로드**를 클릭하거나, 다른 형식(CycloneDX XML, SPDX JSON, SPDX Tag-Value) 중 하나를 클릭합니다.
 
 ![SBOM 탭 — 4개 포맷 다운로드 버튼(CycloneDX JSON/XML, SPDX JSON/Tag-Value)](/img/screenshots/user-sbom-format-buttons.png)
 
@@ -209,7 +209,7 @@ NOTICE 엔드포인트는 `format` 쿼리 값을 받습니다(기본 `text`).
 
 ### 다운로드
 
-- **UI:** 프로젝트 → **Obligations** 탭 → 포맷 선택(**text** 또는 **HTML**) → **Download NOTICE**. 브라우저가 `NOTICE-<project>.<ext>`로 저장합니다. markdown 변형은 API에서 제공됩니다.
+- **UI:** 프로젝트 → **컴플라이언스** 탭 → 툴바 오른쪽 끝의 **NOTICE 파일** 묶음 → 형식 선택(**텍스트** 또는 **HTML**) → **다운로드**. **리포트** 탭의 **NOTICE** 카드에서도 같은 파일을 내려받습니다. 브라우저가 `NOTICE-<project>.<ext>`로 저장합니다. markdown 변형은 API에서 제공됩니다.
 - **API:**
 
   ```bash

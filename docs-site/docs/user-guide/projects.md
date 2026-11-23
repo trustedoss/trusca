@@ -288,14 +288,15 @@ The companion **Compare** screen (the **Compare** button on the Releases-tab too
 
 The **Reports** tab is a single landing page that unifies the project's downloadable artifacts:
 
-- Four **generate cards** for **NOTICE**, **SBOM**, **Vulnerability PDF**, and **VEX**. Each card is a deep link — clicking the card's action button switches to the relevant domain tab (Obligations / SBOM / Vulnerabilities / Vulnerabilities) where the actual format chooser and download buttons live. The currently pinned `?scan=` snapshot is preserved across the jump.
+- Four **generate cards** for **NOTICE**, **SBOM**, **Vulnerability PDF**, and **VEX**. The **NOTICE** and **Vulnerability PDF** cards download directly. The other two are links: **Jump to SBOM downloads** scrolls to the SBOM section below, and **Go to Vulnerabilities** opens the Vulnerabilities tab, where VEX export and import live. The currently pinned `?scan=` snapshot is preserved across the jump, and a link opens in a new tab like any other.
+- An **SBOM downloads** section below the cards. **Download CycloneDX JSON**, the default export, is the primary button; CycloneDX XML, SPDX JSON and SPDX Tag-Value sit beside it. Under them, **Signature & verification** offers the signature bundle (`.zip`) and the individual signature artifacts for checking the SBOM with cosign.
 - An **export history table** on the right, with columns **When** (relative + absolute timestamp), **Who** (the actor's email — `—` for anonymized rows kept for audit), **Type** (one of NOTICE / SBOM / Vulnerability PDF / VEX), **Format** (the exact format string — `cyclonedx-json`, `spdx-tv`, `openvex`, etc.), **Scan** (first eight characters of the scan id), and **Size** (humanized; `—` when the renderer did not record a size).
 - A toolbar **Type** multi-select filter and Prev / Next pagination, both mirrored to the URL as `?rpt_type=<type>` / `?rpt_page=<n>` so a filtered view is reload-safe and link-shareable.
 
 Authorisation is the same posture as the SBOM and PDF exports — any team member with at least `developer` can read history; non-members receive `404` (existence-hide). The history table is **append-only**: there is no edit, delete, or replay action. To re-download an artifact, click the relevant generate card and re-export it from the domain tab.
 
 :::note The Reports tab does not duplicate the domain-tab download UX
-Generate cards always deep-link to the domain tab (Obligations, SBOM, Vulnerabilities) rather than spawning a generation dialog inside the Reports tab. The intent is to keep one canonical UX per format and avoid drift between two download surfaces. The added value of the tab is the **history** view across all formats in one place.
+Apart from the direct NOTICE and PDF downloads, generate cards link to the place where the format lives (the SBOM section, the Vulnerabilities tab) rather than spawning a generation dialog inside the Reports tab. The intent is to keep one canonical UX per format and avoid drift between two download surfaces. The added value of the tab is the **history** view across all formats in one place.
 :::
 
 ## Verify it worked

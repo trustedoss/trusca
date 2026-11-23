@@ -5,7 +5,9 @@
  *
  * Lists the four SBOM export formats the backend supports
  * (CycloneDX JSON / XML, SPDX JSON / Tag-Value) as discrete download
- * buttons. Each click streams the document as a Blob through axios so the
+ * buttons. CycloneDX JSON is the default export (the one the API serves
+ * without a format and the one that is signed), so it is the section's one
+ * primary button; the other three formats are secondary. Each click streams the document as a Blob through axios so the
  * bearer token stays in the Authorization header (NOT on the URL/history),
  * then triggers a transient `<a download>` click via a blob URL.
  *
@@ -55,10 +57,12 @@ interface SbomTabProps {
 interface SbomFormatRow {
   format: SbomFormat;
   testIdSuffix: string;
+  /** The default export, rendered as the screen's primary action. */
+  primary?: boolean;
 }
 
 const FORMATS: SbomFormatRow[] = [
-  { format: "cyclonedx-json", testIdSuffix: "cyclonedx-json" },
+  { format: "cyclonedx-json", testIdSuffix: "cyclonedx-json", primary: true },
   { format: "cyclonedx-xml", testIdSuffix: "cyclonedx-xml" },
   { format: "spdx-json", testIdSuffix: "spdx-json" },
   { format: "spdx-tv", testIdSuffix: "spdx-tv" },
@@ -119,7 +123,10 @@ export function SbomTab({ projectId, lastScanAt, scanId }: SbomTabProps) {
     : null;
 
   return (
-    <div className="p-6" data-testid="sbom-tab">
+    // No padding of its own: the Reports tab places this card under the
+    // "SBOM downloads" heading, and an inset here pushed the card 24px in
+    // from the heading it belongs to.
+    <div data-testid="sbom-tab">
       <Card>
         <CardHeader>
           <CardTitle>{t("sbom.title")}</CardTitle>
@@ -143,7 +150,7 @@ export function SbomTab({ projectId, lastScanAt, scanId }: SbomTabProps) {
           )}
 
           <div className="flex flex-col gap-2" data-testid="sbom-profile-select">
-            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            <span className="text-xs font-medium text-muted-foreground">
               {t("sbom.profile.label")}
             </span>
             <div
@@ -178,13 +185,12 @@ export function SbomTab({ projectId, lastScanAt, scanId }: SbomTabProps) {
             </p>
           </div>
 
-          <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {FORMATS.map(({ format, testIdSuffix }) => (
+          <ul className="flex flex-wrap gap-2">
+            {FORMATS.map(({ format, testIdSuffix, primary }) => (
               <li key={format}>
                 <Button
                   type="button"
-                  variant="outline"
-                  className="w-full justify-start"
+                  variant={primary ? "default" : "outline"}
                   disabled={busyFormat !== null}
                   onClick={() => {
                     void onDownload(format);

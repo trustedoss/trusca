@@ -7,11 +7,13 @@
  * developer download everything needed to verify the project's signed SBOM
  * offline with cosign:
  *
- *   - PRIMARY: "Download signature bundle (.zip)" — a self-contained archive
+ *   - "Download signature bundle (.zip)": a self-contained archive
  *     (SBOM + .sig + cert|public-key + attestation + keyless attest cert +
- *     VERIFY.md). This is the recommended one-button path; the bundle's
- *     VERIFY.md walks the consumer through `cosign verify-blob`.
- *   - SECONDARY: individual artifacts (signature, public key, attestation,
+ *     VERIFY.md). The recommended path for verification; the bundle's
+ *     VERIFY.md walks the consumer through `cosign verify-blob`. It is a
+ *     secondary button: the section above owns the screen's one primary
+ *     action, the default SBOM download.
+ *   - individual artifacts (signature, public key, attestation,
  *     certificates) for power users assembling their own verification flow.
  *
  * Downloads stream through the authenticated axios instance (bearer token in
@@ -150,7 +152,7 @@ export function SbomSignatureSection({ projectId }: SbomSignatureSectionProps) {
 
       <Button
         type="button"
-        className="w-full justify-start sm:w-auto"
+        variant="outline"
         disabled={signature.busyArtifact !== null}
         onClick={onDownloadBundle}
         data-testid="sbom-signature-download-bundle"

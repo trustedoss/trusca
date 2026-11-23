@@ -177,6 +177,34 @@ describe("ReportsTab", () => {
     expect(screen.getByTestId("reports-card-vex")).toBeInTheDocument();
   });
 
+  it("renders the navigation cards as links that keep the pinned scan", async () => {
+    mockedFetch.mockReturnValue(new Promise(() => {}));
+    renderTab(["/projects/proj-1?tab=reports&scan=scan-7"]);
+
+    // Links, not buttons: they move the reader, so they carry an address
+    // that opens in a new tab and keeps the snapshot pin.
+    const vex = screen.getByTestId("reports-card-vex-deeplink");
+    expect(vex.tagName).toBe("A");
+    expect(vex.getAttribute("href")).toContain("tab=vulnerabilities");
+    expect(vex.getAttribute("href")).toContain("scan=scan-7");
+    const sbom = screen.getByTestId("reports-card-sbom-deeplink");
+    expect(sbom.tagName).toBe("A");
+    expect(sbom.getAttribute("href")).toContain("rpt_section=sbom");
+
+    // A plain click still navigates in place.
+    await userEvent.click(vex);
+    await waitFor(() => {
+      expect(screen.getByTestId("url-probe")).toHaveAttribute(
+        "data-tab",
+        "vulnerabilities",
+      );
+    });
+    expect(screen.getByTestId("url-probe")).toHaveAttribute(
+      "data-scan",
+      "scan-7",
+    );
+  });
+
   it("renders rows + pager once data arrives (happy path)", async () => {
     mockedFetch.mockResolvedValueOnce(
       response(

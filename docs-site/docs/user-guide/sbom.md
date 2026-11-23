@@ -88,8 +88,8 @@ The portal achieves byte-stability by:
 ## Download from the UI
 
 1. Open the project.
-2. Click the **SBOM** tab.
-3. Click one of the four format buttons (CycloneDX JSON, CycloneDX XML, SPDX JSON, SPDX Tag-Value) to download.
+2. Click the **Reports** tab and scroll to **SBOM downloads**. The **SBOM** card's **Jump to SBOM downloads** link takes you there.
+3. Click **Download CycloneDX JSON**, the default export and the section's primary button, or one of the other formats (CycloneDX XML, SPDX JSON, SPDX Tag-Value).
 
 ![SBOM tab — four format download buttons (CycloneDX JSON/XML, SPDX JSON/Tag-Value)](/img/screenshots/user-sbom-format-buttons.png)
 
@@ -226,7 +226,7 @@ The output is byte-stable across exports for a given scan and format — diffabl
 
 ### Download
 
-- **UI:** Project → **Obligations** tab → pick a format (**text** or **HTML**) → **Download NOTICE**. The browser saves `NOTICE-<project>.<ext>`. The markdown variant is available from the API.
+- **UI:** Project → **Compliance** tab → the **NOTICE file** group at the right end of the toolbar → pick a format (**Text** or **HTML**) → **Download**. The **NOTICE** card on the **Reports** tab downloads the same file. The browser saves `NOTICE-<project>.<ext>`. The markdown variant is available from the API.
 - **API:**
 
   ```bash

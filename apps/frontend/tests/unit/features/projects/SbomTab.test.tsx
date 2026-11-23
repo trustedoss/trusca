@@ -75,6 +75,14 @@ describe("SbomTab", () => {
     }
   });
 
+  it("makes the default CycloneDX JSON download the one primary button", () => {
+    render(<SbomTab projectId="proj-1" />);
+    const variants = FORMATS.map(({ testid }) =>
+      screen.getByTestId(testid).getAttribute("data-variant"),
+    );
+    expect(variants).toEqual(["primary", "default", "default", "default"]);
+  });
+
   it("renders the no-scan-yet message when lastScanAt is null", () => {
     render(<SbomTab projectId="proj-1" lastScanAt={null} />);
     expect(screen.getByTestId("sbom-no-scan")).toBeInTheDocument();

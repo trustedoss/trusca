@@ -196,6 +196,7 @@ function renderTabAsTeamAdmin(initialEntries: string[] = ["/projects/proj-1"]) {
           teamId="00000000-0000-0000-0000-team00000001"
           projectRole="group_admin"
         />
+        <SearchProbe />
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -222,6 +223,11 @@ describe("ComplianceTab unified grid", () => {
     });
     const group = screen.getByTestId("compliance-notice-download");
     expect(group).toBeInTheDocument();
+    // Its own group at the toolbar's end, not one more control among the
+    // filters, and labelled by the file it produces.
+    expect(screen.getByTestId("compliance-filters")).not.toContainElement(group);
+    expect(screen.getByTestId("compliance-toolbar").lastElementChild).toBe(group);
+    expect(group).toHaveTextContent("NOTICE file");
     // Format select defaults to text; both formats are offered.
     const select = screen.getByTestId(
       "compliance-notice-format",
@@ -396,12 +402,64 @@ describe("ComplianceTab unified grid", () => {
     });
   });
 
-  it("renders a per-component waive action on forbidden rows with a purl", async () => {
+  it("gives a forbidden row one waive control, however many components it lists", async () => {
     mockedList.mockResolvedValue(
       response([
         row("GPL-2.0-only", {
           category: "forbidden",
-          affected_component_count: 1,
+          affected_component_count: 3,
+          affected_components: [
+            {
+              component_version_id: "cv-pyphen",
+              name: "pyphen",
+              version: "0.14.0",
+              purl: "pkg:pypi/pyphen@0.14.0",
+            },
+            {
+              component_version_id: "cv-chardet",
+              name: "chardet",
+              version: "5.2.0",
+              purl: "pkg:pypi/chardet@5.2.0",
+            },
+            {
+              // No purl: a waiver cannot be scoped to it, so it is no target.
+              component_version_id: "cv-vendored",
+              name: "vendored",
+              version: "1.0.0",
+              purl: null,
+            },
+          ],
+        }),
+      ]),
+    );
+    renderTabAsTeamAdmin();
+
+    const rowEl = await screen.findByTestId("compliance-row");
+    expect(rowEl).toHaveAttribute(
+      "data-waivable-purls",
+      "pkg:pypi/pyphen@0.14.0 pkg:pypi/chardet@5.2.0",
+    );
+    // One trigger in the row's own cell, not one per component on a second
+    // line (that line is what made forbidden rows three times the height).
+    const cell = screen.getByTestId("compliance-row-waive");
+    const triggers = screen.getAllByTestId("license-waive-open");
+    expect(triggers).toHaveLength(1);
+    expect(cell).toContainElement(triggers[0]);
+    expect(triggers[0]).toBeEnabled();
+
+    // The component choice is in the dialog: the two purl-carrying ones.
+    await userEvent.click(triggers[0]);
+    const targets = await screen.findAllByTestId("compliance-waive-component");
+    expect(targets.map((el) => el.getAttribute("data-component-purl"))).toEqual(
+      ["pkg:pypi/pyphen@0.14.0", "pkg:pypi/chardet@5.2.0"],
+    );
+  });
+
+  it("clicks inside the waive dialog do not open the licence drawer", async () => {
+    mockedList.mockResolvedValue(
+      response([
+        row("GPL-2.0-only", {
+          category: "forbidden",
           affected_components: [
             {
               component_version_id: "cv-pyphen",
@@ -415,17 +473,14 @@ describe("ComplianceTab unified grid", () => {
     );
     renderTabAsTeamAdmin();
 
-    await waitFor(() => {
-      expect(
-        screen.getByTestId("compliance-row-waive-strip"),
-      ).toBeInTheDocument();
-    });
-    // group_admin → the trigger is enabled (role-gated affordance present).
-    const trigger = await screen.findByTestId("license-waive-open");
-    expect(trigger).toBeEnabled();
+    await userEvent.click(await screen.findByTestId("license-waive-open"));
+    // The dialog sits in a portal, but React bubbles its events through the
+    // row, whose own click handler opens the licence drawer.
+    await userEvent.click(await screen.findByTestId("license-waive-reason"));
+    expect(screen.getByTestId("search-probe")).not.toHaveTextContent("license=");
   });
 
-  it("omits the waive strip on allowed rows", async () => {
+  it("omits the waive control on allowed rows", async () => {
     mockedList.mockResolvedValue(
       response([
         row("MIT", {
@@ -443,10 +498,11 @@ describe("ComplianceTab unified grid", () => {
     );
     renderTabAsTeamAdmin();
 
-    await screen.findByTestId("compliance-row");
-    expect(
-      screen.queryByTestId("compliance-row-waive-strip"),
-    ).not.toBeInTheDocument();
+    const rowEl = await screen.findByTestId("compliance-row");
+    // The cell stays so the columns line up; it is just empty.
+    expect(screen.getByTestId("compliance-row-waive")).toBeEmptyDOMElement();
+    expect(screen.queryByTestId("license-waive-open")).not.toBeInTheDocument();
+    expect(rowEl).not.toHaveAttribute("data-waivable");
   });
 
   it("backward-compat: ?cview=obligations boots with has_obligations=true", async () => {

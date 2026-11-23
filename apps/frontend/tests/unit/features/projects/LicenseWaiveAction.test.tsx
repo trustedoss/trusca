@@ -1,26 +1,32 @@
 /**
- * LicenseWaiveAction — unit tests.
+ * LicenseWaiveAction: unit tests.
  *
- * Per-component license waive control on the Compliance tab. Covers:
- *   1. group_admin sees an enabled "Waive" trigger; opening it shows the dialog
- *      with reason (required) + optional expiry.
- *   2. Submit is blocked until a non-empty reason is entered, then POSTs the
- *      exception with the scoped purl + ISO-widened expiry.
- *   3. An already-waived (spdx, purl) pair renders the "Waived" badge (text
- *      label, not colour alone) + reason tooltip + an "Un-waive" action that
- *      DELETEs the exception.
- *   4. A developer sees the trigger disabled (role-gated, not hidden).
- *   5. A read-only historical snapshot disables the trigger.
+ * The one waive control a forbidden Compliance row carries. Covers:
+ *   1. group_admin sees an enabled "Waive..." trigger; opening it shows the
+ *      dialog with the target list, reason (required) and expiry.
+ *   2. Submit is blocked until a target and a non-empty reason (plus an
+ *      expiry for a forbidden waiver) are set, then POSTs the exception
+ *      scoped to the chosen component's purl with an ISO-widened expiry.
+ *   3. With several targets the POST carries the one the user picked, not
+ *      the first.
+ *   4. An already-waived target shows the "Waived" badge (text label, not
+ *      colour alone) with its reason, an "Un-waive" action that DELETEs the
+ *      exception, and the row shows a "{n} waived" count.
+ *   5. The trigger is disabled (role-gated, not hidden) for a developer, a
+ *      viewer, a read-only snapshot and an unresolved team.
  *
  * The real `useLicenseWaive` hooks run against a mocked `licensePoliciesApi`
  * so the mutation wiring (invalidation, cache seeding) is exercised end to end.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { LicenseWaiveAction } from "@/features/projects/components/LicenseWaiveAction";
+import {
+  LicenseWaiveAction,
+  type LicenseWaiveTarget,
+} from "@/features/projects/components/LicenseWaiveAction";
 import type { LicenseException } from "@/features/projects/api/useLicenseWaive";
 import type { LicensePolicyOut } from "@/lib/licensePoliciesApi";
 import { ProblemError } from "@/lib/problem";
@@ -43,6 +49,17 @@ const mockedDelete = vi.mocked(deleteTeamLicenseException);
 
 const TEAM_ID = "00000000-0000-0000-0000-team00000001";
 const PURL = "pkg:pypi/pyphen@0.14.0";
+const PURL_B = "pkg:pypi/chardet@5.2.0";
+
+function target(
+  purl: string,
+  label: string,
+  existing: LicenseException | null = null,
+): LicenseWaiveTarget {
+  return { key: `cv-${label}`, label, purl, existing };
+}
+
+const ONE_TARGET = [target(PURL, "pyphen@0.14.0")];
 
 function policy(exceptions: LicenseException[]): LicensePolicyOut {
   return {
@@ -78,13 +95,19 @@ function renderAction(
         teamId={TEAM_ID}
         projectRole="group_admin"
         spdxId="GPL-2.0-only"
-        componentLabel="pyphen@0.14.0"
-        componentPurl={PURL}
-        existing={null}
+        targets={ONE_TARGET}
         {...props}
       />
     </QueryClientProvider>,
   );
+}
+
+function stateFor(purl: string): HTMLElement {
+  const el = screen
+    .getAllByTestId("license-waive-state")
+    .find((s) => s.getAttribute("data-component-purl") === purl);
+  if (!el) throw new Error(`no waive state for ${purl}`);
+  return el;
 }
 
 afterEach(() => {
@@ -99,10 +122,15 @@ describe("LicenseWaiveAction", () => {
 
     const trigger = screen.getByTestId("license-waive-open");
     expect(trigger).toBeEnabled();
+    expect(trigger).toHaveTextContent("Waive…");
+    // The accessible name carries the license, since the row has one button
+    // and a screen reader in table mode hears it out of the row's context.
+    expect(trigger).toHaveAccessibleName(/GPL-2\.0-only/);
     await user.click(trigger);
 
     expect(screen.getByTestId("license-waive-dialog")).toBeInTheDocument();
-    // Submit is disabled with an empty reason.
+    // The only open target is preselected: there is nothing to choose.
+    expect(screen.getByTestId("license-waive-target")).toBeChecked();
     expect(screen.getByTestId("license-waive-submit")).toBeDisabled();
 
     await user.type(
@@ -118,7 +146,7 @@ describe("LicenseWaiveAction", () => {
     renderAction({ requireExpiry: true });
 
     await user.click(screen.getByTestId("license-waive-open"));
-    // A reason alone is not enough — the expiry is mandatory for a forbidden
+    // A reason alone is not enough: the expiry is mandatory for a forbidden
     // waiver (mirrors the server's LICENSE_WAIVE_MAX_DAYS rule).
     await user.type(
       screen.getByTestId("license-waive-reason"),
@@ -152,7 +180,31 @@ describe("LicenseWaiveAction", () => {
     });
   });
 
-  it("renders a Waived badge + reason tooltip + Un-waive when already waived", async () => {
+  it("waives the component the user picked, not the first one", async () => {
+    const user = userEvent.setup();
+    mockedAdd.mockResolvedValue(policy([]));
+    renderAction({
+      targets: [target(PURL, "pyphen@0.14.0"), target(PURL_B, "chardet@5.2.0")],
+    });
+
+    // One trigger for the row, however many components it lists.
+    expect(screen.getAllByTestId("license-waive-open")).toHaveLength(1);
+    await user.click(screen.getByTestId("license-waive-open"));
+
+    await user.click(
+      within(stateFor(PURL_B)).getByTestId("license-waive-target"),
+    );
+    expect(
+      within(stateFor(PURL)).getByTestId("license-waive-target"),
+    ).not.toBeChecked();
+    await user.type(screen.getByTestId("license-waive-reason"), "reviewed");
+    await user.click(screen.getByTestId("license-waive-submit"));
+
+    await waitFor(() => expect(mockedAdd).toHaveBeenCalledTimes(1));
+    expect(mockedAdd.mock.calls[0][1].component_purl).toBe(PURL_B);
+  });
+
+  it("shows a waived target with its badge, reason and Un-waive", async () => {
     const user = userEvent.setup();
     mockedDelete.mockResolvedValue(policy([]));
     const existing: LicenseException = {
@@ -161,16 +213,40 @@ describe("LicenseWaiveAction", () => {
       component_purl: PURL,
       expires_at: null,
     };
-    renderAction({ existing });
+    renderAction({
+      targets: [
+        target(PURL, "pyphen@0.14.0", existing),
+        target(PURL_B, "chardet@5.2.0"),
+      ],
+    });
 
-    const badge = screen.getByTestId("license-waived-badge");
+    // The row tells the reader something is already overridden, with the
+    // reason on hover, before the dialog is opened.
+    const count = screen.getByTestId("license-waived-count");
+    expect(count).toHaveTextContent("1 waived");
+    expect(count).toHaveAttribute(
+      "title",
+      "pyphen@0.14.0: Dual-licensed, MPL applies",
+    );
+
+    await user.click(screen.getByTestId("license-waive-open"));
+    const waived = stateFor(PURL);
+    expect(waived).toHaveAttribute("data-waived", "true");
+    const badge = within(waived).getByTestId("license-waived-badge");
     expect(badge).toHaveTextContent("Waived");
     expect(badge).toHaveAttribute(
       "title",
       expect.stringContaining("Dual-licensed, MPL applies"),
     );
+    // A waived component is not a choice; the open one is, and is preselected.
+    expect(
+      within(waived).queryByTestId("license-waive-target"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(stateFor(PURL_B)).getByTestId("license-waive-target"),
+    ).toBeChecked();
 
-    await user.click(screen.getByTestId("license-unwaive"));
+    await user.click(within(waived).getByTestId("license-unwaive"));
     await waitFor(() => expect(mockedDelete).toHaveBeenCalledTimes(1));
     expect(mockedDelete).toHaveBeenCalledWith(TEAM_ID, {
       spdx_id: "GPL-2.0-only",
@@ -178,11 +254,35 @@ describe("LicenseWaiveAction", () => {
     });
   });
 
+  it("keeps submit disabled when every target is already waived", async () => {
+    const user = userEvent.setup();
+    renderAction({
+      targets: [
+        target(PURL, "pyphen@0.14.0", {
+          spdx_id: "GPL-2.0-only",
+          reason: "r",
+          component_purl: PURL,
+          expires_at: null,
+        }),
+      ],
+    });
+
+    // Still openable: un-waiving happens in the dialog.
+    await user.click(screen.getByTestId("license-waive-open"));
+    expect(screen.getByTestId("license-waive-all-waived")).toBeInTheDocument();
+    expect(screen.getByTestId("license-waive-reason")).toBeDisabled();
+    expect(screen.getByTestId("license-waive-submit")).toBeDisabled();
+  });
+
   it("disables the trigger for a developer (role-gated, not hidden)", () => {
     renderAction({ projectRole: "developer" });
     const trigger = screen.getByTestId("license-waive-open");
     expect(trigger).toBeDisabled();
     expect(trigger).toHaveAttribute("data-role-gated", "true");
+    expect(trigger).toHaveAttribute(
+      "title",
+      "Only team admins can waive a license.",
+    );
   });
 
   it("disables the trigger for a viewer, the grade below developer", () => {
@@ -203,16 +303,11 @@ describe("LicenseWaiveAction", () => {
     expect(trigger).toHaveAttribute("data-readonly-gated", "true");
   });
 
-  it("disables the trigger when the component has no purl", () => {
-    renderAction({ componentPurl: null });
-    const trigger = screen.getByTestId("license-waive-open");
-    expect(trigger).toBeDisabled();
-    expect(trigger).toHaveAttribute("title", expect.stringContaining(""));
-  });
-
   it("disables the trigger when the team is not yet resolved", () => {
     renderAction({ teamId: null });
-    expect(screen.getByTestId("license-waive-open")).toBeDisabled();
+    const trigger = screen.getByTestId("license-waive-open");
+    expect(trigger).toBeDisabled();
+    expect(trigger).toHaveAttribute("title", "Project team is still loading.");
   });
 
   it("surfaces an un-waive error inline", async () => {
@@ -226,13 +321,16 @@ describe("LicenseWaiveAction", () => {
       }),
     );
     renderAction({
-      existing: {
-        spdx_id: "GPL-2.0-only",
-        reason: "r",
-        component_purl: PURL,
-        expires_at: null,
-      },
+      targets: [
+        target(PURL, "pyphen@0.14.0", {
+          spdx_id: "GPL-2.0-only",
+          reason: "r",
+          component_purl: PURL,
+          expires_at: null,
+        }),
+      ],
     });
+    await user.click(screen.getByTestId("license-waive-open"));
     await user.click(screen.getByTestId("license-unwaive"));
     await waitFor(() =>
       expect(screen.getByTestId("license-unwaive-error")).toBeInTheDocument(),
@@ -277,7 +375,9 @@ describe("LicenseWaiveAction", () => {
     await user.click(screen.getByTestId("license-waive-submit"));
 
     await waitFor(() =>
-      expect(screen.getByTestId("license-waive-error")).toBeInTheDocument(),
+      expect(screen.getByTestId("license-waive-error")).toHaveTextContent(
+        "You do not have permission to waive licenses for this team.",
+      ),
     );
   });
 });

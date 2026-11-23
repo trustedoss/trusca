@@ -2,10 +2,11 @@
  * License waive E2E — c3 (per-component license waive on the Compliance tab).
  *
  * Drives the forbidden-license waive flow against the docker-compose dev
- * stack. The waive strip (`compliance-row-waive-strip`) renders only beneath
- * `forbidden`-category rows whose affected components carry a purl, so every
- * scenario seeds a project with forbidden components and enters the Compliance
- * tab via {@link PortalPage.openComplianceWaiveStrip}.
+ * stack. A `forbidden`-category row whose affected components carry a purl
+ * has one "Waive..." control in its waiver cell (`compliance-row-waive`); the
+ * component is chosen inside the dialog. Every scenario seeds a project with
+ * forbidden components and enters the Compliance tab via
+ * {@link PortalPage.openComplianceWaive}.
  *
  * New policy under test (c3): a waiver on a FORBIDDEN license relaxes the
  * build gate, so the backend (`LICENSE_WAIVE_MAX_DAYS`, default 90 days)
@@ -13,8 +14,8 @@
  * dialog mirrors that — submit stays disabled until an expiry is set.
  *
  *   A — expiry-required guard : reason alone → submit disabled; +expiry → enabled
- *   B — waive succeeds        : reason + expiry → submit → "Waived" badge
- *   C — un-waive restores      : waived → un-waive → control back to data-waived="false"
+ *   B - waive succeeds        : reason + expiry → submit → row count + "Waived" badge
+ *   C - un-waive restores      : waived → un-waive → that component back to data-waived="false"
  *   D — role gate             : a developer sees the trigger disabled + role-gated
  *
  * All selectors live in `apps/frontend/tests/_harness/PortalPage.ts`. The
@@ -35,8 +36,8 @@
  *
  * The seed's `--component-count` round-robins components across the four
  * license categories (`_LICENSE_CATEGORY_CYCLE` in seed_e2e_user.py), so a
- * count of 16 yields 4 forbidden components — each rendered as a waivable
- * entry in the strip. Each scenario re-seeds with a per-test, per-retry
+ * count of 16 yields 4 forbidden components, each listed as a waivable
+ * target in the row's waive dialog. Each scenario re-seeds with a per-test, per-retry
  * `componentPrefix` (`waive-<testId>-<retry>`) so the globally-unique
  * `uq_components_purl` space never collides across scenarios or retries.
  */
@@ -48,7 +49,7 @@ import { seedE2eUser, type SeedSummary } from "../_harness/seed";
 
 const PROJECT_NAME = "ci-license-waive";
 // Round-robin across 4 categories × 4 = 16 components → 4 forbidden rows, each
-// waivable. Cheap seed, guaranteed ≥ 1 forbidden waive strip.
+// waivable. Cheap seed, guaranteed ≥ 1 forbidden row with a waive control.
 const DEFAULT_COMPONENT_COUNT = 16;
 // A bare yyyy-mm-dd the native <input type="date"> accepts. Well within the
 // backend's LICENSE_WAIVE_MAX_DAYS (90d) cap and never in the past for the
@@ -134,7 +135,7 @@ test.describe("@critical license waive (Compliance tab)", () => {
     const portal = new PortalPage(page);
     await portal.gotoProjects();
     await portal.openProjectDetail(PROJECT_NAME);
-    await portal.openComplianceWaiveStrip();
+    await portal.openComplianceWaive();
 
     await portal.openLicenseWaive();
 
@@ -159,17 +160,18 @@ test.describe("@critical license waive (Compliance tab)", () => {
     const portal = new PortalPage(page);
     await portal.gotoProjects();
     await portal.openProjectDetail(PROJECT_NAME);
-    await portal.openComplianceWaiveStrip();
+    await portal.openComplianceWaive();
 
-    await portal.openLicenseWaive();
+    const purl = await portal.openLicenseWaive();
     await portal.fillWaive({
       reason: "Approved waiver pending upstream relicense",
       expires: EXPIRES_AT,
     });
     await portal.submitWaive();
 
-    // Dialog commits + closes → the component flips to the waived badge.
-    await portal.expectWaivedBadge();
+    // Dialog commits + closes → the row counts the waiver, and the chosen
+    // component (not merely some component) shows the waived badge.
+    await portal.expectWaivedBadge({ purl });
   });
 
   test("C) un-waiving restores the waive control", async ({
@@ -181,20 +183,22 @@ test.describe("@critical license waive (Compliance tab)", () => {
     const portal = new PortalPage(page);
     await portal.gotoProjects();
     await portal.openProjectDetail(PROJECT_NAME);
-    await portal.openComplianceWaiveStrip();
+    await portal.openComplianceWaive();
 
     // First waive so there is something to un-waive.
-    await portal.openLicenseWaive();
+    const purl = await portal.openLicenseWaive();
     await portal.fillWaive({
       reason: "Temporary — will revert in this test",
       expires: EXPIRES_AT,
     });
     await portal.submitWaive();
-    await portal.expectWaivedBadge();
+    await portal.expectWaivedBadge({ purl });
 
-    // Un-waive → the component returns to the not-waived state.
-    await portal.unwaiveLicense();
-    await portal.expectNotWaived();
+    // Un-waive → that component returns to the not-waived state. Scoped by
+    // purl: the row's other components are not waived to begin with, so an
+    // unscoped check would pass without the un-waive doing anything.
+    await portal.unwaiveLicense({ purl });
+    await portal.expectNotWaived({ purl });
   });
 
   test("D) a developer sees the waive trigger disabled + role-gated", async ({
@@ -206,7 +210,7 @@ test.describe("@critical license waive (Compliance tab)", () => {
     const portal = new PortalPage(page);
     await portal.gotoProjects();
     await portal.openProjectDetail(PROJECT_NAME);
-    await portal.openComplianceWaiveStrip();
+    await portal.openComplianceWaive();
 
     // The primary user is a developer → the trigger renders disabled with the
     // role-gated marker rather than vanishing.

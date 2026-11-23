@@ -287,14 +287,15 @@ Releases 탭 툴바의 **Compare** 버튼(릴리스가 둘 이상일 때 활성�
 
 **Reports** 탭은 프로젝트의 다운로드 가능한 산출물을 통합하는 단일 랜딩 페이지입니다.
 
-- **NOTICE**, **SBOM**, **Vulnerability PDF**, **VEX** 네 가지 **generate card**. 각 카드는 딥링크입니다 — 카드의 액션 버튼을 클릭하면 실제 포맷 선택기와 다운로드 버튼이 있는 해당 도메인 탭(Obligations / SBOM / Vulnerabilities / Vulnerabilities)으로 전환됩니다. 현재 핀된 `?scan=` 스냅샷 컨텍스트는 점프 전후로 보존됩니다.
+- **NOTICE**, **SBOM**, **Vulnerability PDF**, **VEX** 네 가지 **generate card**. **NOTICE**와 **Vulnerability PDF** 카드는 바로 내려받습니다. 나머지 둘은 링크입니다. **SBOM 다운로드로 이동**은 아래 SBOM 절로 스크롤하고, **취약점 탭으로 이동**은 VEX 내보내기와 가져오기가 있는 취약점 탭을 엽니다. 현재 고정한 `?scan=` 스냅샷은 이동 후에도 유지되고, 링크이므로 새 탭에서 열 수도 있습니다.
+- 카드 아래의 **SBOM 다운로드** 절. 기본 형식인 **CycloneDX JSON 다운로드**가 주 버튼이고, CycloneDX XML, SPDX JSON, SPDX Tag-Value가 그 옆에 있습니다. 그 아래 **서명 및 검증**에서 cosign으로 SBOM을 검증하는 데 쓰는 서명 번들(`.zip`)과 개별 서명 파일을 내려받습니다.
 - 우측 **export history (이력) 표**의 컬럼: **When** (상대 + 절대 시각), **Who** (행위자 이메일 — 감사용으로 익명화 보존된 행은 `—`), **Type** (NOTICE / SBOM / Vulnerability PDF / VEX 중 하나), **Format** (정확한 포맷 문자열 — `cyclonedx-json`, `spdx-tv`, `openvex` 등), **Scan** (스캔 id 앞 8자), **Size** (humanize — 렌더러가 크기를 기록하지 않은 경우 `—`).
 - 툴바의 **Type** 멀티셀렉트 필터와 Prev / Next 페이지네이션. 둘 다 URL에 `?rpt_type=<type>` / `?rpt_page=<n>`으로 미러링되므로 필터된 뷰는 reload 안전·링크 공유 가능합니다.
 
 권한은 SBOM·PDF 익스포트와 동일한 자세입니다 — 팀에 `developer` 이상 멤버는 이력을 읽을 수 있고, 비멤버는 `404`(existence-hide)를 받습니다. 이력 표는 **append-only** 입니다 — 편집·삭제·재실행 액션이 없습니다. 산출물을 다시 다운로드하려면 해당 generate card를 클릭해 도메인 탭에서 재익스포트하세요.
 
 :::note Reports 탭은 도메인 탭의 다운로드 UX를 중복하지 않습니다
-Generate card는 Reports 탭 안에 생성 다이얼로그를 띄우지 않고 항상 도메인 탭(Obligations / SBOM / Vulnerabilities)으로 딥링크합니다. 의도는 포맷별로 정식 UX를 하나만 유지하고 두 다운로드 표면이 어긋나지 않도록 하는 것입니다. 탭의 부가가치는 모든 포맷에 걸친 **history** 뷰를 한 곳에서 본다는 점입니다.
+NOTICE와 PDF를 바로 내려받는 경우를 빼면, generate card는 Reports 탭 안에 생성 다이얼로그를 띄우지 않고 그 형식을 다루는 곳(SBOM 절, 취약점 탭)으로 연결합니다. 의도는 포맷별로 정식 UX를 하나만 유지하고 두 다운로드 표면이 어긋나지 않도록 하는 것입니다. 탭의 부가가치는 모든 포맷에 걸친 **history** 뷰를 한 곳에서 본다는 점입니다.
 :::
 
 ## 정상 동작 확인
