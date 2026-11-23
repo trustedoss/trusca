@@ -35,6 +35,7 @@ describe("admin Audit api glue", () => {
         actor_user_id: "actor-1",
         target_table: "scans",
         action: "create",
+        action_match: "exact",
         from: "2026-05-01T00:00:00Z",
         to: "2026-05-08T00:00:00Z",
         q: "alpha",

@@ -181,14 +181,16 @@ test.describe("@manual-aligned admin backup", () => {
 
     const backup = new AdminBackupHarness(page);
     await backup.gotoBackup();
-    const before = await backup.getRowCount();
-    await backup.triggerManualBackup();
+    // Compare names, not counts. A retry starts with the first attempt's
+    // backup already listed (it may even land mid-wait), so a count taken
+    // before the trigger can be satisfied by a row this attempt did not
+    // create. The wait refreshes the list on every poll because nothing
+    // else refetches it while the worker runs.
+    const known = await backup.getManualBackupNames();
+    const requested = await backup.triggerManualBackup();
 
-    await backup.refresh();
-    await backup.waitForManualBackupRow(30_000);
-
-    const after = await backup.getRowCount();
-    expect(after).toBeGreaterThan(before);
+    const created = await backup.waitForManualBackupSince(requested, known, 30_000);
+    await backup.expectBackupRow(created);
   });
 
   test.describe("adversarial — backup name DELETE rejects malformed input", () => {

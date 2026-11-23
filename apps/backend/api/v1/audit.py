@@ -38,6 +38,7 @@ from core.db import get_db
 from core.pagination import PAGE_MAX
 from core.security import CurrentUser, require_role
 from schemas.admin_ops import (
+    AuditActionMatch,
     AuditLogListPage,
     AuditSearchQuery,
     AuditTargetTable,
@@ -76,6 +77,14 @@ async def search_team_audit_endpoint(
     actor_user_id: uuid.UUID | None = Query(default=None),
     target_table: AuditTargetTable | None = Query(default=None),
     action: str | None = Query(default=None, max_length=64),
+    action_match: AuditActionMatch = Query(
+        default="contains",
+        description=(
+            "How `action` is compared: `contains` (default) is a "
+            "case-insensitive substring match, `exact` a case-insensitive "
+            "equality."
+        ),
+    ),
     from_: datetime | None = Query(default=None, alias="from"),
     to: datetime | None = Query(default=None),
     q: str | None = Query(default=None, max_length=255),
@@ -89,6 +98,7 @@ async def search_team_audit_endpoint(
             "actor_user_id": actor_user_id,
             "target_table": target_table,
             "action": action,
+            "action_match": action_match,
             "from": from_,
             "to": to,
             "q": q,

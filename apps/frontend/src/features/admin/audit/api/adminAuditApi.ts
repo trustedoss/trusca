@@ -116,11 +116,20 @@ export interface AuditSearchParams {
   page_size?: number;
 }
 
+/**
+ * How the backend compares `action` (`AuditActionMatch` in
+ * `schemas/admin_ops.py`). The API defaults to `contains`, a substring match
+ * kept for scripts; the Action select names one action, so the page always
+ * asks for `exact`. Otherwise `archive` would also return `unarchive` rows.
+ */
+export const AUDIT_ACTION_MATCH = "exact";
+
 function toQueryParams(params: AuditSearchParams): Record<string, unknown> {
   return {
     actor_user_id: params.actor_user_id ?? undefined,
     target_table: params.target_table ?? undefined,
     action: params.action ?? undefined,
+    action_match: params.action ? AUDIT_ACTION_MATCH : undefined,
     from: params.from ?? undefined,
     to: params.to ?? undefined,
     q: params.q ?? undefined,

@@ -75,14 +75,30 @@ export class AdminBackupHarness {
    * callers should follow with {@link expectBackupRow} only when the
    * Celery worker is up. Without a worker, we still assert the toast
    * (the API enqueues synchronously) and skip the row check.
+   *
+   * Returns the `name` the API reported for the request
+   * (`manual-<UTC stamp>`). The worker stamps its own name when it runs, so
+   * the row that eventually lands is named at or after this one; see
+   * {@link waitForManualBackupSince}.
    */
-  async triggerManualBackup(): Promise<void> {
+  async triggerManualBackup(): Promise<string> {
+    const accepted = this.page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        new URL(response.url()).pathname.endsWith("/v1/admin/backup"),
+      { timeout: DEFAULT_TIMEOUT_MS },
+    );
     await this.page.getByTestId("admin-backup-manual-trigger").click();
+    const response = await accepted;
+    expect(response.status(), "manual backup trigger").toBe(202);
+    const body = (await response.json()) as { name?: unknown };
+    expect(typeof body.name, "trigger response carries a name").toBe("string");
     await expect(
       this.page.locator(
         '[data-testid="admin-toast"][data-toast-key="manual_triggered"]',
       ),
     ).toBeVisible({ timeout: DEFAULT_TIMEOUT_MS });
+    return body.name as string;
   }
 
   // ───── list assertions ────────────────────────────────────────────────
@@ -94,28 +110,57 @@ export class AdminBackupHarness {
     ).toBeVisible({ timeout: DEFAULT_TIMEOUT_MS });
   }
 
+  /** Names of the rows tagged `data-kind="manual"` currently in the list. */
+  async getManualBackupNames(): Promise<string[]> {
+    const names = await this.page
+      .locator('[data-testid="admin-backup-row"][data-kind="manual"]')
+      .evaluateAll((rows) => rows.map((row) => row.getAttribute("data-name") ?? ""));
+    return names.filter((name) => name !== "");
+  }
+
   /**
-   * Wait for at least one row tagged `data-kind="manual"` to mount. Used
-   * by the manual-trigger scenario to give the Celery worker time to
-   * finish writing the artifact and the SPA's TanStack Query cache time
-   * to refetch. Backed by `expect.poll` so we never call
-   * `page.waitForTimeout()` (harness gate).
+   * Wait until a manual backup written for this trigger appears in the list,
+   * and return its name.
    *
-   * @param timeoutMs — max wait. Defaults to 30s, comfortable for the
+   * The list does not refetch on its own while the worker runs, so every
+   * poll clicks Refresh first; counting rows without refetching only saw a
+   * backup that finished before the one refresh the caller made.
+   *
+   * A row counts only when it was absent from `known` (the names before the
+   * trigger) and its name sorts at or after `requestedName`. Names are
+   * `manual-<UTC stamp>` and the worker stamps after the API does, so a
+   * backup left behind by an earlier attempt of the same test (a retry) is
+   * never mistaken for this one.
+   *
+   * Backed by `expect.poll` so we never call `page.waitForTimeout()`
+   * (harness gate).
+   *
+   * @param timeoutMs - max wait. Defaults to 30s, comfortable for the
    *   docker-compose dev worker which hashes + tars the workspace.
    */
-  async waitForManualBackupRow(timeoutMs = 30_000): Promise<void> {
+  async waitForManualBackupSince(
+    requestedName: string,
+    known: readonly string[],
+    timeoutMs = 30_000,
+  ): Promise<string> {
+    const before = new Set(known);
+    let found: string[] = [];
     await expect
       .poll(
-        async () =>
-          this.page
-            .locator(
-              '[data-testid="admin-backup-row"][data-kind="manual"]',
-            )
-            .count(),
-        { timeout: timeoutMs },
+        async () => {
+          await this.refresh();
+          found = (await this.getManualBackupNames()).filter(
+            (name) => !before.has(name) && name >= requestedName,
+          );
+          return found.length;
+        },
+        {
+          timeout: timeoutMs,
+          message: `no manual backup named at or after ${requestedName} appeared`,
+        },
       )
       .toBeGreaterThanOrEqual(1);
+    return found[0];
   }
 
   /** Read the row count in the body (skeleton + empty rows excluded). */

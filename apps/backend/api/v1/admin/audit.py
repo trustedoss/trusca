@@ -10,8 +10,8 @@ Endpoints under ``/v1/admin/audit``:
 Auth: gated by the parent ``admin_router`` super-admin dependency.
 
 Filtering surface mirrors :class:`schemas.admin_ops.AuditSearchQuery`:
-  ``actor_user_id`` / ``target_table`` / ``action`` / ``from`` / ``to`` /
-  ``q``. Closed enums are validated by Pydantic Literals; null-byte
+  ``actor_user_id`` / ``target_table`` / ``action`` (+ ``action_match``) /
+  ``from`` / ``to`` / ``q``. Closed enums are validated by Pydantic Literals; null-byte
   injection is rejected by the schema's field validators.
 
 CSV export streaming:
@@ -40,6 +40,7 @@ from core.errors import problem_response
 from core.pagination import PAGE_MAX
 from core.security import CurrentUser, require_super_admin_or_404
 from schemas.admin_ops import (
+    AuditActionMatch,
     AuditLogListPage,
     AuditSearchQuery,
     AuditTargetTable,
@@ -72,6 +73,7 @@ def _build_query(
     actor_user_id: uuid.UUID | None,
     target_table: AuditTargetTable | None,
     action: str | None,
+    action_match: AuditActionMatch,
     from_: datetime | None,
     to: datetime | None,
     q: str | None,
@@ -93,6 +95,7 @@ def _build_query(
             "actor_user_id": actor_user_id,
             "target_table": target_table,
             "action": action,
+            "action_match": action_match,
             "from": from_,
             "to": to,
             "q": q,
@@ -117,6 +120,14 @@ async def search_audit_endpoint(
     actor_user_id: uuid.UUID | None = Query(default=None),
     target_table: AuditTargetTable | None = Query(default=None),
     action: str | None = Query(default=None, max_length=64),
+    action_match: AuditActionMatch = Query(
+        default="contains",
+        description=(
+            "How `action` is compared: `contains` (default) is a "
+            "case-insensitive substring match, `exact` a case-insensitive "
+            "equality."
+        ),
+    ),
     from_: datetime | None = Query(default=None, alias="from"),
     to: datetime | None = Query(default=None),
     q: str | None = Query(default=None, max_length=255),
@@ -129,6 +140,7 @@ async def search_audit_endpoint(
         actor_user_id=actor_user_id,
         target_table=target_table,
         action=action,
+        action_match=action_match,
         from_=from_,
         to=to,
         q=q,
@@ -167,6 +179,14 @@ async def export_audit_csv_endpoint(
     actor_user_id: uuid.UUID | None = Query(default=None),
     target_table: AuditTargetTable | None = Query(default=None),
     action: str | None = Query(default=None, max_length=64),
+    action_match: AuditActionMatch = Query(
+        default="contains",
+        description=(
+            "How `action` is compared: `contains` (default) is a "
+            "case-insensitive substring match, `exact` a case-insensitive "
+            "equality."
+        ),
+    ),
     from_: datetime | None = Query(default=None, alias="from"),
     to: datetime | None = Query(default=None),
     q: str | None = Query(default=None, max_length=255),
@@ -177,6 +197,7 @@ async def export_audit_csv_endpoint(
         actor_user_id=actor_user_id,
         target_table=target_table,
         action=action,
+        action_match=action_match,
         from_=from_,
         to=to,
         q=q,
