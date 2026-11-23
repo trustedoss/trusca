@@ -125,10 +125,16 @@ jobs:
             replicaCount: 0
           beat:
             replicaCount: 0
+          # The migration and config-check Jobs need a database this check does
+          # not use. Everything else stays a hook the chart expects: the Secret
+          # and the environment ConfigMap are pre-install hooks, so --no-hooks
+          # would leave the engine worker without them.
+          migrationJob:
+            enabled: false
+          configCheckJob:
+            enabled: false
           VALUES
-          # No hooks: the migration and config-check Jobs need a database this
-          # check does not use.
-          helm install "$RELEASE" charts/trustedoss -n "$NS" -f /tmp/values.yaml --no-hooks
+          helm install "$RELEASE" charts/trustedoss -n "$NS" -f /tmp/values.yaml
           kubectl -n "$NS" rollout status "deployment/$RELEASE-trustedoss-worker-engine" --timeout=300s
 
       - name: Download the Trivy database into its claim
