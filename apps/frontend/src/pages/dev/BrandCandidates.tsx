@@ -160,7 +160,7 @@ function CandidateRow({
           <Symbol size={32} />
           <Symbol size={20} />
           <Symbol size={16} />
-          <span className="text-[10px] text-muted-foreground">32 / 20 / 16 px</span>
+          <span className="text-xs text-muted-foreground">32 / 20 / 16 px</span>
         </div>
       </div>
     </div>

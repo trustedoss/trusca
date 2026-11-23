@@ -133,7 +133,7 @@ export function KevBadge({
       <span>{t("vulnerabilities.kev.label")}</span>
       {dueText != null ? (
         <span
-          className="font-mono text-[10px] font-normal tabular-nums"
+          className="font-mono text-xs font-normal tabular-nums"
           data-testid="kev-badge-due-date"
         >
           {dueText}

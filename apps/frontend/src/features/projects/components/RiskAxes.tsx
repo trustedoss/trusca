@@ -57,7 +57,7 @@ export function RiskAxes({
         data-score={securityScore}
         className="flex flex-1 flex-col items-center"
       >
-        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        <span className="text-xs font-semibold text-muted-foreground">
           {t("overview.risk_card.security")}
         </span>
         <RiskGauge score={securityScore} size="sm" />
@@ -74,7 +74,7 @@ export function RiskAxes({
         data-score={licenseScore}
         className="flex flex-1 flex-col items-center"
       >
-        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        <span className="text-xs font-semibold text-muted-foreground">
           {t("overview.risk_card.license")}
         </span>
         <RiskGauge score={licenseScore} size="sm" />

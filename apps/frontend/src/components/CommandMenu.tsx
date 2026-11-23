@@ -226,7 +226,7 @@ export const CommandMenuTrigger = forwardRef<
       <span>{t("command_menu.trigger_button")}</span>
       <kbd
         className={cn(
-          "inline-flex h-5 select-none items-center gap-0.5 rounded border px-1.5 font-mono text-[10px] font-medium",
+          "inline-flex h-5 select-none items-center gap-0.5 rounded border px-1.5 font-mono text-xs font-medium",
           onInk
             ? "border-bar-border bg-bar text-bar-muted-foreground"
             : "bg-muted text-muted-foreground",

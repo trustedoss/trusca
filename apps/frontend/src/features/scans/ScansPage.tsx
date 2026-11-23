@@ -165,7 +165,7 @@ export function ScansPage() {
           aria-busy={scansQuery.isLoading}
         >
           <thead className="sticky top-0 bg-card">
-            <tr className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
+            <tr className="border-b text-left text-xs font-semibold text-muted-foreground">
               <th className="px-6 py-2">{t("page.column.project")}</th>
               <th className="px-3 py-2">{t("page.column.kind")}</th>
               <th className="px-3 py-2">{t("page.column.status")}</th>
@@ -220,7 +220,7 @@ export function ScansPage() {
                           )}
                           {scan.release ? (
                             <span
-                              className="inline-flex shrink-0 items-center rounded border border-border bg-muted px-1.5 py-0.5 text-[11px] font-medium text-foreground"
+                              className="inline-flex shrink-0 items-center rounded border border-border bg-muted px-1.5 py-0.5 text-xs font-medium text-foreground"
                               data-testid="scans-row-release"
                               data-release={scan.release}
                               title={t("release.chip_aria", {

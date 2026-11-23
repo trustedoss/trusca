@@ -113,7 +113,7 @@ export function SearchFacetBar({
                   >
                     <span>{bucket.value}</span>
                     <Badge
-                      className="px-1 py-0 text-[10px]"
+                      className="px-1 py-0 text-xs"
                       data-capped={countsCapped}
                       title={countsCapped ? t("capped.tooltip") : undefined}
                     >

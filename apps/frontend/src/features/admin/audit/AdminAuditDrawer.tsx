@@ -43,7 +43,7 @@ function Sha256Pill({ hex }: { hex: string }) {
   const { t } = useTranslation("admin");
   return (
     <span
-      className="inline-flex items-center gap-1 rounded-md border border-status-warning-border bg-status-warning-subtle px-2 py-0.5 font-mono text-[11px] text-status-warning-foreground"
+      className="inline-flex items-center gap-1 rounded-md border border-status-warning-border bg-status-warning-subtle px-2 py-0.5 font-mono text-xs text-status-warning-foreground"
       data-testid="admin-audit-sha256-pill"
       data-prefix={hex.slice(0, 8)}
       title={hex}
@@ -64,7 +64,7 @@ function renderDiffValue(value: unknown): ReactNode {
     return <span className="font-mono text-xs">{String(value)}</span>;
   }
   return (
-    <pre className="max-h-40 overflow-auto rounded-md bg-muted p-2 font-mono text-[11px]">
+    <pre className="max-h-40 overflow-auto rounded-md bg-muted p-2 font-mono text-xs">
       {JSON.stringify(value, null, 2)}
     </pre>
   );
@@ -121,7 +121,7 @@ export function AdminAuditDrawer({
                 the drawer it opens do not disagree about what time it is.
               */}
               <div>
-                <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                <div className="text-xs font-semibold text-muted-foreground">
                   {t("admin.audit.column.created_at")}
                 </div>
                 <RelativeTime
@@ -146,7 +146,7 @@ export function AdminAuditDrawer({
                       data-testid="admin-audit-drawer-diff-row"
                       data-key={key}
                     >
-                      <span className="font-mono text-[11px] text-muted-foreground">
+                      <span className="font-mono text-xs text-muted-foreground">
                         {key}
                       </span>
                       <div>{renderDiffValue(value)}</div>
@@ -184,7 +184,7 @@ function Meta({
 }) {
   return (
     <div>
-      <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
+      <div className="text-xs font-semibold text-muted-foreground">
         {label}
       </div>
       <div className="break-all font-mono text-xs" data-testid={testId}>

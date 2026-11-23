@@ -172,7 +172,7 @@ export function ReleasesTab({ projectId, onViewSnapshot }: ReleasesTabProps) {
               data-loaded={items.length}
             >
               <table className="w-full text-sm">
-                <thead className="border-b text-left text-xs uppercase tracking-wide text-muted-foreground">
+                <thead className="border-b text-left text-xs font-semibold text-muted-foreground">
                   <tr>
                     <th className="px-3 py-2 font-medium">
                       {t("releases.col.release")}

@@ -1303,7 +1303,7 @@ function VulnerabilitiesTableHeader({
       // further 4 px from its data — 36 px of the total misalignment came from
       // this one character. The gutter is now the same value in all three
       // places that use it (here, the row container, the row's inner button).
-      className="flex items-center gap-3 border-b border-border/60 bg-muted px-6 text-xs font-medium uppercase tracking-wider text-muted-foreground"
+      className="flex items-center gap-3 border-b border-border/60 bg-muted px-6 text-xs font-semibold text-muted-foreground"
       style={{ height: "32px" }}
       data-testid="vulnerabilities-header"
       // The header row of the table declared on the track above. `table` may
@@ -1328,7 +1328,7 @@ function VulnerabilitiesTableHeader({
           dropped from the row (drawer carries the full summary); the
           row's last column is now Status. Component is sortable.
           W11-C — non-sortable CVE label inherits the strip's typography
-          (uppercase + tracking-wider) from the parent, so the cell needs
+          (semibold, muted) from the parent, so the cell needs
           no extra class. */}
       <span className="w-36" role="columnheader">
         {t("vulnerabilities.column.cve_id")}
@@ -1615,7 +1615,7 @@ function VulnerabilityRow({
         <KevBadge
           kev={vulnerability.kev}
           dueDate={vulnerability.kev_due_date}
-          className="shrink-0 px-1.5 py-0 text-[10px]"
+          className="shrink-0 px-1.5 py-0 text-xs"
         />
       </span>
       {visibleColumns.has("title") ? (
@@ -1783,7 +1783,7 @@ function SlaDueCell({ status, dueDate }: SlaDueCellProps) {
           status={status}
           dueDate={dueDate}
           showDueDate
-          className="px-1.5 py-0 text-[10px]"
+          className="px-1.5 py-0 text-xs"
         />
       ) : (
         <span
@@ -1908,7 +1908,7 @@ function ComponentColumnCell({ name, version, count }: ComponentColumnCellProps)
       </span>
       {remainder > 0 ? (
         <span
-          className="shrink-0 rounded bg-muted px-1 text-[10px] font-medium tabular-nums text-muted-foreground"
+          className="shrink-0 rounded bg-muted px-1 text-xs font-medium tabular-nums text-muted-foreground"
           data-testid="vulnerability-row-component-more"
           title={t("vulnerabilities.column.affected_more_count_tooltip", {
             count: remainder,
@@ -1936,7 +1936,7 @@ function VexProvenanceMarker() {
   return (
     <span
       data-testid="vulnerability-row-vex-marker"
-      className="rounded border border-primary/40 bg-primary/10 px-1 text-[9px] font-semibold uppercase tracking-wide text-brand"
+      className="rounded border border-primary/40 bg-primary/10 px-1 text-xs font-semibold text-brand"
       title={t("vulnerabilities.vex.marker_tooltip")}
     >
       {t("vulnerabilities.vex.marker")}

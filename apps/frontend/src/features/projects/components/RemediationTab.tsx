@@ -388,7 +388,7 @@ function PullRequestList({
             >
               <div className="flex min-w-0 flex-col gap-0.5">
                 <PrLink pr={pr} testId="remediation-pr-link" />
-                <span className="font-mono text-[10px] text-muted-foreground">
+                <span className="font-mono text-xs text-muted-foreground">
                   {/* B3: was a bare toLocaleString, which follows the browser
                       rather than the language the app is running in. */}
                   {pr.repository_full_name} ·{" "}

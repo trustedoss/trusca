@@ -296,7 +296,7 @@ function VexImportSummaryPanel({ summary }: SummaryPanelProps) {
       data-skipped={summary.skipped}
     >
       <div className="flex flex-wrap items-center gap-2 text-sm">
-        <span className="rounded-md border bg-muted/50 px-2 py-0.5 text-xs uppercase tracking-wide">
+        <span className="rounded-md border bg-muted/50 px-2 py-0.5 text-xs">
           {t(`vulnerabilities.vex.format_${summary.format}`)}
         </span>
       </div>
@@ -320,7 +320,7 @@ function VexImportSummaryPanel({ summary }: SummaryPanelProps) {
 
       {summary.errors.length > 0 ? (
         <div className="flex flex-col gap-1">
-          <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          <h4 className="text-xs font-semibold text-muted-foreground">
             {t("vulnerabilities.vex.summary_errors_heading", {
               count: summary.errors.length,
             })}
@@ -376,7 +376,7 @@ function SummaryStat({ testId, label, value }: SummaryStatProps) {
       <div className="font-mono text-lg tabular-nums" data-testid={testId}>
         {value}
       </div>
-      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+      <div className="text-xs font-semibold text-muted-foreground">
         {label}
       </div>
     </div>

@@ -70,7 +70,7 @@ export function EolBadge({
       <span>{t("components.eol.label")}</span>
       {showDate && eolDate ? (
         <span
-          className="font-mono text-[10px] font-normal tabular-nums"
+          className="font-mono text-xs font-normal tabular-nums"
           data-testid="eol-badge-date"
         >
           {t("components.eol.since", { date: eolDate })}

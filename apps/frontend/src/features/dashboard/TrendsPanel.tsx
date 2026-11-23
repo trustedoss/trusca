@@ -152,7 +152,7 @@ function LevelTile({
       data-current={current}
       data-delta={delta}
     >
-      <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+      <span className="text-xs font-semibold text-muted-foreground">
         {label}
       </span>
       <span className="flex items-baseline gap-2">
@@ -232,7 +232,7 @@ function FlowTile({
       data-new={totals.new_findings}
       data-resolved={totals.resolved_findings}
     >
-      <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+      <span className="text-xs font-semibold text-muted-foreground">
         {label}
       </span>
       {/* `flex-wrap` because the row now carries two words as well as two

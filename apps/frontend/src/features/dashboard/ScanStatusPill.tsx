@@ -28,7 +28,7 @@ export function ScanStatusPill({ status }: { status: ScanStatus }) {
       data-testid="dashboard-scan-status"
       data-status={status}
       className={cn(
-        "inline-flex items-center rounded border px-2 py-0.5 font-mono text-[11px]",
+        "inline-flex items-center rounded border px-2 py-0.5 font-mono text-xs",
         STATUS_TONE_CLASS[status],
       )}
     >

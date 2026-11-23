@@ -161,7 +161,7 @@ function DrawerMetaSection({ detail }: MetaProps) {
       </div>
 
       <div className="font-mono text-xs text-muted-foreground">
-        <span className="mr-2 uppercase tracking-wide">
+        <span className="mr-2 font-sans font-semibold">
           {t("obligations.drawer.metadata.license_label")}
         </span>
         <span data-testid="obligation-drawer-license-name">
@@ -174,7 +174,7 @@ function DrawerMetaSection({ detail }: MetaProps) {
 
       {isSafeUrl(detail.license_reference_url) ? (
         <div className="text-xs">
-          <span className="mr-2 uppercase tracking-wide text-muted-foreground">
+          <span className="mr-2 font-sans font-semibold text-muted-foreground">
             {t("obligations.drawer.metadata.license_reference_label")}
           </span>
           <a
@@ -238,7 +238,7 @@ function DrawerObligationBody({ detail }: MetaProps) {
       ) : null}
       {isSafeUrl(detail.link) ? (
         <div className="text-xs">
-          <span className="mr-2 uppercase tracking-wide text-muted-foreground">
+          <span className="mr-2 font-sans font-semibold text-muted-foreground">
             {t("obligations.drawer.metadata.reference_label")}
           </span>
           <a
@@ -256,7 +256,7 @@ function DrawerObligationBody({ detail }: MetaProps) {
           className="text-xs text-muted-foreground"
           data-testid="obligation-drawer-reference-unsafe"
         >
-          <span className="mr-2 uppercase tracking-wide">
+          <span className="mr-2 font-sans font-semibold">
             {t("obligations.drawer.metadata.reference_label")}
           </span>
           <span className="font-mono">{detail.link}</span>

@@ -455,7 +455,7 @@ export function LoginPage() {
             data-testid="login-oauth-divider"
           >
             <span className="w-full border-t" />
-            <span className="absolute bg-card px-2 text-xs uppercase tracking-wider text-muted-foreground">
+            <span className="absolute bg-card px-2 text-xs text-muted-foreground">
               {t("login.or_continue_with")}
             </span>
           </div>

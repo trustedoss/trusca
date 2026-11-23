@@ -284,7 +284,7 @@ function ReleaseMenuItem({
           {isLatest ? (
             <Badge
               variant="secondary"
-              className="h-4 px-1 py-0 text-[10px] uppercase"
+              className="h-4 px-1 py-0 text-xs leading-none"
               data-testid="release-switcher-item-latest"
             >
               {t("release_switcher.latest_tag")}

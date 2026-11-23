@@ -226,7 +226,7 @@ interface SummaryItemProps {
 function SummaryItem({ label, value, testId }: SummaryItemProps) {
   return (
     <div>
-      <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">
+      <dt className="text-xs font-semibold text-muted-foreground">
         {label}
       </dt>
       <dd className="font-mono text-sm" data-testid={testId}>
@@ -299,7 +299,7 @@ function CheckRow({ check }: { check: SbomConformanceCheck }) {
     >
       <div className="flex min-w-0 flex-col gap-0.5 sm:w-48 sm:shrink-0">
         <span className="text-sm font-medium">{label}</span>
-        <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
+        <span className="text-xs font-semibold text-muted-foreground">
           {check.required
             ? t("conformance.label.required")
             : t("conformance.label.recommended")}
@@ -322,14 +322,14 @@ function CheckRow({ check }: { check: SbomConformanceCheck }) {
             {visible.map((item) => (
               <li
                 key={item}
-                className="inline-flex max-w-full items-center truncate rounded-sm border border-border bg-muted px-1.5 py-0.5 font-mono text-[11px] text-foreground"
+                className="inline-flex max-w-full items-center truncate rounded-sm border border-border bg-muted px-1.5 py-0.5 font-mono text-xs text-foreground"
               >
                 {item}
               </li>
             ))}
             {overflow > 0 ? (
               <li
-                className="inline-flex items-center rounded-sm border border-border bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground"
+                className="inline-flex items-center rounded-sm border border-border bg-muted px-1.5 py-0.5 text-xs text-muted-foreground"
                 data-testid={`check-${check.id}-missing-more`}
               >
                 {t("conformance.missing_more", { count: overflow })}
@@ -460,7 +460,7 @@ function CisaSection({ cisa }: { cisa: SbomConformanceCheck[] }) {
               data-testid={`cisa-cluster-${cluster}`}
               data-cluster={cluster}
             >
-              <h4 className="border-b bg-muted/50 px-3 py-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              <h4 className="border-b bg-muted/50 px-3 py-1.5 text-xs font-semibold text-muted-foreground">
                 {title}
               </h4>
               <div
@@ -493,7 +493,7 @@ function G7ClusterCard({ group }: { group: G7Group }) {
       data-testid={`g7-cluster-${group.cluster}`}
       data-cluster={group.cluster}
     >
-      <h4 className="border-b bg-muted/50 px-3 py-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+      <h4 className="border-b bg-muted/50 px-3 py-1.5 text-xs font-semibold text-muted-foreground">
         {title}
       </h4>
       <div
@@ -598,7 +598,7 @@ function G7CheckRow({ check }: { check: SbomConformanceCheck }) {
             {evidence.map((item) => (
               <li
                 key={item}
-                className="inline-flex max-w-full items-center truncate rounded-sm border border-border bg-muted px-1.5 py-0.5 font-mono text-[11px] text-foreground"
+                className="inline-flex max-w-full items-center truncate rounded-sm border border-border bg-muted px-1.5 py-0.5 font-mono text-xs text-foreground"
               >
                 {item}
               </li>
@@ -611,7 +611,7 @@ function G7CheckRow({ check }: { check: SbomConformanceCheck }) {
             data-testid={`check-${check.id}-missing`}
           >
             <li
-              className="text-[11px] font-medium uppercase tracking-wide text-status-warning-foreground"
+              className="text-xs font-semibold text-status-warning-foreground"
               aria-hidden
             >
               {t("conformance.g7.missing_label")}
@@ -619,14 +619,14 @@ function G7CheckRow({ check }: { check: SbomConformanceCheck }) {
             {missing.map((item) => (
               <li
                 key={item}
-                className="inline-flex max-w-full items-center truncate rounded-sm border border-status-warning-border bg-status-warning-subtle px-1.5 py-0.5 font-mono text-[11px] text-foreground"
+                className="inline-flex max-w-full items-center truncate rounded-sm border border-status-warning-border bg-status-warning-subtle px-1.5 py-0.5 font-mono text-xs text-foreground"
               >
                 {item}
               </li>
             ))}
             {missingOmitted > 0 ? (
               <li
-                className="text-[11px] text-muted-foreground"
+                className="text-xs text-muted-foreground"
                 data-testid={`check-${check.id}-missing-omitted`}
               >
                 {t("conformance.missing_omitted", { count: missingOmitted })}
@@ -650,7 +650,7 @@ function G7CheckRow({ check }: { check: SbomConformanceCheck }) {
             <summary className="cursor-pointer text-xs font-medium text-brand hover:underline">
               {t("conformance.fragment_summary")}
             </summary>
-            <pre className="mt-1 overflow-x-auto rounded-sm border bg-muted px-2 py-1.5 font-mono text-[11px] text-foreground">
+            <pre className="mt-1 overflow-x-auto rounded-sm border bg-muted px-2 py-1.5 font-mono text-xs text-foreground">
               {fragment.snippet}
             </pre>
             {fragment.docUrl ? (
@@ -764,7 +764,7 @@ function AiSubjectCard({
       data-verdict={subject.verdict}
     >
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs uppercase tracking-wide text-muted-foreground">
+        <span className="text-xs font-semibold text-muted-foreground">
           {t(`conformance.ai.kind.${kind}`)}
         </span>
         <span className="font-mono text-sm">{subject.name}</span>
@@ -950,7 +950,7 @@ function CrosswalkFrameworkRow({
                     {element.refs.map((ref) => (
                       <li
                         key={ref}
-                        className="inline-flex max-w-full items-center truncate rounded-sm border border-border bg-muted px-1.5 py-0.5 font-mono text-[11px] text-foreground"
+                        className="inline-flex max-w-full items-center truncate rounded-sm border border-border bg-muted px-1.5 py-0.5 font-mono text-xs text-foreground"
                       >
                         {ref}
                       </li>

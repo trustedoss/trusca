@@ -52,7 +52,7 @@ export function GroupMembersPanel({
       ) : null}
 
       <section>
-        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <h3 className="mb-2 text-xs font-semibold text-muted-foreground">
           {t("detail.members.direct_heading")}
         </h3>
         {membersQuery.isLoading ? (
@@ -75,7 +75,7 @@ export function GroupMembersPanel({
       </section>
 
       <section>
-        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <h3 className="mb-2 text-xs font-semibold text-muted-foreground">
           {t("detail.members.inherited_heading")}
         </h3>
         {membersQuery.isLoading ? (

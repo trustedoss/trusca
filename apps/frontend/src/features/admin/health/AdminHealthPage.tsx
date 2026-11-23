@@ -129,7 +129,7 @@ function HealthCard({ component }: { component: HealthComponent }) {
       <DetailLine component={component} />
       {component.value != null ? (
         <p
-          className="mt-1 font-mono text-[11px] text-muted-foreground"
+          className="mt-1 font-mono text-xs text-muted-foreground"
           data-testid="admin-health-value"
         >
           {component.value}

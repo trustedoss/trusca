@@ -102,7 +102,7 @@ function DiskCard({ item }: { item: AdminDiskItem }) {
           </h2>
           {item.path ? (
             <p
-              className="font-mono text-[11px] text-muted-foreground"
+              className="font-mono text-xs text-muted-foreground"
               data-testid="admin-disk-path"
             >
               {item.path}
@@ -179,7 +179,7 @@ function DiskCard({ item }: { item: AdminDiskItem }) {
               value={formatBytes(item.total_bytes)}
             />
           </div>
-          <div className="mt-2 flex flex-wrap gap-3 text-[11px] text-muted-foreground">
+          <div className="mt-2 flex flex-wrap gap-3 text-xs text-muted-foreground">
             <span>
               {t("admin.disk.label.warning_threshold")}{": "}
               {formatPercent(item.threshold_warning, locale, PCT_DIGITS)}
@@ -198,7 +198,7 @@ function DiskCard({ item }: { item: AdminDiskItem }) {
 function Meta({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
+      <div className="text-xs font-semibold text-muted-foreground">
         {label}
       </div>
       <div className="font-mono text-xs">{value}</div>

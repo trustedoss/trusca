@@ -67,7 +67,7 @@ export function ToolLogLine({ msg }: ToolLogLineProps) {
       </span>
       <span
         className={cn(
-          "shrink-0 rounded border px-1 py-0.5 text-[9px] uppercase tracking-wide",
+          "shrink-0 rounded border px-1 py-0.5 text-xs",
           badge,
         )}
       >
@@ -75,7 +75,7 @@ export function ToolLogLine({ msg }: ToolLogLineProps) {
       </span>
       {isErr ? (
         <span
-          className="shrink-0 rounded border border-risk-critical/40 bg-risk-critical/10 px-1 py-0.5 text-[9px] uppercase tracking-wide text-risk-critical-foreground"
+          className="shrink-0 rounded border border-risk-critical/40 bg-risk-critical/10 px-1 py-0.5 text-xs text-risk-critical-foreground"
           aria-label="stderr"
         >
           err

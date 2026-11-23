@@ -404,7 +404,7 @@ export function AdminTeamDrawer({
                     onChange={(e) => setEditSlug(e.target.value)}
                     className="h-8 font-mono text-xs"
                   />
-                  <p className="mt-1 text-[11px] text-muted-foreground">
+                  <p className="mt-1 text-xs text-muted-foreground">
                     {t("admin.teams.form.slug_help")}
                   </p>
                 </div>
@@ -583,7 +583,7 @@ export function AdminTeamDrawer({
                     onChange={(e) => setSubgroupSlug(e.target.value)}
                     className="h-8 font-mono text-xs"
                   />
-                  <p className="mt-1 text-[11px] text-muted-foreground">
+                  <p className="mt-1 text-xs text-muted-foreground">
                     {t("admin.teams.form.slug_help")}
                   </p>
                 </div>
@@ -764,7 +764,7 @@ interface MetaProps {
 function Meta({ label, value }: MetaProps) {
   return (
     <div>
-      <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
+      <div className="text-xs font-semibold text-muted-foreground">
         {label}
       </div>
       <div className="text-sm">{value}</div>

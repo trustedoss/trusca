@@ -307,7 +307,7 @@ export function UserProfilePage() {
           aria-label={tCommon("auth.profile")}
         >
           <div>
-            <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
+            <div className="text-xs font-semibold text-muted-foreground">
               {t("header.display_name_label")}
             </div>
             <div className="text-sm font-medium" data-testid="profile-display-name">
@@ -315,7 +315,7 @@ export function UserProfilePage() {
             </div>
           </div>
           <div>
-            <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
+            <div className="text-xs font-semibold text-muted-foreground">
               {t("header.email_label")}
             </div>
             <div

@@ -380,9 +380,11 @@ OpenType features `rlig` and `calt` are enabled on `body` for proper Inter rende
 | `Subtitle` | `p` | Muted line beneath a page title — 14 px. |
 | `Body` | `p` | Body copy — 14 px (`muted` prop for secondary copy). |
 | `Caption` | `span` | Dense meta (timestamps, counts) — 12 px muted. |
-| `Eyebrow` | `span` | Uppercase overline / column-group label — 12 px medium. |
+| `Eyebrow` | `span` | Overline, column header, KPI or meta label. 12 px semibold muted, sentence case. |
 
 Reach for a raw `text-*` utility only for one-off inline spans that no primitive covers; never hand-roll a page title.
+
+**12 px is the floor, and labels are sentence case.** No text is smaller than `text-xs` (12 px), badges included; a badge keeps its height by trimming vertical padding, not by shrinking the text. Overlines, table headers, KPI labels and meta labels use `text-xs font-semibold text-muted-foreground` with no `uppercase` and no wide tracking. Korean has no case, so an uppercase label gave English and Korean different hierarchies. Text that is capitals because it is data (CVE ids, SPDX ids such as `MIT`, the `VEX` marker) is written that way in the data or the translation. `tests/unit/design/typeFloor.test.ts` fails on any size under 12 px and on the `uppercase` utility in `src/`.
 
 ## Focus ring
 
