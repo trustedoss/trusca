@@ -68,19 +68,19 @@ export function DependencyScopeBadge({
     );
   }
 
+  // Plain muted text, not a badge (see DependencyTypeBadge): most scans
+  // leave the scope empty, and a grey chip in every row read as a value.
   return (
-    <Badge
-      variant="muted"
+    <span
       data-testid="dependency-scope-badge"
       data-dependency-scope="unknown"
-      aria-label={t("components.badge.dependency_scope.aria_unknown")}
-      className={cn("gap-1.5", className)}
+      title={t("components.badge.dependency_scope.aria_unknown")}
+      className={cn("text-xs text-muted-foreground", className)}
     >
-      <span
-        aria-hidden
-        className="inline-block h-1.5 w-1.5 rounded-full bg-muted-foreground/40"
-      />
-      <span>{t("components.badge.dependency_scope.unknown")}</span>
-    </Badge>
+      <span aria-hidden>{t("components.badge.dependency_scope.unknown")}</span>
+      <span className="sr-only">
+        {t("components.badge.dependency_scope.aria_unknown")}
+      </span>
+    </span>
   );
 }

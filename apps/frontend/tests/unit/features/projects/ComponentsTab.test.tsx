@@ -431,6 +431,11 @@ describe("ComponentsTab", () => {
     // Depth from the chosen path is exposed for downstream harness assertions.
     expect(badges[0]).toHaveAttribute("data-depth", "1");
     expect(badges[1]).toHaveAttribute("data-depth", "3");
+    // A missing value is a plain muted dash, not a grey dot-and-dash chip.
+    expect(badges[0].querySelector(".rounded-full")).not.toBeNull();
+    expect(badges[2].querySelector(".rounded-full")).toBeNull();
+    expect(badges[2].className).toContain("text-muted-foreground");
+    expect(badges[2].querySelector("[aria-hidden]")?.textContent).toBe("\u2014");
   });
 
   it("renders Required/Optional/— badges per row based on dependency_scope", async () => {
@@ -458,6 +463,24 @@ describe("ComponentsTab", () => {
     expect(badges).toHaveLength(3);
     const buckets = badges.map((el) => el.getAttribute("data-dependency-scope"));
     expect(buckets).toEqual(["required", "optional", "unknown"]);
+    expect(badges[0].querySelector(".rounded-full")).not.toBeNull();
+    expect(badges[2].querySelector(".rounded-full")).toBeNull();
+    expect(badges[2].className).toContain("text-muted-foreground");
+    expect(badges[2].querySelector("[aria-hidden]")?.textContent).toBe("\u2014");
+  });
+
+  it("puts the Table/Graph switch in the toolbar row, after Columns and Export", async () => {
+    mockedList.mockResolvedValueOnce(listResponse([comp("Alpha")]));
+    renderTab();
+    const toolbar = await screen.findByTestId("components-toolbar");
+    const toggle = screen.getByTestId("components-view-toggle-table");
+    expect(toolbar.contains(toggle)).toBe(true);
+    const exportButton = screen.getByTestId("components-export-csv");
+    // Document order: Export first, then the switch at the end of the row.
+    expect(
+      exportButton.compareDocumentPosition(toggle) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it("clicking the Direct segment sets ?direct=true and refetches with that filter", async () => {

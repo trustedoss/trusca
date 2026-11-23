@@ -113,14 +113,56 @@ describe("GateResultCard", () => {
     expect(reason.textContent).not.toContain("1 open critical CVEs");
     expect(reason.textContent).toContain("2 forbidden licenses");
 
-    expect(screen.getByTestId("gate-metric-critical")).toHaveAttribute(
-      "data-value",
-      "1",
+    // Each reason is stated once. The tiles for the axes the list already
+    // names are not drawn, so the same count does not appear twice.
+    expect(screen.queryByTestId("gate-metric-critical")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("gate-metric-forbidden")).not.toBeInTheDocument();
+  });
+
+  it("keeps the tile for an axis that held beside a failed one", async () => {
+    mockedGet.mockResolvedValueOnce(
+      gate({ gate: "fail", critical_cve_count: 2, forbidden_license_count: 0 }),
     );
+    renderCard();
+    await waitFor(() => {
+      expect(screen.getByTestId("gate-reason")).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("gate-metric-critical")).not.toBeInTheDocument();
     expect(screen.getByTestId("gate-metric-forbidden")).toHaveAttribute(
       "data-value",
-      "2",
+      "0",
     );
+  });
+
+  it("colours only the counts in the reason list, not the sentences", async () => {
+    mockedGet.mockResolvedValueOnce(
+      gate({
+        gate: "fail",
+        critical_cve_count: 3,
+        malicious_component_count: 1,
+      }),
+    );
+    renderCard();
+    await waitFor(() => {
+      expect(screen.getByTestId("gate-reason")).toBeInTheDocument();
+    });
+    const reason = screen.getByTestId("gate-reason");
+    expect(reason.className).not.toContain("risk-critical");
+    expect(reason.className).toContain("text-foreground");
+    const items = Array.from(reason.querySelectorAll("li"));
+    // Malicious first: its instruction is not the one the others imply.
+    expect(items.map((li) => li.getAttribute("data-clause"))).toEqual([
+      "malicious",
+      "critical_cve",
+    ]);
+    for (const [li, count] of [
+      [items[0], "1"],
+      [items[1], "3"],
+    ] as const) {
+      const coloured = li.querySelector(".text-risk-critical-foreground");
+      expect(coloured?.textContent).toBe(count);
+    }
+    expect(items[0].textContent).toContain("rotate the credentials");
   });
 
   it("falls back to a generic localized reason when no count is positive (BUG-002)", async () => {
@@ -174,8 +216,9 @@ describe("GateResultCard", () => {
     expect(screen.queryByTestId("gate-metric-epss")).not.toBeInTheDocument();
     unmount();
 
+    // A passing gate with the axis on: the tile carries the count.
     mockedGet.mockResolvedValueOnce(
-      gate({ epss_threshold: 0.5, epss_gate_count: 3, gate: "fail" }),
+      gate({ epss_threshold: 0.5, epss_gate_count: 0, epss_outcome: "evaluated" }),
     );
     renderCard();
     await waitFor(() => {
@@ -183,7 +226,7 @@ describe("GateResultCard", () => {
     });
     expect(screen.getByTestId("gate-metric-epss")).toHaveAttribute(
       "data-value",
-      "3",
+      "0",
     );
   });
 

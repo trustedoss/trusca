@@ -5,7 +5,8 @@ import {
   ShieldCheckIcon,
   ShieldXIcon,
 } from "@primer/octicons-react";
-import { useTranslation } from "react-i18next";
+import type { ReactNode } from "react";
+import { Trans, useTranslation } from "react-i18next";
 
 import { Alert, AlertDescription } from "@/components/primer/alert";
 import { Badge } from "@/components/primer/badge";
@@ -117,6 +118,11 @@ export function GateResultCard({ projectId, scanId }: GateResultCardProps) {
   const passed = data.gate === "pass";
   // Only the two empty outcomes draw anything; an ordinary scan, an unknown
   // outcome (null) and a portal too old to send the field draw nothing.
+  // On a failed gate the reason list already names every positive count
+  // that blocked the build, so the matching tile below would repeat it. The
+  // tiles that remain on a failure are the axes that held (a zero) and the
+  // ones the reason list does not model.
+  const listedAsReason = (count: number) => !passed && count > 0;
   const emptyOutcome =
     data.component_outcome === "empty_with_manifests" ||
     data.component_outcome === "empty_no_manifests"
@@ -211,23 +217,27 @@ export function GateResultCard({ projectId, scanId }: GateResultCardProps) {
             ) : null}
 
             <dl className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-              <GateMetric
-                label={t("overview.gate_card.critical_cves", {
-                  defaultValue: "Critical CVEs",
-                })}
-                value={data.critical_cve_count}
-                emphasize={data.critical_cve_count > 0}
-                testid="gate-metric-critical"
-              />
-              <GateMetric
-                label={t("overview.gate_card.forbidden_licenses", {
-                  defaultValue: "Forbidden licenses",
-                })}
-                value={data.forbidden_license_count}
-                emphasize={data.forbidden_license_count > 0}
-                testid="gate-metric-forbidden"
-              />
-              {data.malicious_component_count > 0 ? (
+              {listedAsReason(data.critical_cve_count) ? null : (
+                <GateMetric
+                  label={t("overview.gate_card.critical_cves", {
+                    defaultValue: "Critical CVEs",
+                  })}
+                  value={data.critical_cve_count}
+                  emphasize={data.critical_cve_count > 0}
+                  testid="gate-metric-critical"
+                />
+              )}
+              {listedAsReason(data.forbidden_license_count) ? null : (
+                <GateMetric
+                  label={t("overview.gate_card.forbidden_licenses", {
+                    defaultValue: "Forbidden licenses",
+                  })}
+                  value={data.forbidden_license_count}
+                  emphasize={data.forbidden_license_count > 0}
+                  testid="gate-metric-forbidden"
+                />
+              )}
+              {listedAsReason(data.malicious_component_count) ? null : data.malicious_component_count > 0 ? (
                 <GateMetric
                   label={t("overview.gate_card.malicious_packages", {
                     defaultValue: "Known-malicious packages",
@@ -248,7 +258,8 @@ export function GateResultCard({ projectId, scanId }: GateResultCardProps) {
                 </div>
               ) : null}
               {data.epss_threshold != null &&
-              data.epss_outcome !== "no_data" ? (
+              data.epss_outcome !== "no_data" &&
+              !listedAsReason(data.epss_gate_count) ? (
                 <GateMetric
                   label={t("overview.gate_card.epss_findings", {
                     defaultValue: "EPSS ≥ {{threshold}}",
@@ -388,39 +399,48 @@ export function GateResultCard({ projectId, scanId }: GateResultCardProps) {
 function GateFailReason({ data }: { data: GateResultResponse }) {
   const { t } = useTranslation("project_detail");
 
-  const clauses: string[] = [];
-  if (data.critical_cve_count > 0) {
-    clauses.push(
-      t("overview.gate_card.reason.critical_cve", {
-        count: data.critical_cve_count,
-      }),
-    );
+  // Only the count carries the risk colour; the sentence around it stays in
+  // the body colour so the card does not read as one block of red text.
+  const countSlot = (
+    <span className="font-mono font-semibold tabular-nums text-risk-critical-foreground" />
+  );
+  const clauses: { key: string; node: ReactNode }[] = [];
+  function countClause(
+    key: string,
+    count: number,
+    extra: Record<string, unknown> = {},
+  ) {
+    clauses.push({
+      key,
+      node: (
+        <Trans
+          t={t}
+          i18nKey={`overview.gate_card.reason.${key}`}
+          values={{ count, ...extra }}
+          count={count}
+          components={{ count: countSlot }}
+        />
+      ),
+    });
   }
+
+  // Malicious first, ahead of the CVE clause, the same order the Overview
+  // chip uses. A CVE is a defect to schedule; this is an attack already in
+  // the build, and the instruction it carries (remove, rotate credentials)
+  // is not the one the other clauses imply.
   if (data.malicious_component_count > 0) {
-    // First, ahead of the CVE clause — the same order the Overview chip uses.
-    // A CVE is a defect to schedule; this is an attack already in the build,
-    // and the instruction it carries (remove, rotate credentials) is not the
-    // one the other clauses imply.
-    clauses.unshift(
-      t("overview.gate_card.reason.malicious", {
-        count: data.malicious_component_count,
-      }),
-    );
+    countClause("malicious", data.malicious_component_count);
+  }
+  if (data.critical_cve_count > 0) {
+    countClause("critical_cve", data.critical_cve_count);
   }
   if (data.forbidden_license_count > 0) {
-    clauses.push(
-      t("overview.gate_card.reason.forbidden_license", {
-        count: data.forbidden_license_count,
-      }),
-    );
+    countClause("forbidden_license", data.forbidden_license_count);
   }
   if (data.epss_threshold != null && data.epss_gate_count > 0) {
-    clauses.push(
-      t("overview.gate_card.reason.epss", {
-        count: data.epss_gate_count,
-        threshold: data.epss_threshold,
-      }),
-    );
+    countClause("epss", data.epss_gate_count, {
+      threshold: data.epss_threshold,
+    });
   }
 
   if (
@@ -429,24 +449,31 @@ function GateFailReason({ data }: { data: GateResultResponse }) {
       (data.incomplete_scan_outcome === "unknown" &&
         data.incomplete_scan_on_unknown === "block"))
   ) {
-    clauses.push(
-      t(`overview.gate_card.reason.incomplete_scan_${data.incomplete_scan_outcome}`),
-    );
+    clauses.push({
+      key: "incomplete_scan",
+      node: t(
+        `overview.gate_card.reason.incomplete_scan_${data.incomplete_scan_outcome}`,
+      ),
+    });
   }
 
   return (
     <div
-      className="text-sm font-medium text-risk-critical-foreground"
+      className="text-sm text-foreground"
       data-testid="gate-reason"
       data-reason-clauses={clauses.length}
       aria-live="polite"
     >
       {clauses.length > 0 ? (
         <>
-          <p>{t("overview.gate_card.reason.intro")}</p>
-          <ul className="ml-4 list-disc">
-            {clauses.map((clause, idx) => (
-              <li key={idx}>{clause}</li>
+          <p className="text-muted-foreground">
+            {t("overview.gate_card.reason.intro")}
+          </p>
+          <ul className="mt-1 ml-4 list-disc space-y-0.5">
+            {clauses.map((clause) => (
+              <li key={clause.key} data-clause={clause.key}>
+                {clause.node}
+              </li>
             ))}
           </ul>
         </>

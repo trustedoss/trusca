@@ -241,7 +241,7 @@ see [Environment variables](../reference/env-variables.md).
 
 ## Table view vs. graph view
 
-The Components tab has a **Table / Graph** toggle (top-left). **Table** is the default virtualized list above. **Graph** renders the scan's resolved **dependency graph** — every *parent → child* edge the scanner recorded — as an interactive node-link diagram (left-to-right layout), so you can see *how* a package is pulled in rather than just *that* it is present. Each node is coloured by its highest-severity finding (colour is never the only signal — the detail panel and the tree fallback show a severity label too), and a search box highlights matching packages. Clicking a node opens its details beside the canvas.
+The Components tab has a **Table / Graph** toggle at the right end of the filter row, next to **Columns** and **Export CSV**. **Table** is the default virtualized list above. **Graph** renders the scan's resolved **dependency graph** (every *parent → child* edge the scanner recorded) as an interactive node-link diagram (left-to-right layout), so you can see *how* a package is pulled in rather than just *that* it is present. Each node is coloured by its highest-severity finding (colour is never the only signal: the detail panel and the tree fallback show a severity label too), and a search box highlights matching packages. Clicking a node opens its details beside the canvas.
 
 The choice is mirrored into `?view=graph` so a reload or shared link keeps the graph open; the graph is scoped to the currently pinned `?scan=` snapshot like every other tab.
 

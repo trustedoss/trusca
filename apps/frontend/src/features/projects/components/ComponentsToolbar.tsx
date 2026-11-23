@@ -3,6 +3,7 @@
 import {
   XIcon,
 } from "@primer/octicons-react";
+import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import {
@@ -98,6 +99,16 @@ const DEPENDENCY_TYPE_OPTIONS: { value: boolean | null; key: string }[] = [
   { value: false, key: "transitive" },
 ];
 
+/**
+ * Every control in the row is a label over a 32 px control. The labels used
+ * to sit at three different heights: some had `mt-1` on the control, some
+ * had none, and the pills had no label line at all, so with the row aligned
+ * to the bottom each label landed wherever its control's margin put it. One
+ * group shape and one label line box keep them on a single baseline.
+ */
+const FILTER_GROUP = "flex flex-col gap-1";
+const FILTER_LABEL = "h-4 text-xs font-medium leading-4 text-muted-foreground";
+
 export interface ComponentsToolbarProps {
   search: string;
   onSearchChange: (value: string) => void;
@@ -155,6 +166,12 @@ export interface ComponentsToolbarProps {
    * this because the parent owns the filter state the export has to match.
    */
   onExportCsv: () => Promise<void>;
+  /**
+   * The Table / Graph switch. The parent owns the view state; the toolbar
+   * only gives it a place at the end of the row, beside Columns and Export,
+   * so the filter area stays one line instead of gaining a strip of its own.
+   */
+  viewToggle?: ReactNode;
   className?: string;
 }
 
@@ -183,6 +200,7 @@ export function ComponentsToolbar({
   onVisibleColumnsChange,
   columnsStorageKey,
   onExportCsv,
+  viewToggle,
   className,
 }: ComponentsToolbarProps) {
   const { t } = useTranslation("project_detail");
@@ -228,21 +246,16 @@ export function ComponentsToolbar({
   return (
     <div
       className={cn(
-        // G0-5 — `lg:flex-wrap`, same reasoning as VulnerabilitiesToolbar. This
-        // one fits at 1440 px today with the current label lengths, which is
-        // exactly why it needs the wrap point: the row has grown four controls
-        // since it was written and the next one, or a longer translation, puts
-        // it in the same squeeze with nothing to catch it.
-        "flex flex-col gap-3 border-b bg-background px-6 py-3 lg:flex-row lg:flex-wrap lg:items-end lg:gap-4",
+        // G0-5: `lg:flex-wrap`, same reasoning as VulnerabilitiesToolbar:
+        // the row has grown controls since it was written, and the next one,
+        // or a longer translation, needs somewhere to go.
+        "flex flex-col gap-3 border-b bg-background px-6 py-3 lg:flex-row lg:flex-wrap lg:items-end",
         className,
       )}
       data-testid="components-toolbar"
     >
-      <div className="min-w-[12rem] flex-1">
-        <label
-          htmlFor="components-search"
-          className="block text-xs font-medium text-muted-foreground"
-        >
+      <div className={cn(FILTER_GROUP, "min-w-[12rem] flex-1")}>
+        <label htmlFor="components-search" className={FILTER_LABEL}>
           {t("components.toolbar.search_label")}
         </label>
         <Input
@@ -252,19 +265,18 @@ export function ComponentsToolbar({
           onChange={(event) => onSearchChange(event.target.value)}
           placeholder={t("components.toolbar.search_placeholder")}
           data-testid="components-search"
-          className="mt-1 h-8"
+          className="h-8"
         />
       </div>
 
       <div
-        className="flex flex-col"
+        className={FILTER_GROUP}
         data-testid="components-dependency-type-filter"
       >
-        <span className="text-xs font-medium text-muted-foreground">
+        <span className={FILTER_LABEL}>
           {t("components.toolbar.dependency_type_label")}
         </span>
         <SegmentedControl
-          className="mt-1"
           aria-label={t("components.toolbar.dependency_type_label")}
           value={direct}
           onChange={onDirectChange}
@@ -276,17 +288,14 @@ export function ComponentsToolbar({
         />
       </div>
 
-      <div className="flex flex-col">
-        <label
-          htmlFor="components-usage-filter"
-          className="text-xs font-medium text-muted-foreground"
-        >
+      <div className={FILTER_GROUP}>
+        <label htmlFor="components-usage-filter" className={FILTER_LABEL}>
           {t("components.toolbar.usage_label")}
         </label>
         <MultiSelect
           id="components-usage-filter"
           testId="components-usage-filter"
-          className="w-40"
+          className="w-32"
           label={t("components.toolbar.usage_label")}
           options={USAGE_OPTIONS.map((opt) => ({
             value: opt,
@@ -304,7 +313,7 @@ export function ComponentsToolbar({
           schedule, this is a package that was published to attack whoever
           installs it. "off" means no opinion — `?malicious=false` is never
           emitted from here. */}
-      <div className="flex flex-col">
+      <div className={FILTER_GROUP}>
         <button
           type="button"
           aria-pressed={maliciousOnly}
@@ -327,7 +336,7 @@ export function ComponentsToolbar({
       {/* Phase M — EOL-only toggle. A single pressed-state pill (not a
           3-state segment): "on" narrows to past-end-of-life components,
           "off" means no opinion — `?eol=false` is never emitted from here. */}
-      <div className="flex flex-col">
+      <div className={FILTER_GROUP}>
         <button
           type="button"
           aria-pressed={eolOnly}
@@ -351,7 +360,7 @@ export function ComponentsToolbar({
           narrows to components behind the newest patch in their release line;
           "off" means no opinion — `?outdated=false` is never emitted here. A
           lower-urgency signal than EOL (a newer patch exists, not end-of-life). */}
-      <div className="flex flex-col">
+      <div className={FILTER_GROUP}>
         <button
           type="button"
           aria-pressed={outdatedOnly}
@@ -374,13 +383,13 @@ export function ComponentsToolbar({
       {/* W9 #52 — optional severity facet, mount-on-demand. */}
       {showSeverityFacet ? (
         <div
-          className="flex flex-col"
+          className={FILTER_GROUP}
           data-testid="components-severity-facet"
         >
-          <div className="flex items-center gap-1">
+          <div className="flex h-4 items-center gap-1">
             <label
               htmlFor="components-severity-filter"
-              className="text-xs font-medium text-muted-foreground"
+              className={FILTER_LABEL}
             >
               {t("extra_filters.severity_label")}
             </label>
@@ -417,13 +426,13 @@ export function ComponentsToolbar({
       {/* W9 #52 — optional license category facet, mount-on-demand. */}
       {showLicenseFacet ? (
         <div
-          className="flex flex-col"
+          className={FILTER_GROUP}
           data-testid="components-license-category-facet"
         >
-          <div className="flex items-center gap-1">
+          <div className="flex h-4 items-center gap-1">
             <label
               htmlFor="components-license-category-filter"
-              className="text-xs font-medium text-muted-foreground"
+              className={FILTER_LABEL}
             >
               {t("extra_filters.license_category_label")}
             </label>
@@ -459,10 +468,7 @@ export function ComponentsToolbar({
         </div>
       ) : null}
 
-      <div className="flex flex-col lg:ml-auto">
-        <span className="invisible text-xs font-medium" aria-hidden>
-          &nbsp;
-        </span>
+      <div className="flex items-end">
         <MoreFiltersMenu
           availableFilters={availableExtraFilters}
           activeFilterIds={activeFilterIds}
@@ -471,10 +477,14 @@ export function ComponentsToolbar({
         />
       </div>
 
-      <div className="flex flex-col">
-        <span className="invisible text-xs font-medium" aria-hidden>
-          &nbsp;
-        </span>
+      {/* What leaves this screen and how it is drawn: the column picker, the
+          CSV of the rows as they are filtered right now (B5), and the Table /
+          Graph switch. One right-aligned cluster, so when the row wraps at a
+          narrow width the three move together and stay on the right. */}
+      <div
+        className="flex flex-wrap items-end gap-2 lg:ml-auto"
+        data-testid="components-toolbar-actions"
+      >
         <ColumnsPicker
           columns={columnsCatalog}
           visibleColumns={visibleColumns}
@@ -482,14 +492,6 @@ export function ComponentsToolbar({
           storageKey={columnsStorageKey}
           testId="components-columns-picker-trigger"
         />
-      </div>
-
-      {/* B5: the rows as they are filtered right now, beside the column
-          picker because both are about what leaves this screen. */}
-      <div className="flex flex-col">
-        <span className="invisible text-xs font-medium" aria-hidden>
-          &nbsp;
-        </span>
         <ExportCsvButton
           onExport={() => onExportCsv()}
           namespace="project_detail"
@@ -497,6 +499,7 @@ export function ComponentsToolbar({
           tooLargeMessageKey="export.too_large.components"
           data-testid="components-export-csv"
         />
+        {viewToggle}
       </div>
     </div>
   );

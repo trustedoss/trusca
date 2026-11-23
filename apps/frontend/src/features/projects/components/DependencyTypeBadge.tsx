@@ -40,22 +40,22 @@ export function DependencyTypeBadge({
 
   // depth-null bucket — render a muted em-dash, NOT "Transitive". Conflating
   // the two would lie about cdxgen output: "no graph captured" ≠ "depth 2+".
+  // Plain muted text, not a badge: a grey chip with a dot in every row of a
+  // scan without a graph read as a value, and drowned the rows that had one.
   if (depth == null) {
     return (
-      <Badge
-        variant="muted"
+      <span
         data-testid="dependency-type-badge"
         data-dependency-type="unknown"
         data-depth=""
-        aria-label={t("components.badge.dependency_type.aria_unknown")}
-        className={cn("gap-1.5", className)}
+        title={t("components.badge.dependency_type.aria_unknown")}
+        className={cn("text-xs text-muted-foreground", className)}
       >
-        <span
-          aria-hidden
-          className="inline-block h-1.5 w-1.5 rounded-full bg-muted-foreground/40"
-        />
-        <span>{t("components.badge.dependency_type.unknown")}</span>
-      </Badge>
+        <span aria-hidden>{t("components.badge.dependency_type.unknown")}</span>
+        <span className="sr-only">
+          {t("components.badge.dependency_type.aria_unknown")}
+        </span>
+      </span>
     );
   }
 

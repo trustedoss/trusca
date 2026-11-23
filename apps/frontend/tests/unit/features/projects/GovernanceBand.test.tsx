@@ -102,20 +102,22 @@ describe("GovernanceBand", () => {
     const gate = await screen.findByTestId("governance-gate");
     expect(gate).toHaveAttribute("data-tone", "danger");
     expect(gate).toHaveAttribute("href", "/projects/p-1?tab=vulnerabilities");
-    // The reason is text, not only a tint.
-    expect(gate.textContent).toContain("3 critical");
-    expect(gate.textContent).toContain("1 forbidden");
+    // The state is a word, not only a tint.
+    expect(gate.textContent).toContain("Blocked");
   });
 
-  it("names the condition that actually blocked, not every condition", async () => {
+  it("shows the gate state only and leaves the reasons to the gate card", async () => {
+    // The same reasons used to appear four times on the Overview: here, in
+    // the malicious banner, in the gate card's list and in its tiles. They
+    // are stated once now, in the build gate card.
     apiGet.mockResolvedValue({
       data: band({
         gate: {
           status: "fail",
-          critical_cve_count: 0,
-          forbidden_license_count: 0,
-          epss_gate_count: 3,
-          malicious_component_count: 0,
+          critical_cve_count: 3,
+          forbidden_license_count: 1,
+          epss_gate_count: 2,
+          malicious_component_count: 4,
           scan_id: "s-1",
         },
       }),
@@ -124,10 +126,7 @@ describe("GovernanceBand", () => {
     renderBand();
 
     const gate = await screen.findByTestId("governance-gate");
-    // An EPSS-only failure used to read "0 critical · 0 forbidden licences" —
-    // every number true, the sentence useless.
-    expect(gate.textContent).not.toContain("0 critical");
-    expect(gate.textContent).toContain("EPSS");
+    expect(gate.textContent).toBe("Build gateBlocked");
   });
 
   it("separates overdue KEV deadlines from ones still in hand", async () => {

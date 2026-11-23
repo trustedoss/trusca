@@ -287,15 +287,15 @@
         "incomplete_scan_incomplete": "The scan is incomplete, so components or dependencies may be missing and the counts understate the risk",
         "incomplete_scan_unknown": "The scan's completeness could not be established, and the gate is set to block in that case",
         "intro": "This build is blocked because:",
-        "critical_cve": "{{count}} open critical CVE",
-        "critical_cve_other": "{{count}} open critical CVEs",
-        "forbidden_license": "{{count}} forbidden license",
-        "forbidden_license_other": "{{count}} forbidden licenses",
-        "epss": "{{count}} finding with EPSS ≥ {{threshold}}",
-        "epss_other": "{{count}} findings with EPSS ≥ {{threshold}}",
+        "critical_cve": "<count>{{count}}</count> open critical CVE",
+        "critical_cve_other": "<count>{{count}}</count> open critical CVEs",
+        "forbidden_license": "<count>{{count}}</count> forbidden license",
+        "forbidden_license_other": "<count>{{count}}</count> forbidden licenses",
+        "epss": "<count>{{count}}</count> finding with EPSS ≥ {{threshold}}",
+        "epss_other": "<count>{{count}}</count> findings with EPSS ≥ {{threshold}}",
         "fallback": "The build gate failed. See the metrics below for details.",
-        "malicious": "{{count}} known-malicious package — remove it and rotate the credentials this build could reach",
-        "malicious_other": "{{count}} known-malicious packages — remove them and rotate the credentials this build could reach"
+        "malicious": "<count>{{count}}</count> known-malicious package: remove it and rotate the credentials this build could reach",
+        "malicious_other": "<count>{{count}}</count> known-malicious packages: remove them and rotate the credentials this build could reach"
       },
       "subtitle": "Build-blocking verdict from the latest successful scan.",
       "title": "Build gate"
@@ -313,7 +313,6 @@
     "malicious_chip": {
       "title": "{{count}} known-malicious package",
       "title_other": "{{count}} known-malicious packages",
-      "body": "Remove and rotate the credentials this build could reach.",
       "link": "View them"
     }
   },
@@ -438,7 +437,7 @@
     },
     "table_aria": "Components",
     "malicious": {
-      "label": "MALICIOUS",
+      "label": "Malicious",
       "tooltip": "Known-malicious package. Remove it and rotate the credentials this build could reach — upgrading does not help.",
       "tooltip_with_source": "Known-malicious package ({{source}}). Remove it and rotate the credentials this build could reach — upgrading does not help."
     }
@@ -1568,13 +1567,7 @@
     "trend_delta": "{{delta}} over {{scans}} scans",
     "trend_needs_history": "Not enough scans yet.",
     "never_scanned": "No successful scan yet",
-    "error": "Could not load the governance summary. Retry before reading its absence as good news.",
-    "gate_reason_critical": "{{count}} critical",
-    "gate_reason_licenses": "{{count}} forbidden license",
-    "gate_reason_licenses_other": "{{count}} forbidden licenses",
-    "gate_reason_epss": "{{count}} above the EPSS threshold",
-    "gate_reason_malicious": "{{count}} known-malicious package",
-    "gate_reason_malicious_other": "{{count}} known-malicious packages"
+    "error": "Could not load the governance summary. Retry before reading its absence as good news."
   },
   "export": {
     "too_large": {
