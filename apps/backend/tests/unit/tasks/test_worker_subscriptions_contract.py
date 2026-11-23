@@ -77,6 +77,7 @@ def test_chart_matches_the_contract() -> None:
     chart = _chart_subscriptions()
     assert chart["scan"] == contract["scan"]
     assert chart["default"] == contract["default"]
+    assert chart["engine"] == contract["engine"]
 
 
 def test_the_default_worker_never_takes_the_scan_queue() -> None:

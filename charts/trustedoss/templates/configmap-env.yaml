@@ -2,6 +2,8 @@
 SPDX-License-Identifier: Apache-2.0
 Copyright 2026 TRUSCA contributors
 */ -}}
+{{- /* Refuses an engine setting the chart cannot make work, before anything renders. */ -}}
+{{- include "trustedoss.engine.validate" . -}}
 {{/*
 Shared non-secret environment for backend / worker / beat.
 
@@ -99,6 +101,11 @@ data:
   SCAN_SOFT_TIME_LIMIT_SECONDS: {{ .Values.env.scan.softTimeLimitSeconds | quote }}
   SCAN_HARD_TIME_LIMIT_SECONDS: {{ .Values.env.scan.hardTimeLimitSeconds | quote }}
   WORKSPACE_ORPHAN_MAX_AGE_SECONDS: {{ .Values.env.scan.workspaceOrphanMaxAgeSeconds | quote }}
+  # BomLens engine (preview). Every pod reads these: the backend and the scan
+  # workers decide which queue a scan goes to, and beat schedules the
+  # engine-container reaper only while one of them is `bomlens`.
+  SCAN_ENGINE: {{ .Values.env.scan.engine | quote }}
+  SCAN_CONTAINER_ENGINE: {{ .Values.env.scan.containerEngine | quote }}
 
   # ---- scancode guards (A2) ----
   SCANCODE_TIMEOUT_SECONDS: {{ .Values.env.scancode.timeoutSeconds | quote }}
