@@ -172,7 +172,7 @@ describe("OverviewTab", () => {
     expect(alert).toHaveAttribute("data-outcome", "empty_no_manifests");
     // The unsupported-ecosystem wording, not the scan-failure wording: the two
     // ask the user for different things.
-    expect(alert.textContent).toContain("no dependency manifest we recognise");
+    expect(alert.textContent).toContain("no dependency manifest we recognize");
   });
 
   it("separates a failed scan from an unsupported ecosystem", async () => {

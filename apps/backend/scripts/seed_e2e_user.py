@@ -834,7 +834,7 @@ def _parse_kev_due_spread(raw: str) -> list[str]:
 # over the recorded fixture ``tests/fixtures/sbom_ingest/aibom-owasp-1_7.json``
 # — no invented values, only a deterministic subset. Registry v2 (#306): the
 # models-cluster elements score per-model coverage, so their details read
-# "N/M model component(s)" and a warn names the offending models in
+# "N/M model components" and a warn names the offending models in
 # ``missing`` (the fixture's single model is "bert-base-uncased"). Detail
 # strings are the evaluator's own output; label/cluster/source/role are
 # resolved from the live ``g7_registry.json`` at seed time so a registry
@@ -854,12 +854,12 @@ _G7_SEED_PLAN: dict[str, tuple[str, str, list[str] | None, list[str]]] = {
     # advisory warn naming the offender (source=auto)
     "g7-model-hash-value": (
         "warn",
-        "0/1 model component(s)",
+        "0/1 model component",
         None,
         ["bert-base-uncased"],
     ),
     # models cluster — every model covered, real evidence (Apache-2.0)
-    "g7-model-license": ("pass", "1/1 model component(s)", ["Apache-2.0"], []),
+    "g7-model-license": ("pass", "1/1 model component",["Apache-2.0"], []),
 }
 
 

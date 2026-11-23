@@ -542,7 +542,8 @@
         "newly_flagged": "Newly flagged",
         "flagged_total": "Flagged components",
         "snapshot": "Snapshot",
-        "snapshot_hint": "{{count}} packages listed",
+        "snapshot_hint": "{{count}} package listed",
+        "snapshot_hint_other": "{{count}} packages listed",
         "next_tick": "Next check",
         "refresh_on": "Rebuild enabled",
         "refresh_off": "Re-check only, no rebuild"
@@ -550,9 +551,10 @@
       "footer": "{{ecosystems}} ecosystems · {{stamped}} verdicts changed · last run {{last}}"
     },
     "anonymisation": {
-      "title": "Anonymisation awaiting execution",
+      "title": "Anonymization awaiting execution",
       "description": "Two super admins have approved these erasures. Nothing is erased until an operator runs the command on the server, so each row is work this deployment still owes someone.",
-      "waiting": "Waiting {{count}} days",
+      "waiting": "Waiting {{count}} day",
+      "waiting_other": "Waiting {{count}} days",
       "status": {
         "clear": "Nothing outstanding",
         "waiting": "Awaiting an operator",

@@ -85,14 +85,14 @@ Backup complete
 
 ![갓 설치된 환경의 Admin 백업 페이지. 동작 버튼은 페이지 머리글에 있고, 첫 백업이 만들어지기 전까지 목록 자리에 빈 상태 안내가 나옵니다](/img/screenshots/admin-backup-list.png)
 
-동작 버튼은 페이지 머리글에 있습니다. **Refresh**, **Upload and restore…**, 그리고 오른쪽 끝의 주 버튼 **Run manual backup now** 순서입니다. 목록 표는 여섯 컬럼을 보여줍니다. `NAME`, `KIND`, `CREATED`, `SIZE`, `DB REVISION`, `ACTIONS`입니다. 갓 설치된 환경에서는 표 대신 빈 상태 안내(*"No backups yet"*)가 나옵니다. 수동 백업을 실행하거나 야간 자동 작업을 기다리면 됩니다.
+동작 버튼은 페이지 머리글에 있습니다. **새로 고침**, **Upload and restore…**, 그리고 오른쪽 끝의 주 버튼 **지금 수동 백업 실행** 순서입니다. 목록 표는 여섯 컬럼을 보여줍니다. `NAME`, `KIND`, `CREATED`, `SIZE`, `DB REVISION`, `ACTIONS`입니다. 갓 설치된 환경에서는 표 대신 빈 상태 안내(*"No backups yet"*)가 나옵니다. 수동 백업을 실행하거나 야간 자동 작업을 기다리면 됩니다.
 
 ### 백업 트리거
 
 1. `/admin/backup`을 엽니다(Admin 사이드바 → **Backup**).
-2. **Run manual backup now**를 클릭합니다. 버튼은 `super_admin` 전용입니다.
+2. **지금 수동 백업 실행**을 클릭합니다. 버튼은 `super_admin` 전용입니다.
 3. 포털이 Celery 태스크를 큐에 넣습니다 — 행이 즉시 표에 나타나며 상태 `running`과 실시간 진행 바가 표시됩니다.
-4. 태스크 완료 시 행이 `succeeded`로 전환되고 타임스탬프 옆에 **Download** 링크가 표시됩니다.
+4. 태스크 완료 시 행이 `succeeded`로 전환되고 타임스탬프 옆에 **다운로드** 링크가 표시됩니다.
 
 ![Admin 백업 — 수동 트리거 직후 표시되는 toast 알림](/img/screenshots/admin-backup-trigger-toast.png)
 
@@ -108,12 +108,12 @@ Backup complete
 
 1. 페이지 머리글의 **Upload and restore…**를 클릭해 아카이브를 선택합니다(최대 **10 GB**. 더 큰 백업은 CLI 복원 경로를 사용합니다). 확인 대화상자가 열립니다.
 2. 대화상자의 경고를 주의 깊게 읽으세요. 복원은 라이브 데이터베이스와 workspace를 덮어씁니다. 대화상자에는 선택한 파일 이름도 나옵니다.
-3. 확인 필드에 **`restore`**(소문자, 정확히 일치)를 입력하세요. 입력이 일치할 때까지 빨간 **Restore** 버튼은 비활성화 상태입니다.
-4. **Restore**를 클릭합니다. **Cancel**, 닫기 버튼, Escape 키 중 하나를 쓰면 아무것도 업로드하지 않고 대화상자가 닫힙니다.
+3. 확인 필드에 **`restore`**(소문자, 정확히 일치)를 입력하세요. 입력이 일치할 때까지 빨간 **복원** 버튼은 비활성화 상태입니다.
+4. **복원**을 클릭합니다. **취소**, 닫기 버튼, Escape 키 중 하나를 쓰면 아무것도 업로드하지 않고 대화상자가 닫힙니다.
 
 ![경고와 비활성 Restore 버튼이 표시된 복원 확인 대화상자(입력이 일치하면 활성화)](/img/screenshots/admin-backup-restore-modal.png)
 
-타이핑 게이트가 일치하면 파괴적 **Restore** 버튼이 활성화됩니다. 아래 스크린샷은 게이트가 풀리는 순간을 포착했습니다 — 입력된 `restore` 토큰, 표시된 경고 패널, 그리고 이제 클릭 가능해진 버튼:
+타이핑 게이트가 일치하면 파괴적 **복원** 버튼이 활성화됩니다. 아래 스크린샷은 게이트가 풀리는 순간을 포착했습니다 — 입력된 `restore` 토큰, 표시된 경고 패널, 그리고 이제 클릭 가능해진 버튼:
 
 ![Admin 백업 — 타이핑 게이트 통과 후 활성화된 Restore 버튼](/img/screenshots/admin-backup-restore-typing-gate-enabled.png)
 

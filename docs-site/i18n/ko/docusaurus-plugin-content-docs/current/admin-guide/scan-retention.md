@@ -139,7 +139,7 @@ curl -sS -X DELETE \
 ## 정상 동작 확인 {#verify-it-worked}
 
 <!-- docs-uat: id=scan-retention-verify-live kind=manual tier=manual -->
-1. 같은 브랜치에 소스 스캔 두 번을 트리거합니다. 더 오래된 스캔을 `GET /v1/scans/{id}`로 조회하면 `superseded_at`이 설정돼 있습니다. 프로젝트 **Releases** 목록(`GET /v1/projects/{id}/releases`)에는 더 새로운 스냅샷만 보이고, superseded된 것은 거기서 숨겨집니다.
+1. 같은 브랜치에 소스 스캔 두 번을 트리거합니다. 더 오래된 스캔을 `GET /v1/scans/{id}`로 조회하면 `superseded_at`이 설정돼 있습니다. 프로젝트 **릴리스** 목록(`GET /v1/projects/{id}/releases`)에는 더 새로운 스냅샷만 보이고, superseded된 것은 거기서 숨겨집니다.
 <!-- docs-uat: id=scan-retention-verify-release kind=manual tier=manual -->
 2. `release` 라벨을 단 스캔과 같은 브랜치의 라벨 없는 두 번째 스캔을 트리거합니다. release 스캔의 `superseded_at`은 `null`로 남고 Releases 목록에 그대로 유지됩니다 — 브랜치 트래픽은 이를 밀어내지 않습니다.
 <!-- docs-uat: id=scan-retention-verify-release-relabel kind=manual tier=manual -->

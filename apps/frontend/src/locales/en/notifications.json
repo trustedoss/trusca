@@ -53,8 +53,8 @@
       "body": "{{purl}} is listed as malicious by a newly published advisory ({{advisory_id}}). Remove it and rotate the credentials this build could reach. Upgrading does not help."
     },
     "anonymisation_request_expired": {
-      "title": "Anonymisation request expired",
-      "body": "The anonymisation request for user {{subject_user_id}} expired unapproved on {{expires_on}}. It can no longer be approved. Open a new request if the erasure is still needed."
+      "title": "Anonymization request expired",
+      "body": "The anonymization request for user {{subject_user_id}} expired unapproved on {{expires_on}}. It can no longer be approved. Open a new request if the erasure is still needed."
     },
     "approval_approved": {
       "title": "Component approval approved",

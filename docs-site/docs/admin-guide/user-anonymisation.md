@@ -72,7 +72,7 @@ Everything the command does runs in one transaction. A refusal leaves nothing ha
 
 ### Watching the gap
 
-**Administration → Health** carries an *Anonymisation awaiting execution* panel listing every approved request no operator has run, oldest first, with how long each has waited. A request past seven days is marked overdue: at that point it has spent longer waiting for an operator than it was ever allowed to spend waiting for a decision.
+**Administration → Health** carries an *Anonymization awaiting execution* panel listing every approved request no operator has run, oldest first, with how long each has waited. A request past seven days is marked overdue: at that point it has spent longer waiting for an operator than it was ever allowed to spend waiting for a decision.
 
 The panel is neutral when empty rather than green. Nothing has been verified; there is simply nothing owed.
 

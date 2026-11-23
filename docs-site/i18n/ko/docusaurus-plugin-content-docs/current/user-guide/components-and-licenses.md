@@ -8,7 +8,7 @@ sidebar_position: 3
 
 # 컴포넌트와 라이선스
 
-스캔이 끝나면 프로젝트의 **Components** 탭에 파이프라인이 발견한 모든 패키지와 스캔이 부여한 라이선스가 나열됩니다. 본 문서는 테이블 읽기, 라이선스 분류 모델, **declared**와 **detected** 라이선스의 차이, 포털이 추적하는 의무사항을 다룹니다.
+스캔이 끝나면 프로젝트의 **컴포넌트** 탭에 파이프라인이 발견한 모든 패키지와 스캔이 부여한 라이선스가 나열됩니다. 본 문서는 테이블 읽기, 라이선스 분류 모델, **declared**와 **detected** 라이선스의 차이, 포털이 추적하는 의무사항을 다룹니다.
 
 :::note 대상 독자
 의존성 위생 분류를 수행하는 엔지니어; 라이선스를 검토하는 법무·컴플라이언스 리뷰어. 읽기는 팀 멤버십, 변경(억제·수동 concluded 라이선스)은 `developer` 이상 필요.
@@ -21,10 +21,10 @@ sidebar_position: 3
 컬럼:
 
 - **컴포넌트 (Component)** — 패키지 이름(예: `lodash`, `org.springframework:spring-web`).
-- **타입 (Type)** — **Direct** / **Transitive** / `—`. 의존성 그래프 깊이를 요약한 색상 배지: `Direct`(깊이 1, 본인이 선언) 대 `Transitive`(깊이 2+, 다른 패키지가 끌어옴), `—`는 그래프를 기록하지 못한 생태계 또는 그래프 정보 없이 만들어진 이전 스캔. [직접 vs. 전이](#dependency-depth) 참고.
+- **타입 (Type)** — **직접** / **전이** / `—`. 의존성 그래프 깊이를 요약한 색상 배지: `Direct`(깊이 1, 본인이 선언) 대 `Transitive`(깊이 2+, 다른 패키지가 끌어옴), `—`는 그래프를 기록하지 못한 생태계 또는 그래프 정보 없이 만들어진 이전 스캔. [직접 vs. 전이](#dependency-depth) 참고.
 - **버전 (Version)** — 매니페스트나 락파일에서 고정된 버전.
 - **라이선스 (License)** — 컴포넌트에 부여된 라이선스. 의존성의 경우 `cdxgen`이 패키지 메타데이터에서 읽은 **declared** 라이선스입니다. detected·concluded 와의 관계는 [declared vs. detected](#declared-vs-detected) 참고. 빌드 게이트가 사용하는 값입니다.
-- **Usage** — **Required** / **Optional** / `—`. `cdxgen`이 본 컴포넌트로 가는 *가장 얕은* 경로에서 기록한 의존성 스코프(같은 컴포넌트가 여러 경로로 도달 가능하면 가장 높은 스코프 — `Required` > `Optional` — 가 이김). `—`는 스캐너가 스코프를 emit 하지 않은 경우. Optional 의존성은 Required와 같은 법적 의무를 가지는 경우가 많지만, **Required / Optional** 구분은 라이선스 컴플라이언스 부담에 매핑됩니다 — 사용하지 않는 `Optional` extra는 깊이 박힌 required transitive 의존성보다 제거 비용이 낮습니다.
+- **용도** — **필수** / **선택** / `—`. `cdxgen`이 본 컴포넌트로 가는 *가장 얕은* 경로에서 기록한 의존성 스코프(같은 컴포넌트가 여러 경로로 도달 가능하면 가장 높은 스코프 — `Required` > `Optional` — 가 이김). `—`는 스캐너가 스코프를 emit 하지 않은 경우. Optional 의존성은 Required와 같은 법적 의무를 가지는 경우가 많지만, **Required / Optional** 구분은 라이선스 컴플라이언스 부담에 매핑됩니다 — 사용하지 않는 `Optional` extra는 깊이 박힌 required transitive 의존성보다 제거 비용이 낮습니다.
 - **악성** — 알려진 악성 패키지이면 빨간 **악성** 배지가 붙고, 아니면 비어 있습니다. 비어 있다고 안전한 것은 아닙니다. [알려진 악성 패키지](#known-malicious-packages)를 참고하십시오.
 - **EOL** — 컴포넌트의 릴리스 사이클이 공표된 지원 종료를 지났으면 **EOL** 배지, 아니면 빈칸. [지원 종료 표시](#end-of-life-flagging) 참고.
 - **최신성 (Currency)** — 컴포넌트의 (아직 지원되는) 릴리스 라인에 더 새로운 패치가 공개돼 있으면 **뒤처짐** 배지, 아니면 빈칸. [버전 최신성](#version-currency) 참고.
@@ -39,7 +39,7 @@ sidebar_position: 3
 
 - **검색 (Search)** — `name@version` 부분 일치.
 - **의존성 타입 (Dependency type)** — 3-스테이트 세그먼트 컨트롤(`Any` / `Direct only` / `Transitive only`). Direct-only 세그먼트는 API의 `?direct=true`로, Transitive-only는 `?direct=false`로 매핑됩니다.
-- **Usage** — 다중 선택(`Required` / `Optional`). 둘 다 선택하면 필터 없음과 동일합니다. 미지값만 선택한 쿼리는 422 거부 대신 empty page로 드롭됩니다(심각도·라이선스 카테고리 필터 시멘틱과 일치).
+- **용도** — 다중 선택(`Required` / `Optional`). 둘 다 선택하면 필터 없음과 동일합니다. 미지값만 선택한 쿼리는 422 거부 대신 empty page로 드롭됩니다(심각도·라이선스 카테고리 필터 시멘틱과 일치).
 - **심각도 (Severity)** — 다중 선택 배지(Critical / High / Medium / Low / Info).
 - **라이선스 카테고리 (License category)** — 다중 선택(`Allowed` / `Conditional` / `Forbidden` / `Unknown`).
 - **악성만 (Flagged only)** — 알려진 악성 패키지만 남기는 토글(`?malicious=true`). [알려진 악성 패키지](#known-malicious-packages)를 참고하십시오.
@@ -245,8 +245,8 @@ Components 탭에는 **표 / 그래프** 토글이 있습니다(좌측 상단). 
 
 행을 클릭하면 우측 슬라이드 드로어가 열립니다.
 
-- **식별자 (Identity)** — `purl`(Package URL), 상위 홈페이지, 레포 URL. `purl` 아래 두 줄에 컴포넌트의 **타입 (Type)**(Direct / Transitive / `—`)과 **Usage**(Required / Optional / `—`) 배지가 표시되며, 행에 나오는 값과 동일합니다.
-- **모든 라이선스 결과** — 각 결과에 **출처 배지**(**Declared** / **Detected** / **Concluded**)가 표시됩니다. **Detected** 결과에는 scancode가 라이선스를 발견한 first-party 파일의 `source_path` 도 함께 표시됩니다. [declared vs. detected](#declared-vs-detected) 참고.
+- **식별자 (Identity)** — `purl`(Package URL), 상위 홈페이지, 레포 URL. `purl` 아래 두 줄에 컴포넌트의 **타입 (Type)**(Direct / Transitive / `—`)과 **용도**(Required / Optional / `—`) 배지가 표시되며, 행에 나오는 값과 동일합니다.
+- **모든 라이선스 결과** — 각 결과에 **출처 배지**(**선언됨** / **검출됨** / **확정됨**)가 표시됩니다. **검출됨** 결과에는 scancode가 라이선스를 발견한 first-party 파일의 `source_path` 도 함께 표시됩니다. [declared vs. detected](#declared-vs-detected) 참고.
 - **의무사항** — 컴포넌트의 라이선스가 발생시킨 의무([의무사항](#의무사항) 참고).
 - **CVE** — 미해결·해결된 결과, Vulnerability 상세로 딥링크.
 
@@ -260,23 +260,23 @@ Components 탭에는 **표 / 그래프** 토글이 있습니다(좌측 상단). 
 
 | 깊이 | 의미 | 라벨 |
 |---|---|---|
-| `1` | **직접(direct)** 의존성 — 프로젝트가 매니페스트/락파일에 직접 선언한 것. | **Direct** |
-| `2` 이상 | **전이(transitive)** 의존성 — 직접 의존성(또는 그 의존성)이 요구해서 끌려온 것. | **Transitive** |
+| `1` | **직접(direct)** 의존성 — 프로젝트가 매니페스트/락파일에 직접 선언한 것. | **직접** |
+| `2` 이상 | **전이(transitive)** 의존성 — 직접 의존성(또는 그 의존성)이 요구해서 끌려온 것. | **전이** |
 | *(빈 값)* | 이 스캔에서 깊이가 산출되지 않음 — 그래프 정보 없이 평평한 컴포넌트 목록만 만든 이전 스캔 또는 생태계. | — |
 
-드로어는 컴포넌트의 깊이와 **Direct** / **Transitive** 라벨을 표시하며, 컴포넌트 목록도 동일한 값을 노출하여 어떤 결과가 직접 소유한 것인지 한눈에 파악할 수 있습니다.
+드로어는 컴포넌트의 깊이와 **직접** / **전이** 라벨을 표시하며, 컴포넌트 목록도 동일한 값을 노출하여 어떤 결과가 직접 소유한 것인지 한눈에 파악할 수 있습니다.
 
 :::note 깊이가 중요한 이유
 **직접** 의존성의 취약점은 대개 본인이 고칠 몫입니다 — 선언한 버전을 올리면 됩니다. **전이** 의존성의 취약점은 그것을 끌어온 직접 의존성의 책임이며, 보통 "취약 버전을 더 이상 요구하지 않을 때까지 직접 부모를 업그레이드"하는 것이 해법입니다. 따라서 깊이는 리메디에이션 우선순위를 좌우합니다 — 얕고 직접 의존하는 컴포넌트가 가장 저렴하게 고칠 수 있습니다. 업그레이드 추천 기능이 이 신호 위에 만들어집니다.
 :::
 
 :::info 가장 얕은 경로가 우선
-한 컴포넌트가 여러 경로로 동시에 도달될 수 있습니다("다이아몬드" — 두 의존성이 같은 패키지를 함께 끌어옴). 포털은 **가장 얕은** 경로를 보고합니다: `lodash`가 직접 의존성이면서 동시에 전이 의존성이기도 하면 **Direct**(깊이 `1`)로 표시됩니다. 의존성 그래프 자체(모든 부모 → 자식 엣지)는 스캔별로 저장되어 향후 도구가 전체 경로를 보여줄 수 있습니다.
+한 컴포넌트가 여러 경로로 동시에 도달될 수 있습니다("다이아몬드" — 두 의존성이 같은 패키지를 함께 끌어옴). 포털은 **가장 얕은** 경로를 보고합니다: `lodash`가 직접 의존성이면서 동시에 전이 의존성이기도 하면 **직접**(깊이 `1`)로 표시됩니다. 의존성 그래프 자체(모든 부모 → 자식 엣지)는 스캔별로 저장되어 향후 도구가 전체 경로를 보여줄 수 있습니다.
 :::
 
 ## 라이선스 분류
 
-**Compliance** 탭은 같은 데이터를 SPDX 식별자와 tier 별로 — Components 탭이 사용하는 같은 표 위에 가로 막대 차트 — 분리해서 보여줍니다 (`Has obligations` 토글을 켜면 동일 화면이 의무사항 뷰로 전환됩니다; [의무사항](#의무사항) 참고).
+**컴플라이언스** 탭은 같은 데이터를 SPDX 식별자와 tier 별로 — Components 탭이 사용하는 같은 표 위에 가로 막대 차트 — 분리해서 보여줍니다 (`Has obligations` 토글을 켜면 동일 화면이 의무사항 뷰로 전환됩니다; [의무사항](#의무사항) 참고).
 
 ![프로젝트 상세 — tier 분포 막대와 라이선스별 행이 있는 Compliance 탭](/img/screenshots/user-licenses-donut.png)
 
@@ -286,10 +286,10 @@ Components 탭에는 **표 / 그래프** 토글이 있습니다(좌측 상단). 
 
 | 단계 (코드 값) | UI 라벨 | 빌드 게이트 효과 | 예시 |
 |---|---|---|---|
-| `permissive` | **Allowed** | 빌드 게이트 영향 없음. | MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, CC0-1.0, Unlicense |
-| `conditional` | **Conditional** | [승인 워크플로우](./approvals.md) 트리거. 빌드 진행 — **반려(Rejected)** 결정 이후에도 동일. [승인 페이지의 caveat](./approvals.md#rejected-verdict) 참고. | LGPL-2.x, LGPL-3.x, MPL-2.0, EPL-1.x, EPL-2.0, CDDL-1.0, CC-BY-SA-4.0, CC-BY-ND-4.0 |
-| `forbidden` | **Forbidden** | CI에서 빌드 게이트가 종료 코드 1 반환. | AGPL-3.0, GPL-2.0, GPL-3.0, SSPL-1.0, BUSL-1.1, CC-BY-NC-4.0과 그 ShareAlike / NoDerivatives 변형 |
-| `unknown` | **Unknown** | 검토 대상으로 노출; 자동 차단 없음. 항상 사람의 검토 필요. | 라이선스 파싱 실패 또는 분류기 매핑에 없는 SPDX ID — [아래](#why-so-many-unknown) 참고. |
+| `permissive` | **허용** | 빌드 게이트 영향 없음. | MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, CC0-1.0, Unlicense |
+| `conditional` | **조건부** | [승인 워크플로우](./approvals.md) 트리거. 빌드 진행 — **반려(Rejected)** 결정 이후에도 동일. [승인 페이지의 caveat](./approvals.md#rejected-verdict) 참고. | LGPL-2.x, LGPL-3.x, MPL-2.0, EPL-1.x, EPL-2.0, CDDL-1.0, CC-BY-SA-4.0, CC-BY-ND-4.0 |
+| `forbidden` | **금지** | CI에서 빌드 게이트가 종료 코드 1 반환. | AGPL-3.0, GPL-2.0, GPL-3.0, SSPL-1.0, BUSL-1.1, CC-BY-NC-4.0과 그 ShareAlike / NoDerivatives 변형 |
+| `unknown` | **미상** | 검토 대상으로 노출; 자동 차단 없음. 항상 사람의 검토 필요. | 라이선스 파싱 실패 또는 분류기 매핑에 없는 SPDX ID — [아래](#why-so-many-unknown) 참고. |
 
 :::warning 분류 출처
 법적 단계 분류(`forbidden` / `conditional` / `permissive` / `unknown`)는 내장 SPDX → 단계 카탈로그로 결정됩니다. 조직별 룰 커스터마이징이 나오기 전까지는([로드맵](#로드맵) 참고) super-admin이 카탈로그 항목을 패치하고 워커를 재시작하는 operator 전용 경로를 사용하세요.
@@ -335,7 +335,7 @@ pkg.go.dev, RubyGems, NuGet)에 패키지 좌표로 라이선스를 조회해 *c
 
 ## AI 라이선스 검토 플래그 {#ai-license-review-flags}
 
-일부 라이선스는 컴포넌트를 *어떻게* 사용할지를 위 4단계 법적 분류가 담지 못하는 방식으로 제한합니다 — 표준 오픈소스 컴플라이언스 도구가 자주 놓치는 지점입니다. TRUSCA는 이런 제약 부류 2종을 amber **Review needed** 플래그로 표시하며, 라이선스 단계 배지 옆에 함께 나타나고 Compliance 탭에서 필터링됩니다.
+일부 라이선스는 컴포넌트를 *어떻게* 사용할지를 위 4단계 법적 분류가 담지 못하는 방식으로 제한합니다 — 표준 오픈소스 컴플라이언스 도구가 자주 놓치는 지점입니다. TRUSCA는 이런 제약 부류 2종을 amber **검토 필요** 플래그로 표시하며, 라이선스 단계 배지 옆에 함께 나타나고 Compliance 탭에서 필터링됩니다.
 
 이 플래그는 의도적으로 좁습니다. 단계 모델(`permissive` / `conditional` / `forbidden` / `unknown`)이 이미 표현하는 제약은 제외하고, AI 관련 제약만 표시합니다. 일반 오픈소스 라이선스 — MIT, Apache-2.0, BSD 계열, GPL / LGPL — 는 이 플래그가 붙지 않습니다.
 
@@ -345,15 +345,15 @@ pkg.go.dev, RubyGems, NuGet)에 패키지 좌표로 라이선스를 조회해 *c
 | `non_commercial` | **비상업 전용** | 라이선스가 연구·개인 용도는 허용하되 상업적 사용은 금지합니다. | CC-BY-NC(Creative Commons Attribution-NonCommercial, 크리에이티브 커먼즈 저작자표시-비영리)와 그 ShareAlike / NoDerivatives 변형; 기타 비상업 source-available 조항. |
 
 :::note 플래그는 적용 여부가 아니라 존재를 표시
-**Review needed** 플래그는 해당 부류의 제약이 라이선스에 존재한다는 사실을 알릴 뿐, 특정 사용이 그 제약을 위반한다는 뜻은 아닙니다. 행동 사용 조항이나 비상업 조항이 프로젝트의 컴포넌트 사용 방식에 실제로 적용되는지는 스캐너가 아니라 사람이 내리는 법적·사업적 판단입니다. TRUSCA는 BomLens `license-flags.jq` 규칙과 OpenChain AI SBOM 가이드의 원칙을 따릅니다 — 도구는 제약의 *부류*를 표시하고, 적용 여부는 사람이 판단합니다.
+**검토 필요** 플래그는 해당 부류의 제약이 라이선스에 존재한다는 사실을 알릴 뿐, 특정 사용이 그 제약을 위반한다는 뜻은 아닙니다. 행동 사용 조항이나 비상업 조항이 프로젝트의 컴포넌트 사용 방식에 실제로 적용되는지는 스캐너가 아니라 사람이 내리는 법적·사업적 판단입니다. TRUSCA는 BomLens `license-flags.jq` 규칙과 OpenChain AI SBOM 가이드의 원칙을 따릅니다 — 도구는 제약의 *부류*를 표시하고, 적용 여부는 사람이 판단합니다.
 :::
 
 행동 사용·비상업 제약은 일반 코드보다 AI 모델·데이터셋에 훨씬 자주 따라붙으며, SPDX 법적 단계의 재배포 중심 논리 바깥에 놓입니다 — 그래서 겉으로 permissive 해 보이는 단계만으로는 이 제약이 가려질 수 있습니다. 플래그는 제약을 판정하지 않으면서 눈에 보이게 만듭니다.
 
 ### 플래그 읽기
 
-- **Compliance** 탭에서 플래그가 붙은 라이선스 행은 단계 배지 옆에 amber **Review needed** 배지를 표시합니다. 라이선스 카테고리 다중 선택과 함께 **Review needed** 필터로 그 행만 좁힐 수 있습니다.
-- 플래그는 권고입니다. 빌드를 차단하지 않고 법적 단계를 바꾸지 않습니다. 컴포넌트가 `permissive` 단계이면서 동시에 **Review needed** 플래그를 달 수 있습니다.
+- **컴플라이언스** 탭에서 플래그가 붙은 라이선스 행은 단계 배지 옆에 amber **검토 필요** 배지를 표시합니다. 라이선스 카테고리 다중 선택과 함께 **검토 필요** 필터로 그 행만 좁힐 수 있습니다.
+- 플래그는 권고입니다. 빌드를 차단하지 않고 법적 단계를 바꾸지 않습니다. 컴포넌트가 `permissive` 단계이면서 동시에 **검토 필요** 플래그를 달 수 있습니다.
 - 플래그가 붙은 라이선스는 생성된 NOTICE 문서의 별도 "License review needed" 섹션에도 나타납니다 — [SBOM → NOTICE 파일](./sbom.md#notice-파일) 참고.
 
 ## 배포 라이선스 충돌 {#outbound-license-conflicts}
@@ -405,13 +405,13 @@ pkg.go.dev, RubyGems, NuGet)에 패키지 좌표로 라이선스를 조회해 *c
 
 ## Declared vs. detected {#declared-vs-detected}
 
-각 라이선스 결과에는 라이선스가 어디서 왔는지 알려주는 **kind**가 있습니다. kind는 컴포넌트 테이블·Licenses 탭·컴포넌트 드로어에 출처 배지로 표시되며, Licenses 탭에서 kind 별로 필터링할 수 있습니다.
+각 라이선스 결과에는 라이선스가 어디서 왔는지 알려주는 **kind**가 있습니다. kind는 컴포넌트 테이블·컴플라이언스 탭·컴포넌트 드로어에 출처 배지로 표시되며, 컴플라이언스 탭에서 kind 별로 필터링할 수 있습니다.
 
 | Kind | 출처 | 의미 |
 |---|---|---|
-| **Declared** | `cdxgen` — 의존성의 공개 패키지 메타데이터(`package.json`, `pom.xml`, `setup.py` 등)에서 읽음. | 의존성 작성자가 *명시한* 라이선스. 빌드 게이트가 평가하는 값입니다. 대부분의 의존성 결과는 declared 입니다. |
-| **Detected** | scancode — 프로젝트의 **first-party** 소스 파일을 직접 스캔. 각 detected 결과에 `source_path`(라이선스 텍스트가 발견된 파일)를 포함. | **내 코드**에 실제로 존재하는 라이선스. 메타데이터가 놓치는 경우를 잡아냅니다 — 예: declared는 `MIT` 인데 `GPL-3.0` 라이선스 코드가 트리에 복사되어 들어온 경우. |
-| **Concluded** | 다중 생태계 레지스트리 fetcher(Maven Central / PyPI / crates.io / pkg.go.dev / RubyGems / NuGet). `cdxgen`이 의존성의 SPDX id를 전혀 만들지 못했을 때 폴백으로 쓰고, 빌드를 막는 라이선스 하나만 기록된 컴포넌트를 다시 확인할 때도 씁니다(고를 수 있는 라이선스가 여럿인 패키지가 하나만 기록되는 일이 흔합니다). | 메타데이터가 침묵한 의존성에 대해 레지스트리에서 도출한 라이선스. declared와 detected를 화해한 결과가 *아닙니다* — v0.10.0은 자동 화해(reconciliation)를 수행하지 않습니다. |
+| **선언됨** | `cdxgen` — 의존성의 공개 패키지 메타데이터(`package.json`, `pom.xml`, `setup.py` 등)에서 읽음. | 의존성 작성자가 *명시한* 라이선스. 빌드 게이트가 평가하는 값입니다. 대부분의 의존성 결과는 declared 입니다. |
+| **검출됨** | scancode — 프로젝트의 **first-party** 소스 파일을 직접 스캔. 각 detected 결과에 `source_path`(라이선스 텍스트가 발견된 파일)를 포함. | **내 코드**에 실제로 존재하는 라이선스. 메타데이터가 놓치는 경우를 잡아냅니다 — 예: declared는 `MIT` 인데 `GPL-3.0` 라이선스 코드가 트리에 복사되어 들어온 경우. |
+| **확정됨** | 다중 생태계 레지스트리 fetcher(Maven Central / PyPI / crates.io / pkg.go.dev / RubyGems / NuGet). `cdxgen`이 의존성의 SPDX id를 전혀 만들지 못했을 때 폴백으로 쓰고, 빌드를 막는 라이선스 하나만 기록된 컴포넌트를 다시 확인할 때도 씁니다(고를 수 있는 라이선스가 여럿인 패키지가 하나만 기록되는 일이 흔합니다). | 메타데이터가 침묵한 의존성에 대해 레지스트리에서 도출한 라이선스. declared와 detected를 화해한 결과가 *아닙니다* — v0.10.0은 자동 화해(reconciliation)를 수행하지 않습니다. |
 
 :::note "Detected"는 의존성 소스가 아니라 first-party
 scancode는 **내** 소스 트리에서만 실행됩니다. 서드파티 의존성 소스는 의도적으로 다운로드하지 **않습니다** — 이는 스캔당 실행 시간을 예산 내로 유지하기 위함입니다. 따라서 의존성의 라이선스는 **declared**(또는 레지스트리 폴백을 통한 **concluded**)이며 결코 **detected**가 아닙니다. **detected** 라이선스는 항상 내 저장소의 코드를 설명합니다.
@@ -433,7 +433,7 @@ scancode는 **best-effort** 입니다. 다음의 경우 detected 라이선스가
 
 일부 프로젝트 — 특히 C / C++ 및 임베디드 트리 — 는 패키지 매니페스트 없이 오픈소스를 **소스 트리에 직접 복사**해 넣습니다(`src/` 아래에 커밋된 `liblzma`·`openssl`·`zlib` 폴더 등). 거기서는 `cdxgen`이 이름 없는 `pkg:generic` 파일만 보고 실제 OSS는 기록되지 않습니다. **SCANOSS**가 이 격차를 메웁니다: 소스 파일을 핑거프린트하고 알려진 OSS 릴리스 지식 베이스에 매칭해, 복사된 파일을 정식 컴포넌트(이름 + 버전 + purl)와 그 detected 라이선스로 기록합니다.
 
-TRUSCA는 **full-file 매치만** 컴포넌트로 취급합니다 — snippet 매치(다른 곳에서 몇 줄 복사)는 노이즈라 건너뛰므로, 빌드 게이트·NOTICE에 들어가는 컴포넌트가 깨끗하게 유지됩니다. 매칭된 컴포넌트는 Components 탭에 SCANOSS 출처로 표시되고, 그 라이선스는 scancode와 똑같이 **Detected** 결과가 됩니다.
+TRUSCA는 **full-file 매치만** 컴포넌트로 취급합니다 — snippet 매치(다른 곳에서 몇 줄 복사)는 노이즈라 건너뛰므로, 빌드 게이트·NOTICE에 들어가는 컴포넌트가 깨끗하게 유지됩니다. 매칭된 컴포넌트는 Components 탭에 SCANOSS 출처로 표시되고, 그 라이선스는 scancode와 똑같이 **검출됨** 결과가 됩니다.
 
 ### 매치를 뒷받침한 파일 수 {#vendored-match-coverage}
 
@@ -467,7 +467,7 @@ scancode처럼 이 단계도 **best-effort** 입니다: SCANOSS가 꺼져 있거
 - **동적 링킹** — LGPL류: 최종 사용자가 수정 라이브러리로 재링크 가능해야 함.
 - **보증 금지** — 허락 없이 프로젝트 이름으로 파생물을 보증할 수 없음.
 
-**Compliance** 탭의 **Has obligations** 토글을 켜면 컴포넌트 전반의 의무사항이 통합 표시됩니다. 툴바 오른쪽 끝의 **NOTICE 파일** 묶음에서 형식(**텍스트** 또는 **HTML**)을 고르고 **다운로드**를 클릭하면 모든 저작자 표시·라이선스를 요약한 NOTICE 문서를 저장합니다. 엔드포인트는 API를 통해 `markdown` 변형도 제공합니다. NOTICE 문서는 컴포넌트별 저작권 라인(SBOM에 저작권자가 없으면 레지스트리 URL로 대체)을 담고, 프로젝트에 등장한 모든 라이선스의 전문을 실은 **License Texts** 섹션으로 끝나므로 `license_text_inclusion_required` 의무를 NOTICE 자체로 충족합니다. 포맷 / MIME / 확장자 표와 섹션별 구성은 [SBOM → NOTICE 파일](./sbom.md#notice-파일) 참고.
+**컴플라이언스** 탭의 **의무사항 있음** 토글을 켜면 컴포넌트 전반의 의무사항이 통합 표시됩니다. 툴바 오른쪽 끝의 **NOTICE 파일** 묶음에서 형식(**텍스트** 또는 **HTML**)을 고르고 **다운로드**를 클릭하면 모든 저작자 표시·라이선스를 요약한 NOTICE 문서를 저장합니다. 엔드포인트는 API를 통해 `markdown` 변형도 제공합니다. NOTICE 문서는 컴포넌트별 저작권 라인(SBOM에 저작권자가 없으면 레지스트리 URL로 대체)을 담고, 프로젝트에 등장한 모든 라이선스의 전문을 실은 **License Texts** 섹션으로 끝나므로 `license_text_inclusion_required` 의무를 NOTICE 자체로 충족합니다. 포맷 / MIME / 확장자 표와 섹션별 구성은 [SBOM → NOTICE 파일](./sbom.md#notice-파일) 참고.
 
 ![프로젝트 상세 — Has obligations 토글이 켜진 Compliance 탭. 컴포넌트별 의무사항 분포 표시](/img/screenshots/user-obligations-distribution.png)
 

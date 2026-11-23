@@ -19,8 +19,8 @@ API Key는 CI 러너, Webhook, 스크립트, GitHub Action 같은 비대화형 �
 대부분의 사용자는 [통합 페이지](../user-guide/integrations.md)에서 본인의 Key를 직접 발급·폐기합니다. `/integrations` UI는 다음을 제공합니다.
 
 - 로그인한 사용자가 관리할 권한이 있는 모든 Key 나열.
-- **Create** 시 1회 노출 모달과 클립보드 복사 버튼, 전체 Key가 단 한 번만 표시된다는 강한 경고.
-- 행별 **Revoke**와 확인 다이얼로그 — 폐기는 ~5초 내에 전파.
+- **키 생성** 시 1회 노출 모달과 클립보드 복사 버튼, 전체 Key가 단 한 번만 표시된다는 강한 경고.
+- 행별 **폐기**와 확인 다이얼로그 — 폐기는 ~5초 내에 전파.
 
 ![/integrations — admin이 Key를 발급·폐기하는 API keys 섹션](/img/screenshots/user-integrations-keys.png)
 
@@ -80,15 +80,15 @@ curl -sS -X POST "https://trustedoss.example.com/v1/api-keys" \
 ### 통합 페이지에서
 
 1. **/integrations**(로그인한 모든 사용자가 쓸 수 있는 최상위 사이드바 항목)을 엽니다.
-2. **API keys** 섹션으로 스크롤합니다.
-3. **Create API key** 클릭. 이 버튼이 없는 경우는 어느 팀에도 속하지 않아 발급 가능한 scope가 하나도 없을 때뿐입니다.
+2. **API 키** 섹션으로 스크롤합니다.
+3. **API 키 생성** 클릭. 이 버튼이 없는 경우는 어느 팀에도 속하지 않아 발급 가능한 scope가 하나도 없을 때뿐입니다.
 4. 채우기:
-   - **Name**(예: `github-action-checkout-service`)
-   - **Scope** — `project`(기본). 팀 관리자라면 `team`도 함께 표시됩니다
+   - **이름**(예: `github-action-checkout-service`)
+   - **범위** — `project`(기본). 팀 관리자라면 `team`도 함께 표시됩니다
    - **프로젝트**: scope가 `project`일 때 필수이며 목록에서 이름으로 고릅니다(입력하면 검색). scope가 `team`이면 **팀**
    - **이 키가 할 수 있는 일** — Read only(기본값, 권장) 또는 Read and write. 스캔을 실행할 Key라면 읽기 및 쓰기를 고릅니다
-   - **Expiration** — **Never expires**(기본값) 또는 30 / 90 / 180 / 365일 프리셋. `expires_in_days`로 전송됩니다
-5. **Create**.
+   - **만료 기간** — **만료 없음** 또는 30 / 90 / 180 / 365일 프리셋. `expires_in_days`로 전송됩니다
+5. **키 생성**.
 
 전체 Key는 모달에서 **단 한 번** 표시됩니다. 복사해 CI 시크릿 저장소(GitHub secrets, GitLab CI variables, Jenkins credentials)에 보관하세요. 모달을 닫으면 UI에서는 prefix만 보이고 전체 Key는 복구 불가입니다.
 
@@ -127,7 +127,7 @@ curl -sS -H "Authorization: Bearer ${TRUSTEDOSS_API_KEY}" \
 
 ## 폐기
 
-1. **/integrations → API keys** → Key 행 → **Revoke**.
+1. **/integrations → API keys** → Key 행 → **폐기**.
 2. 확인.
 
 폐기는 즉시이며 되돌릴 수 없습니다. Key를 되살리려면 새로 발급하세요.
@@ -214,7 +214,7 @@ docker-compose -f docker-compose.yml logs --tail=2000 backend \
 다음 기능들은 초기 문서에서 언급되지만 현재 릴리스에서는 **출시되지 않았습니다**.
 
 - 키별 역할 오버라이드(`effective_role`)와 세분화된 `allowed_actions` taxonomy(`scan:trigger`, `scan:read`, `report:download`, `webhook:receive`, `*`). 현재 Key는 발급자 역할과 전체 RBAC 표면을 상속.
-- **Create API key** 폼의 자유 입력 만료 값. 폼은 Never와 30 / 90 / 180 / 365일 프리셋을 제공하므로, API가 허용하는 1~1825일 가운데 그 밖의 값은 `expires_in_days`로 직접 발급해야 합니다.
+- **API 키 생성** 폼의 자유 입력 만료 값. 폼은 Never와 30 / 90 / 180 / 365일 프리셋을 제공하므로, API가 허용하는 1~1825일 가운데 그 밖의 값은 `expires_in_days`로 직접 발급해야 합니다.
 - `actor_kind = api_key`인 요청별 `api_key.use` 감사 이벤트. 현재 Key 라이프사이클(ORM 리스너의 insert와 명시적 `api_key.revoked` 액션)은 감사되지만 요청별 사용은 구조화된 로그에만 캡처됨.
 - 목록의 `last_used_ip` 컬럼.
 - brute-force secret-mismatch 알림(단일 Key가 60초 내 5회 미스 시 Slack 알림).

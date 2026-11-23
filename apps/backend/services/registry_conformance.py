@@ -10,7 +10,7 @@ the code rather than declared:
   * whether the baseline applied at all was decided by the CALLER, which
     tested the document for a machine-learning-model component;
   * what was measured was fixed to those model components;
-  * the wording said "model component(s)" and "no machine-learning-model
+  * the wording named "model components" and "no machine-learning-model
     components";
   * every element was advisory, as a literal.
 
@@ -39,6 +39,7 @@ from typing import Any
 
 import structlog
 
+from core.plural import noun
 from services.sbom_conformance import Check, sanitize_jsonb_text
 
 log = structlog.get_logger("services.registry_conformance")
@@ -240,14 +241,16 @@ def evaluate_registry(doc: dict[str, Any], spec: RegistrySpec) -> list[Check]:
                 if total == 0:
                     status, detail = "warn", spec.empty_subject_detail
                 elif not absent:
-                    # BomLens fold wording: "\($t)/\($t) <subject>(s)".
+                    # Upstream folds this as "\($t)/\($t) <subject>(s)"; we
+                    # name the noun in the form that agrees with the total.
                     status = "pass"
-                    detail = f"{total}/{total} {spec.subject_label}(s)"
+                    detail = f"{total}/{total} {noun(total, spec.subject_label)}"
                     evidence = _extract_evidence(element_id, doc, spec)
                 else:
                     status = "warn"
                     detail = (
-                        f"{total - len(absent)}/{total} {spec.subject_label}(s)"
+                        f"{total - len(absent)}/{total} "
+                        f"{noun(total, spec.subject_label)}"
                     )
                     missing = clamp_missing(absent)
         elif predicate is None:

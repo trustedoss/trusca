@@ -9,7 +9,7 @@
       "status": "fail"
     },
     {
-      "detail": "0 tool(s)",
+      "detail": "0 tools",
       "id": "tools",
       "label": "Tool info (metadata.tools)",
       "missing": [],
@@ -49,7 +49,7 @@
       "status": "pass"
     },
     {
-      "detail": "0 edge(s)",
+      "detail": "0 edges",
       "id": "transitive",
       "label": "Transitive dependencies (graph edges)",
       "missing": [],
@@ -213,7 +213,7 @@
     },
     {
       "cluster": "cisa-component",
-      "detail": "4/4 component(s)",
+      "detail": "4/4 components",
       "id": "cisa-component-name",
       "label": "Component name",
       "missing": [],
@@ -223,7 +223,7 @@
     },
     {
       "cluster": "cisa-component",
-      "detail": "4/4 component(s)",
+      "detail": "4/4 components",
       "id": "cisa-component-version",
       "label": "Component version",
       "missing": [],
@@ -233,7 +233,7 @@
     },
     {
       "cluster": "cisa-component",
-      "detail": "0/4 component(s)",
+      "detail": "0/4 components",
       "id": "cisa-component-producer",
       "label": "Component producer",
       "missing": [
@@ -248,7 +248,7 @@
     },
     {
       "cluster": "cisa-component",
-      "detail": "3/4 component(s)",
+      "detail": "3/4 components",
       "id": "cisa-component-identifiers",
       "label": "Component identifiers",
       "missing": [
@@ -260,7 +260,7 @@
     },
     {
       "cluster": "cisa-component",
-      "detail": "3/4 component(s)",
+      "detail": "3/4 components",
       "id": "cisa-component-license",
       "label": "Component license",
       "missing": [
@@ -272,7 +272,7 @@
     },
     {
       "cluster": "cisa-component",
-      "detail": "0/4 component(s)",
+      "detail": "0/4 components",
       "id": "cisa-component-hash-value",
       "label": "Component hash value",
       "missing": [
@@ -287,7 +287,7 @@
     },
     {
       "cluster": "cisa-component",
-      "detail": "4/4 component(s)",
+      "detail": "4/4 components",
       "id": "cisa-component-hash-algorithm",
       "label": "Component hash algorithm",
       "missing": [],

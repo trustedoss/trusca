@@ -48,13 +48,13 @@ enum(임의의 분석가 서술로는 추론할 수 없는 정확한 법적 의�
 
 | 포털 상태 | OpenVEX `status` | CycloneDX `analysis.state` |
 |---|---|---|
-| **New** | `under_investigation` | `in_triage` |
-| **Analyzing** | `under_investigation` | `in_triage` |
-| **Exploitable** | `affected` | `exploitable` |
-| **Not affected** | `not_affected` | `not_affected` |
-| **False positive** | `not_affected` | `false_positive` |
-| **Suppressed** | `not_affected` | `not_affected` |
-| **Fixed** | `fixed` | `resolved` |
+| **신규** | `under_investigation` | `in_triage` |
+| **분석 중** | `under_investigation` | `in_triage` |
+| **악용 가능** | `affected` | `exploitable` |
+| **해당 없음** | `not_affected` | `not_affected` |
+| **오탐** | `not_affected` | `false_positive` |
+| **억제됨** | `not_affected` | `not_affected` |
+| **수정됨** | `fixed` | `resolved` |
 
 justification 텍스트는 OpenVEX `impact_statement`와 CycloneDX `analysis.detail`에
 들어갑니다.
@@ -135,19 +135,19 @@ import는 각 VEX 상태를 하나의 정규 포털 상태로 역매핑합니다
 
 | OpenVEX `status` | CycloneDX `analysis.state` | 포털 상태 |
 |---|---|---|
-| `not_affected` | `not_affected` | **Not affected** |
-| — | `false_positive` | **False positive** |
-| `affected` | `exploitable` | **Exploitable** |
-| `fixed` | `resolved` | **Fixed** |
-| `under_investigation` | `in_triage` | **Analyzing** |
+| `not_affected` | `not_affected` | **해당 없음** |
+| — | `false_positive` | **오탐** |
+| `affected` | `exploitable` | **악용 가능** |
+| `fixed` | `resolved` | **수정됨** |
+| `under_investigation` | `in_triage` | **분석 중** |
 
-`under_investigation` / `in_triage`는 `New`가 아닌 **Analyzing**으로 매핑됩니다 —
+`under_investigation` / `in_triage`는 `New`가 아닌 **분석 중**으로 매핑됩니다 —
 `New`는 탐지 인박스 상태이며 어떤 것도 `New`로는 전이되지 않습니다.
 
 ### 합법 전이 보존
 
 import는 수동 워크플로우와 동일한 [VEX 상태 머신](./vulnerabilities.md#vex-상태-머신)을 따릅니다.
-모든 판정이 `Analyzing`을 거치므로, 아직 **New**인 결과에 `not_affected`를
+모든 판정이 `Analyzing`을 거치므로, 아직 **신규**인 결과에 `not_affected`를
 import하면 **합법 2단계 경로** `New → Analyzing → Not affected`가 자동 적용되고,
 감사 로그에 **두 단계 모두** 기록됩니다. VEX 문서의 사유(`impact_statement` /
 `analysis.detail`)는 결과에 보존됩니다.

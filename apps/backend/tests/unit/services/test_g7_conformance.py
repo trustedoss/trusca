@@ -37,7 +37,7 @@ FIXTURE = (
 # modelCard.modelParameters but NO hashes / top-level properties; the document
 # has NO metadata.authors / signature / data components / vulnerabilities).
 # Registry v2 (#306): the 13 models-cluster elements score per-model coverage
-# ("N/M model component(s)" + offender names); the fixture has exactly ONE
+# ("N/M model components" + offender names); the fixture has exactly ONE
 # model, "bert-base-uncased".
 # ---------------------------------------------------------------------------
 FIXTURE_MODEL = "bert-base-uncased"
@@ -132,9 +132,9 @@ ALL_IDS = (
 _STATUS_BY_ID: dict[str, tuple[str, str, list[str]]] = (
     {i: ("pass", "present", []) for i in EXPECTED_PASS}
     | {i: ("warn", "not present in the SBOM", []) for i in EXPECTED_ABSENT}
-    | {i: ("pass", "1/1 model component(s)", []) for i in EXPECTED_MODEL_PASS}
+    | {i: ("pass", "1/1 model component", []) for i in EXPECTED_MODEL_PASS}
     | {
-        i: ("warn", "0/1 model component(s)", [FIXTURE_MODEL])
+        i: ("warn", "0/1 model component", [FIXTURE_MODEL])
         for i in EXPECTED_MODEL_MISSING
     }
     | {
@@ -246,7 +246,7 @@ def test_g7_seed_plan_is_a_verbatim_evaluator_capture(
     plan in scripts/seed_e2e_user.py pins status/detail/evidence/missing
     strings that claim to be captured from THIS evaluator over the same
     fixture — assert they never drift (registry v2 changed the models-cluster
-    details to "N/M model component(s)")."""
+    details to "N/M model components")."""
     from scripts.seed_e2e_user import _G7_SEED_PLAN
 
     for element_id, (status, detail, evidence, missing) in _G7_SEED_PLAN.items():
@@ -462,7 +462,7 @@ def test_multi_model_unlicensed_model_is_no_longer_hidden() -> None:
 
     lic = checks["g7-model-license"]
     assert lic.status == "warn"
-    assert lic.detail == "1/2 model component(s)"
+    assert lic.detail == "1/2 model components"
     assert lic.missing == ["toxic-lm"]
     # Not a pass — no evidence row (evidence is extracted on pass only).
     assert lic.evidence is None
@@ -470,13 +470,13 @@ def test_multi_model_unlicensed_model_is_no_longer_hidden() -> None:
     # Elements BOTH models satisfy stay pass, now counting 2/2.
     name = checks["g7-model-name"]
     assert name.status == "pass"
-    assert name.detail == "2/2 model component(s)"
+    assert name.detail == "2/2 model components"
     assert name.missing == []
 
     # Elements NEITHER model satisfies list both offenders in document order.
     hashes = checks["g7-model-hash-value"]
     assert hashes.status == "warn"
-    assert hashes.detail == "0/2 model component(s)"
+    assert hashes.detail == "0/2 model components"
     assert hashes.missing == [FIXTURE_MODEL, "toxic-lm"]
 
 
@@ -504,7 +504,7 @@ def test_missing_list_is_clamped_against_adversarial_flood() -> None:
     checks = {c.id: c for c in g7.evaluate_g7(doc)}
     lic = checks["g7-model-license"]
     assert lic.status == "warn"
-    assert lic.detail == "0/50 model component(s)"
+    assert lic.detail == "0/50 model components"
     assert len(lic.missing) == 8
     assert all(len(n) <= 200 for n in lic.missing)
     # Document order is preserved (no dedupe/sort — mirrors the BomLens fold).
@@ -639,7 +639,7 @@ def test_missing_port_exception_is_caught_as_evaluation_error(
     assert checks["g7-model-license"].missing == []
     # The rest of the models cluster is unaffected.
     assert checks["g7-model-name"].status == "pass"
-    assert checks["g7-model-name"].detail == "1/1 model component(s)"
+    assert checks["g7-model-name"].detail == "1/1 model component"
 
 
 def test_evidence_exception_keeps_pass_but_drops_evidence(

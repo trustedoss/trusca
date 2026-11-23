@@ -86,7 +86,7 @@ def test_a_spec_names_what_it_measures() -> None:
         subject_label="widget",
     )
     rows = {c.id: c for c in rc.evaluate_registry(doc, spec)}
-    assert rows["g7-model-name"].detail == "1/1 widget(s)"
+    assert rows["g7-model-name"].detail == "1/1 widget"
 
 
 def test_an_empty_subject_uses_the_spec_wording() -> None:

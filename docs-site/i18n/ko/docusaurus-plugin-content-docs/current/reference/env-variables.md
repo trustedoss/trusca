@@ -99,7 +99,7 @@ sidebar_position: 2
 
 ### KEV 카탈로그 {#kev-catalog}
 
-포털은 Trivy DB 번들과 별개로 [CISA KEV(Known Exploited Vulnerabilities, 알려진 악용 취약점) 카탈로그](https://www.cisa.gov/known-exploited-vulnerabilities-catalog)를 하루 한 번 취약점 카탈로그에 동기화합니다(Celery beat 태스크 `trustedoss.kev_catalog_refresh`, 약 1,600건, 등재 해제 포함). KEV 등재 결과는 배지와 대응 기한을 표시하고 기본 **Priority** 정렬을 구동합니다 — [취약점 — KEV](../user-guide/vulnerabilities.md#kev) 참고.
+포털은 Trivy DB 번들과 별개로 [CISA KEV(Known Exploited Vulnerabilities, 알려진 악용 취약점) 카탈로그](https://www.cisa.gov/known-exploited-vulnerabilities-catalog)를 하루 한 번 취약점 카탈로그에 동기화합니다(Celery beat 태스크 `trustedoss.kev_catalog_refresh`, 약 1,600건, 등재 해제 포함). KEV 등재 결과는 배지와 대응 기한을 표시하고 기본 **우선순위** 정렬을 구동합니다 — [취약점 — KEV](../user-guide/vulnerabilities.md#kev) 참고.
 
 | 키 | 기본값 | 읽는 위치 | 설명 |
 |---|---|---|---|

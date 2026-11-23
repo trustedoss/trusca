@@ -9,7 +9,7 @@
       "status": "fail"
     },
     {
-      "detail": "0 tool(s)",
+      "detail": "0 tools",
       "id": "tools",
       "label": "Tool info (metadata.tools)",
       "missing": [],
@@ -25,7 +25,7 @@
       "status": "pass"
     },
     {
-      "detail": "2/2 [2 package component(s) measured, 6 file/data excluded]",
+      "detail": "2/2 [2 package components measured, 6 file/data excluded]",
       "id": "name-version",
       "label": "Component name+version coverage (100%)",
       "missing": [],
@@ -33,7 +33,7 @@
       "status": "pass"
     },
     {
-      "detail": "100% (2/2) [2 package component(s) measured, 6 file/data excluded]",
+      "detail": "100% (2/2) [2 package components measured, 6 file/data excluded]",
       "id": "purl",
       "label": "PURL coverage (>= 90%)",
       "missing": [],
@@ -51,7 +51,7 @@
       "status": "fail"
     },
     {
-      "detail": "0 edge(s)",
+      "detail": "0 edges",
       "id": "transitive",
       "label": "Transitive dependencies (graph edges)",
       "missing": [],
@@ -222,7 +222,7 @@
     },
     {
       "cluster": "cisa-component",
-      "detail": "4/9 component(s)",
+      "detail": "4/9 components",
       "id": "cisa-component-name",
       "label": "Component name",
       "missing": [
@@ -238,7 +238,7 @@
     },
     {
       "cluster": "cisa-component",
-      "detail": "3/9 component(s)",
+      "detail": "3/9 components",
       "id": "cisa-component-version",
       "label": "Component version",
       "missing": [
@@ -255,7 +255,7 @@
     },
     {
       "cluster": "cisa-component",
-      "detail": "0/9 component(s)",
+      "detail": "0/9 components",
       "id": "cisa-component-producer",
       "label": "Component producer",
       "missing": [
@@ -274,7 +274,7 @@
     },
     {
       "cluster": "cisa-component",
-      "detail": "3/9 component(s)",
+      "detail": "3/9 components",
       "id": "cisa-component-identifiers",
       "label": "Component identifiers",
       "missing": [
@@ -291,7 +291,7 @@
     },
     {
       "cluster": "cisa-component",
-      "detail": "0/9 component(s)",
+      "detail": "0/9 components",
       "id": "cisa-component-license",
       "label": "Component license",
       "missing": [
@@ -310,7 +310,7 @@
     },
     {
       "cluster": "cisa-component",
-      "detail": "0/9 component(s)",
+      "detail": "0/9 components",
       "id": "cisa-component-hash-value",
       "label": "Component hash value",
       "missing": [
@@ -329,7 +329,7 @@
     },
     {
       "cluster": "cisa-component",
-      "detail": "9/9 component(s)",
+      "detail": "9/9 components",
       "id": "cisa-component-hash-algorithm",
       "label": "Component hash algorithm",
       "missing": [],

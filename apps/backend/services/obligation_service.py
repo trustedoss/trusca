@@ -68,6 +68,7 @@ from sqlalchemy import cast as sql_cast
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.plural import count_noun, noun
 from core.security import CurrentUser
 from core.sql_safety import escape_like
 from models import (
@@ -141,7 +142,7 @@ _OBLIGATION_TEXT_CAP_BYTES = 64 * 1024  # 64 KiB
 # clamp the extreme tail:
 #   - the per-license credited-component list is capped at
 #     ``_NOTICE_COMPONENT_LABELS_CAP`` entries; the document records an honest
-#     "+N more component(s) omitted" note when the cap fires so the NOTICE is
+#     "+N more components omitted" note when the cap fires so the NOTICE is
 #     never silently incomplete.
 #   - obligation text and license names/refs ride through ``_clamp_obligation_text``
 #     (the existing 64 KiB byte clamp) so a single runaway field cannot inflate
@@ -931,7 +932,7 @@ def _render_review_section_text(entries: list[dict[str, Any]]) -> list[str]:
     ]
     for e in entries:
         parts.append(
-            f"[{e['label']}] {e['license']}  ({len(e['components'])} component(s)):"
+            f"[{e['label']}] {e['license']}  ({count_noun(len(e['components']), 'component')}):"
         )
         for label in e["components"]:
             parts.append(f"  - {label}")
@@ -954,7 +955,7 @@ def _render_review_section_markdown(entries: list[dict[str, Any]]) -> list[str]:
     for e in entries:
         parts.append(
             f"**[{_md_escape(e['label'])}]** {_md_escape(e['license'])} — "
-            f"{len(e['components'])} component(s):"
+            f"{count_noun(len(e['components']), 'component')}:"
         )
         parts.append("")
         for label in e["components"]:
@@ -1799,7 +1800,7 @@ def _render_notice(
                 )
             omitted = entry.get("components_omitted", 0)
             if omitted:
-                parts.append(f"- _… and {omitted} more component(s) omitted_")
+                parts.append(f"- _… and {omitted} more {noun(omitted, 'component')} omitted_")
             parts.append("")
             obs = obligations_by_license.get(entry["license_id"], [])
             if not obs:
@@ -1818,16 +1819,16 @@ def _render_notice(
                 obs_omitted = entry.get("obligations_omitted", 0)
                 if obs_omitted:
                     parts.append(
-                        f"_… and {obs_omitted} more obligation(s) omitted for "
-                        "this license._"
+                        f"_… and {obs_omitted} more {noun(obs_omitted, 'obligation')} "
+                        "omitted for this license._"
                     )
                     parts.append("")
         parts.append("---")
         parts.append("")
         if licenses_omitted:
             parts.append(
-                f"_… and {licenses_omitted} more license(s) omitted from this "
-                "NOTICE._"
+                f"_… and {licenses_omitted} more {noun(licenses_omitted, 'license')} "
+                "omitted from this NOTICE._"
             )
             parts.append("")
         # Phase D3 — "License review needed" section (AI behavioral-use /
@@ -1868,7 +1869,10 @@ def _render_notice(
                     )
                     parts.append("")
             if texts_omitted:
-                parts.append(f"_… and {texts_omitted} more license text(s) omitted._")
+                parts.append(
+                    f"_… and {texts_omitted} more "
+                    f"{noun(texts_omitted, 'license text')} omitted._"
+                )
                 parts.append("")
         parts.extend(_footer_lines(footer, fmt=fmt))
         return "\n".join(parts).rstrip() + "\n"
@@ -1888,7 +1892,7 @@ def _render_notice(
             parts.append(_text_copyright_line(comp))
         omitted = entry.get("components_omitted", 0)
         if omitted:
-            parts.append(f"  - ... and {omitted} more component(s) omitted")
+            parts.append(f"  - ... and {omitted} more {noun(omitted, 'component')} omitted")
         parts.append("")
         obs = obligations_by_license.get(entry["license_id"], [])
         if not obs:
@@ -1904,15 +1908,16 @@ def _render_notice(
             obs_omitted = entry.get("obligations_omitted", 0)
             if obs_omitted:
                 parts.append(
-                    f"... and {obs_omitted} more obligation(s) omitted for this "
-                    "license"
+                    f"... and {obs_omitted} more {noun(obs_omitted, 'obligation')} "
+                    "omitted for this license"
                 )
                 parts.append("")
     parts.append(_NOTICE_DIVIDER)
     parts.append("")
     if licenses_omitted:
         parts.append(
-            f"... and {licenses_omitted} more license(s) omitted from this NOTICE"
+            f"... and {licenses_omitted} more {noun(licenses_omitted, 'license')} "
+            "omitted from this NOTICE"
         )
         parts.append("")
     # Phase D3 — "License review needed" section (AI behavioral-use /
@@ -1939,7 +1944,10 @@ def _render_notice(
                 parts.append(text.rstrip("\n"))
             parts.append("")
         if texts_omitted:
-            parts.append(f"... and {texts_omitted} more license text(s) omitted")
+            parts.append(
+                f"... and {texts_omitted} more "
+                f"{noun(texts_omitted, 'license text')} omitted"
+            )
             parts.append("")
     parts.extend(_footer_lines(footer, fmt=fmt))
     return "\n".join(parts).rstrip() + "\n"
@@ -2055,7 +2063,7 @@ def _render_notice_html(
             omitted = entry.get("components_omitted", 0)
             if omitted:
                 parts.append(
-                    f'<li class="muted">… and {omitted} more component(s) '
+                    f'<li class="muted">… and {omitted} more {noun(omitted, "component")} '
                     "omitted</li>"
                 )
             parts.append("</ul>")
@@ -2077,15 +2085,15 @@ def _render_notice_html(
                 obs_omitted = entry.get("obligations_omitted", 0)
                 if obs_omitted:
                     parts.append(
-                        f'<p class="muted">… and {obs_omitted} more obligation(s) '
-                        "omitted for this license.</p>"
+                        f'<p class="muted">… and {obs_omitted} more '
+                        f'{noun(obs_omitted, "obligation")} omitted for this license.</p>'
                     )
             parts.append("</section>")
 
         if licenses_omitted:
             parts.append(
-                f'<p class="muted">… and {licenses_omitted} more license(s) '
-                "omitted from this NOTICE.</p>"
+                f'<p class="muted">… and {licenses_omitted} more '
+                f'{noun(licenses_omitted, "license")} omitted from this NOTICE.</p>'
             )
 
         # Phase D3 — "License review needed" section (AI behavioral-use /
@@ -2115,8 +2123,8 @@ def _render_notice_html(
                     parts.append(f"<pre>{html_escape(text.rstrip())}</pre>")
             if texts_omitted:
                 parts.append(
-                    f'<p class="muted">… and {texts_omitted} more license text(s) '
-                    "omitted.</p>"
+                    f'<p class="muted">… and {texts_omitted} more '
+                    f'{noun(texts_omitted, "license text")} omitted.</p>'
                 )
             parts.append("</section>")
 

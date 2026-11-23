@@ -344,7 +344,7 @@ docker-compose -f docker-compose.yml up -d --scale worker-scan=4
   `docker-compose -f docker-compose.yml logs --tail=100 worker-scan worker-default | grep trivy_db`
   가 첫 부팅 후 1~3분 내에 `trivy_db_download_complete`를 보여줍니다.
   완료 전엔 새 스캔의 Vulnerabilities 탭이 비어 있습니다.
-- [ ] `/admin/teams` → **New team**으로 이동 → 이름을 `engineering`
+- [ ] `/admin/teams` → **새 팀**으로 이동 → 이름을 `engineering`
   으로 설정.
 - [ ] 동료에게 `/register`에서 가입을 요청한 뒤,
   `/admin/users → <user> → Memberships → Add to team`에서 추가.
@@ -355,7 +355,7 @@ docker-compose -f docker-compose.yml up -d --scale worker-scan=4
   sbom_upload → vuln_match → finalize` 순서로 진행되어야 합니다. v0.10.0
   WebSocket 프레임은 호환성을 위해 과거 슬러그 `dt_upload`/`dt_findings`를
   유지하지만 화면 라벨은 새 이름으로 표시됩니다.
-- [ ] 프로젝트의 **Vulnerabilities** 탭 열기 — 테스트 레포의 CVE 들이
+- [ ] 프로젝트의 **취약점** 탭 열기 — 테스트 레포의 CVE 들이
   나열되어야 합니다.
 
 어느 단계든 실패하면 `/docs/installation/troubleshooting`과

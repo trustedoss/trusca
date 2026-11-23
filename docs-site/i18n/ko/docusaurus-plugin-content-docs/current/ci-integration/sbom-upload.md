@@ -192,10 +192,10 @@ TRUSCA는 EU 인공지능법, AI 기본법, EU 사이버복원력법을 비롯�
 
 스캔이 `succeeded`에 도달한 다음:
 
-- 프로젝트의 **Components** 탭에 SBOM의 패키지가 나열되고 컴포넌트 개수가 0보다 큽니다.
-- **Vulnerabilities** 탭에 Trivy가 컴포넌트와 매칭한 CVE(Common Vulnerabilities and Exposures, 공통 취약점·노출) 발견 항목이 표시됩니다.
-- **Licenses** 탭에 SBOM이 담은 선언 라이선스가 표시됩니다.
-- **Overview** 탭에 의존성 그래프와 프로젝트 리스크 점수가 표시됩니다.
+- 프로젝트의 **컴포넌트** 탭에 SBOM의 패키지가 나열되고 컴포넌트 개수가 0보다 큽니다.
+- **취약점** 탭에 Trivy가 컴포넌트와 매칭한 CVE(Common Vulnerabilities and Exposures, 공통 취약점·노출) 발견 항목이 표시됩니다.
+- **컴플라이언스** 탭에 SBOM이 담은 선언 라이선스가 표시됩니다.
+- **개요** 탭에 의존성 그래프와 프로젝트 리스크 점수가 표시됩니다.
 
 프로젝트에 빌드 게이트 정책이 있으면, 소스 스캔과 똑같이 업로드된 SBOM에도 게이트가 실행됩니다.
 

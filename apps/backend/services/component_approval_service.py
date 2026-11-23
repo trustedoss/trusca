@@ -55,6 +55,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.sql import Select
 
 from core.authz import assert_team_access, group_visibility_filter, super_admin_reaches
+from core.plural import noun
 from core.security import CurrentUser
 from models import ComponentApproval, Project, Team, User
 from models.component_approval import APPROVAL_STATUS_VALUES, ApprovalStatus
@@ -298,7 +299,8 @@ async def list_approvals(
         invalid = [tok for tok in statuses if tok not in APPROVAL_STATUS_VALUES]
         if invalid:
             raise ApprovalInvalidStatusFilter(
-                f"Invalid status filter token(s): {', '.join(repr(t) for t in invalid)}. "
+                f"Invalid status filter {noun(len(invalid), 'token')}: "
+                f"{', '.join(repr(t) for t in invalid)}. "
                 f"Allowed values: {', '.join(APPROVAL_STATUS_VALUES)}."
             )
         base = base.where(ComponentApproval.status.in_(statuses))

@@ -673,4 +673,4 @@ def test_the_detail_says_how_much_was_left_out_of_the_denominator() -> None:
     components = [{"type": "library", "name": "real", "version": "1", "purl": "pkg:npm/real@1"}]
     components += [{"type": "file", "name": f"f{i}"} for i in range(9)]
     checks = {c.id: c for c in sc.evaluate(_cdx(components)).checks}
-    assert "1 package component(s) measured, 9 file/data excluded" in checks["purl"].detail
+    assert "1 package component measured, 9 file/data excluded" in checks["purl"].detail

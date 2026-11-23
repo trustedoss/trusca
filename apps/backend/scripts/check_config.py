@@ -81,17 +81,19 @@ def run(*, quiet: bool) -> int:
             failures.append((name, f"{type(exc).__name__}: {exc}"))
 
     if failures:
-        print(f"check-config: {len(failures)}/{len(accessors)} accessor(s) failed:\n")
+        accessor_word = "accessor" if len(accessors) == 1 else "accessors"
+        print(f"check-config: {len(failures)}/{len(accessors)} {accessor_word} failed:\n")
         for name, error in failures:
             print(f"  {name}: {error}")
         print(
-            "\nEach of these raised while reading its environment variable(s); "
-            "fix the value(s) in your .env / Helm values before starting the app."
+            "\nEach of these raised while reading its environment variables; "
+            "fix the values in your .env / Helm values before starting the app."
         )
         return 1
 
     if not quiet:
-        print(f"check-config: {len(accessors)}/{len(accessors)} accessor(s) OK")
+        accessor_word = "accessor" if len(accessors) == 1 else "accessors"
+        print(f"check-config: {len(accessors)}/{len(accessors)} {accessor_word} OK")
     return 0
 
 

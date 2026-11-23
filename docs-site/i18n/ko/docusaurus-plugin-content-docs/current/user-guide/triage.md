@@ -87,7 +87,7 @@ VEX 분류는 조건 1에 직접 반영됩니다. 발견 항목을 제외 상태
 각 종류의 발견 항목을 하나씩 해당 표면에 통과시키고, 게이트가 VEX 경로는 읽되 승인 경로는 읽지 않는지 확인하십시오.
 
 <!-- docs-uat: id=triage-vex-to-gate kind=manual tier=manual -->
-1. **Vulnerabilities** 탭에서 열린 Critical CVE를 `Not affected`로 옮깁니다. 상태 배지가 즉시 갱신됩니다(아래 VEX 하네스가 검증하는 것과 같은 전환). 다음 스캔에서 [빌드 차단 게이트](./vulnerabilities.md#심각도-모델)의 Critical CVE 집계가 하나 줄어듭니다.
+1. **취약점** 탭에서 열린 Critical CVE를 `Not affected`로 옮깁니다. 상태 배지가 즉시 갱신됩니다(아래 VEX 하네스가 검증하는 것과 같은 전환). 다음 스캔에서 [빌드 차단 게이트](./vulnerabilities.md#심각도-모델)의 Critical CVE 집계가 하나 줄어듭니다.
 <!-- docs-uat: id=triage-vex-badge kind=ui harness=vulnStatusUpdates(portal-web) tier=nightly -->
 2. VEX 상태 배지가 페이지 새로 고침 없이 새 상태를 반영합니다.
 <!-- docs-uat: id=triage-approval-not-gated kind=manual tier=manual -->

@@ -46,8 +46,9 @@ Scoring mirrors BomLens ``validate-sbom.sh`` g7_ai_checks(): predicate True →
 pass "present" / False → warn "not present in the SBOM" / no port → warn
 "requires human review (no automated source)". missingPath elements score
 per-model: no models → warn "no machine-learning-model components", none
-missing → pass "{t}/{t} model component(s)", otherwise → warn
-"{t-m}/{t} model component(s)" with the offender names in ``Check.missing``.
+missing → pass "{t}/{t} model components", otherwise → warn
+"{t-m}/{t} model components" with the offender names in ``Check.missing``
+(singular "component" when t is 1).
 Every check is advisory (``required=False``) — G7 defines no per-role
 required matrix (see the registry ``note``), so these never move the core
 conformance verdict (the aggregation in ``sbom_conformance.evaluate`` skips

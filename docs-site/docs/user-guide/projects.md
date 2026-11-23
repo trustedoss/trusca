@@ -25,13 +25,13 @@ Engineers and team leads who scan their own services. Requires sign-in. The role
 | **Default branch** | The branch the scan pipeline checks out (defaults to `main`). Editable from **Project Settings** after creation. |
 | **Visibility** | `team` (the only value accepted in this release — visible to members of the owning team). Set automatically on creation; mutable only via PATCH. |
 | **Owning team** | The team the project belongs to. Defaults to the team selected in the global bar; if you belong to several, the creation form lets you override it. |
-| **Owning part of the organization** | Optional free text: a division, a cost centre, a squad: whatever your organization calls it. Filters the project list. |
+| **Owning part of the organization** | Optional free text: a division, a cost center, a squad: whatever your organization calls it. Filters the project list. |
 | **Who to ask** | Optional free text: a name, a team alias or an address. |
 | **Distribution** | Optional. How the software reaches its users. See [Distribution](#distribution-model). |
 
 ## Organizational attributes {#organizational-attributes}
 
-Two of these fields are deliberately free text. A division, a cost centre and a squad are the same slot to different organizations, and a fixed vocabulary would be wrong for most of them. Whatever you type is stored trimmed, so `Platform` and `Platform ` end up as one bucket in the filter rather than two that look identical on screen.
+Two of these fields are deliberately free text. A division, a cost center and a squad are the same slot to different organizations, and a fixed vocabulary would be wrong for most of them. Whatever you type is stored trimmed, so `Platform` and `Platform ` end up as one bucket in the filter rather than two that look identical on screen.
 
 Leave them empty and nothing changes: a project with no attributes appears in every unfiltered list, exactly as before. Set them and the project list can be narrowed to one owning unit.
 
@@ -101,17 +101,14 @@ The detail page exposes the following tabs, left-to-right:
 | **Overview** | Risk axes (Security + License), the [Build gate verdict](#build-gate-verdict-overview-tab), the **Project info** card (Git URL, default branch, owning team, created-at, last-scan time), and recent scans. |
 | **Releases** | Snapshots of the project at each terminal scan — the snapshot list, a "view snapshot" pin action, and per-release diff entry points. See [The Releases tab](#the-releases-tab). |
 | **Components** | Every component the scan discovered. See [Components & licenses](./components-and-licenses.md). |
-| **Vulnerabilities** | Open and triaged CVE findings. See [Vulnerabilities](./vulnerabilities.md). |
-| **Licenses** | The same data viewed by SPDX identifier and tier. |
-| **Obligations** | Per-component obligations + NOTICE-file generation. See [Components & licenses → Obligations](./components-and-licenses.md#obligations). |
-| **SBOM** | CycloneDX / SPDX exports, byte-stable. See [SBOM](./sbom.md). |
-| **Reports** | Generate-cards for NOTICE, SBOM, Vulnerability PDF, and VEX **plus** the project's unified download / export history. See [The Reports tab](#the-reports-tab). |
-| **Source** | The fetched first-party source tree from the latest succeeded scan, with file-level license findings highlighted. Sits between **Reports** and **Remediation**. |
-| **Remediation** | Per-component upgrade recommendations from the latest scan, including the opt-in npm remediation PR flow. |
+| **Vulnerabilities** | Open and triaged CVE findings, plus a remediation panel with per-component upgrade recommendations and the opt-in npm remediation PR flow. See [Vulnerabilities](./vulnerabilities.md). |
+| **Source** | The fetched first-party source tree from the latest succeeded scan, with file-level license findings highlighted. |
+| **Compliance** | Two views of the license data: licenses by SPDX identifier and tier, and per-component obligations with NOTICE-file generation. See [Components & licenses → Obligations](./components-and-licenses.md#obligations). |
+| **Reports** | Generate-cards for NOTICE, SBOM (CycloneDX / SPDX, byte-stable), Vulnerability PDF, and VEX **plus** the project's unified download / export history. See [The Reports tab](#the-reports-tab) and [SBOM](./sbom.md). |
 | **Settings** | Project metadata, archive action, CI-integration helpers. |
 
-:::note Tab order
-The **Source** tab used to sit immediately after **Licenses**; it was moved to the right of **Reports** so the data-output cluster (SBOM / Reports / Source) is contiguous. Bookmarks and `?tab=source` deep links continue to work — the slug is unchanged.
+:::note Older tab links
+Earlier versions had separate Licenses, Obligations, SBOM and Remediation tabs. Bookmarks that still use `?tab=licenses`, `?tab=obligations`, `?tab=sbom` or `?tab=remediation` open the tab that now holds that view.
 :::
 
 ## Adding a project — API
@@ -247,7 +244,7 @@ The card is the same data the project-list meta row exposes, surfaced once at th
 
 :::note[Project, scan, release, version, branch]
 
-Four words, and they are not interchangeable. A **project** is what you manage — a repository or image. A **scan** is one analysis run of it, with a status: queued, running, succeeded, failed, cancelled. A **release** is a succeeded scan read as a point-in-time record; every succeeded scan is one release, which is why the Releases tab lists more rows than you have shipped builds. A **version** (`v1.2.3`) is an optional label you attach when triggering a scan, naming the unit you intend to ship — it is a property of a release, not a separate thing, and a labelled release is exempt from retention. A **branch** is the line of development a scan targeted; unlike a version it keeps moving, and newer scans on the same branch supersede older ones.
+Four words, and they are not interchangeable. A **project** is what you manage: a repository or image. A **scan** is one analysis run of it, with a status: queued, running, succeeded, failed, cancelled. A **release** is a succeeded scan read as a point-in-time record; every succeeded scan is one release, which is why the Releases tab lists more rows than you have shipped builds. A **version** (`v1.2.3`) is an optional label you attach when triggering a scan, naming the unit you intend to ship. It is a property of a release, not a separate thing, and a labeled release is exempt from retention. A **branch** is the line of development a scan targeted; unlike a version it keeps moving, and newer scans on the same branch supersede older ones.
 
 :::
 

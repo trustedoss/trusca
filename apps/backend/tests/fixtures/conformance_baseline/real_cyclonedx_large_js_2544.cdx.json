@@ -9,7 +9,7 @@
       "status": "pass"
     },
     {
-      "detail": "1 tool(s)",
+      "detail": "1 tool",
       "id": "tools",
       "label": "Tool info (metadata.tools)",
       "missing": [],
@@ -49,7 +49,7 @@
       "status": "pass"
     },
     {
-      "detail": "9639 edge(s)",
+      "detail": "9639 edges",
       "id": "transitive",
       "label": "Transitive dependencies (graph edges)",
       "missing": [],
@@ -213,7 +213,7 @@
     },
     {
       "cluster": "cisa-component",
-      "detail": "2545/2545 component(s)",
+      "detail": "2545/2545 components",
       "id": "cisa-component-name",
       "label": "Component name",
       "missing": [],
@@ -223,7 +223,7 @@
     },
     {
       "cluster": "cisa-component",
-      "detail": "2544/2545 component(s)",
+      "detail": "2544/2545 components",
       "id": "cisa-component-version",
       "label": "Component version",
       "missing": [
@@ -235,7 +235,7 @@
     },
     {
       "cluster": "cisa-component",
-      "detail": "0/2545 component(s)",
+      "detail": "0/2545 components",
       "id": "cisa-component-producer",
       "label": "Component producer",
       "missing": [
@@ -254,7 +254,7 @@
     },
     {
       "cluster": "cisa-component",
-      "detail": "2545/2545 component(s)",
+      "detail": "2545/2545 components",
       "id": "cisa-component-identifiers",
       "label": "Component identifiers",
       "missing": [],
@@ -264,7 +264,7 @@
     },
     {
       "cluster": "cisa-component",
-      "detail": "2035/2545 component(s)",
+      "detail": "2035/2545 components",
       "id": "cisa-component-license",
       "label": "Component license",
       "missing": [
@@ -283,7 +283,7 @@
     },
     {
       "cluster": "cisa-component",
-      "detail": "430/2545 component(s)",
+      "detail": "430/2545 components",
       "id": "cisa-component-hash-value",
       "label": "Component hash value",
       "missing": [
@@ -302,7 +302,7 @@
     },
     {
       "cluster": "cisa-component",
-      "detail": "2545/2545 component(s)",
+      "detail": "2545/2545 components",
       "id": "cisa-component-hash-algorithm",
       "label": "Component hash algorithm",
       "missing": [],
