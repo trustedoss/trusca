@@ -24,7 +24,10 @@ import { join, relative, resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { AUDIT_ACTIONS } from "@/features/admin/audit/api/adminAuditApi";
+import {
+  AUDIT_ACTION_MATCH,
+  AUDIT_ACTIONS,
+} from "@/features/admin/audit/api/adminAuditApi";
 
 const BACKEND = resolve(process.cwd(), "../backend");
 // Application code only. Tests insert arbitrary actions on purpose, and
@@ -197,5 +200,16 @@ describe("audit action vocabulary", () => {
 
   it("has no duplicates", () => {
     expect(new Set(AUDIT_ACTIONS).size).toBe(AUDIT_ACTIONS.length);
+  });
+});
+
+describe("audit action_match vocabulary", () => {
+  // The page sends `action_match`; the backend closes it with a Literal. A
+  // rename there would turn every filtered search into a 422.
+  it("sends a value the backend accepts", () => {
+    const src = readFileSync(join(BACKEND, "schemas/admin_ops.py"), "utf-8");
+    const decl = /^AuditActionMatch\s*=\s*Literal\[([^\]]*)\]/m.exec(src);
+    expect(decl, "schemas/admin_ops.py no longer defines AuditActionMatch").not.toBeNull();
+    expect(literals(decl?.[1] ?? "")).toContain(AUDIT_ACTION_MATCH);
   });
 });

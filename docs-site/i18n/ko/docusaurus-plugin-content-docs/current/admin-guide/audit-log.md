@@ -99,7 +99,7 @@ Admin UI의 `target_table` 필터 드롭다운은 `apps/backend/schemas/admin_op
 
 - **행위자**: 사용자 선택 목록입니다. 이름이나 이메일 일부를 입력한 뒤 사람을 고릅니다. 비활성화된 계정도 목록에 나옵니다. URL에는 사용자 id(`actor=<uuid>`)가 남으므로, 링크를 공유하면 같은 사람이 선택됩니다. **모든 행위자**를 고르면 선택이 해제됩니다.
 - **대상 테이블** — enum 단일 선택(`projects`, `teams`, `users`, `vulnerability_findings` 등).
-- **동작**: 포털이 기록하는 모든 동작을 고르는 선택 목록입니다. 일반 동작인 `create`, `update`, `delete`, `archive`, `unarchive` 다음에 `backup.restore_requested`, `user.mfa_cleared`, `sca_pr_comment.posted` 같은 이름 있는 이벤트가 이어집니다. 서버는 여전히 값을 대소문자 구분 없는 부분 문자열(`ilike`)로 비교합니다. 그래서 `archive`를 고르면 `unarchive` 행도, `update`를 고르면 `sca_pr_comment.updated` 행도 함께 나옵니다. 범위를 좁히려면 대상 테이블을 함께 고르세요.
+- **동작**: 포털이 기록하는 모든 동작을 고르는 선택 목록입니다. 일반 동작인 `create`, `update`, `delete`, `archive`, `unarchive` 다음에 `backup.restore_requested`, `user.mfa_cleared`, `sca_pr_comment.posted` 같은 이름 있는 이벤트가 이어집니다. 이 화면은 대소문자를 구분하지 않는 정확한 일치(`action_match=exact`)로 조회합니다. 그래서 `archive`를 고르면 `archive` 행만 나오고 `unarchive` 행은 나오지 않으며, `update`를 골라도 `sca_pr_comment.updated` 행은 나오지 않습니다. CSV 내보내기도 같은 방식으로 비교합니다. API는 기본값으로 부분 문자열 비교를 유지합니다. 자세한 내용은 [API에서 동작으로 거르기](#action-match)를 참고하세요.
 - **날짜 범위** — `from`과 `to`(사용자 지정).
 - **검색** — 자유 텍스트 쿼리(`q`). JSON 인코딩된 `diff` 컬럼에 대해 `ilike` 매칭을 수행합니다. `action`과 `target_table`은 별도 필터 파라미터(`action=`, `target_table=`)이며 `q`는 이 두 컬럼을 매칭하지 않습니다.
 
@@ -129,11 +129,35 @@ curl -sS \
 응답이 `page` + `page_size`로 페이지됩니다. `page_size` 상한은 **200**이며(초과
 값은 `422` 반환), 더 넓은 범위는 `page`를 증가시켜 조회하십시오.
 
+### API에서 동작으로 거르기 {#action-match}
+
+`GET /v1/admin/audit`, `GET /v1/admin/audit/export.csv`, 팀 범위 조회인
+`GET /v1/audit`는 `action`과 함께 `action_match`를 받습니다.
+
+- `action_match=contains`(생략하면 이 값)는 `action`을 대소문자 구분 없는
+  부분 문자열(`ilike`)로 비교합니다. `action=archive`는 `archive` 행과
+  `unarchive` 행을 모두 돌려주고, `action=backup.`은 백업 이벤트를 모두
+  돌려줍니다. 값에 든 `%`와 `_`는 와일드카드로 동작합니다. `action_match`가
+  생기기 전에 작성한 스크립트도 결과가 달라지지 않습니다.
+- `action_match=exact`는 대소문자만 무시하고 값 전체가 같은 행만 돌려줍니다.
+  `action=archive&action_match=exact`는 `archive` 행만,
+  `action=CREATE&action_match=exact`는 `create` 행을 돌려줍니다. 관리자 화면이
+  보내는 값이 이것입니다.
+
+그 밖의 `action_match` 값은 `422`를 반환합니다.
+
+<!-- docs-uat: id=audit-api-action-match-422 kind=api auth=admin url=/v1/admin/audit?action=archive&action_match=prefix expect=status:422 tier=nightly -->
+```bash
+curl -sS \
+  -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+  "https://trustedoss.example.com/v1/admin/audit?target_table=projects&action=archive&action_match=exact"
+```
+
 ## 흔한 쿼리
 
 ### "프로젝트 X를 누가 삭제했나?"
 
-필터: `target_table=projects&action=archive&target_id=<project-uuid>`. 정확히 한 행이 있습니다. 프로젝트 삭제는 *soft delete*(행의 `archived_at`만 채워지고 물리 삭제 없음)라 감사 동사가 `archive`입니다 — `action=delete`는 물리 삭제된 행(memberships, teams의 hard delete 등)에만 해당합니다. 보관된 프로젝트를 복원하면 대응하는 `action=unarchive` 행이 남습니다.
+필터: `target_table=projects&action=archive&action_match=exact&target_id=<project-uuid>`(관리자 화면은 `action_match=exact`를 자동으로 붙입니다. 이 값이 없으면 `archive`가 `unarchive`와도 일치합니다). 정확히 한 행이 있습니다. 프로젝트 삭제는 *soft delete*(행의 `archived_at`만 채워지고 물리 삭제 없음)라 감사 동사가 `archive`입니다. `action=delete`는 물리 삭제된 행(memberships, teams의 hard delete 등)에만 해당합니다. 보관된 프로젝트를 복원하면 대응하는 `action=unarchive` 행이 남습니다.
 
 ### "사용자 Y가 지난주에 무엇을 했나?"
 

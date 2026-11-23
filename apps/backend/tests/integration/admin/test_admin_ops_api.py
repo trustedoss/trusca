@@ -280,6 +280,78 @@ async def test_admin_audit_target_table_unknown_returns_422(
     assert response.status_code == 422, response.text
 
 
+async def _seed_archive_pair_via(client: AsyncClient) -> tuple[User, uuid.UUID]:
+    """Super-admin plus an ``archive`` and an ``unarchive`` row by a fresh actor."""
+    from models import AuditLog
+
+    factory = await _factory(client)
+    async with factory() as session:
+        admin = await make_user(session, is_superuser=True)
+        owner = await make_user(session)
+        owner_id = owner.id
+        for action in ("archive", "unarchive"):
+            session.add(
+                AuditLog(
+                    actor_user_id=owner_id,
+                    action=action,
+                    target_table="projects",
+                    target_id=str(uuid.uuid4()),
+                )
+            )
+        await session.commit()
+    return admin, owner_id
+
+
+@pytest.mark.parametrize(
+    ("path", "extra", "expected"),
+    [
+        # The admin UI sends action_match=exact with a value from its select.
+        ("/v1/admin/audit", {"action_match": "exact"}, ["archive"]),
+        ("/v1/admin/audit/export.csv", {"action_match": "exact"}, ["archive"]),
+        # Without it the documented API behaviour holds: a substring match.
+        ("/v1/admin/audit", {}, ["archive", "unarchive"]),
+        ("/v1/admin/audit/export.csv", {}, ["archive", "unarchive"]),
+    ],
+)
+async def test_admin_audit_action_match_over_http(
+    client: AsyncClient,
+    path: str,
+    extra: dict[str, str],
+    expected: list[str],
+) -> None:
+    import csv
+    import io
+
+    admin, owner_id = await _seed_archive_pair_via(client)
+
+    response = await client.get(
+        path,
+        params={"actor_user_id": str(owner_id), "action": "archive", **extra},
+        headers=_bearer_for(admin),
+    )
+    assert response.status_code == 200, response.text
+    if path.endswith(".csv"):
+        rows = list(csv.reader(io.StringIO(response.content.decode("utf-8-sig"))))
+        col = rows[0].index("action")
+        actions = [r[col] for r in rows[1:]]
+    else:
+        actions = [item["action"] for item in response.json()["items"]]
+    assert sorted(actions) == expected
+
+
+async def test_admin_audit_unknown_action_match_is_422(client: AsyncClient) -> None:
+    factory = await _factory(client)
+    async with factory() as session:
+        admin = await make_user(session, is_superuser=True)
+
+    response = await client.get(
+        "/v1/admin/audit?action=archive&action_match=prefix",
+        headers=_bearer_for(admin),
+    )
+    assert response.status_code == 422, response.text
+    assert response.headers["content-type"].startswith(PROBLEM_JSON)
+
+
 async def test_admin_audit_export_csv_too_large_is_413(
     client: AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:

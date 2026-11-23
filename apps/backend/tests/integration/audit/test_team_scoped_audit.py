@@ -150,3 +150,33 @@ async def test_super_admin_sees_all_teams(client: AsyncClient) -> None:
     assert response.status_code == 200
     team_ids = {item["team_id"] for item in response.json()["items"]}
     assert {str(team_a_id), str(team_b_id)} <= team_ids
+
+
+async def test_team_audit_exact_action_match(client: AsyncClient) -> None:
+    """The team-scoped read honours action_match=exact like the admin read."""
+    factory = await _factory(client)
+    async with factory() as session:
+        org = await make_organization(session)
+        team = await make_team(session, organization=org)
+        admin = await make_user(session)
+        await make_membership(session, user=admin, team=team, role="group_admin")
+        team_id = team.id
+
+    # A unique verb and a superstring of it, both in the caller's team.
+    action = f"m3-exact-{uuid.uuid4().hex[:8]}"
+    await _seed_audit_row(factory, team_id=team_id, action=action)
+    await _seed_audit_row(factory, team_id=team_id, action=f"un{action}")
+
+    exact = await client.get(
+        "/v1/audit",
+        params={"action": action, "action_match": "exact"},
+        headers=_bearer_for(admin),
+    )
+    assert exact.status_code == 200, exact.text
+    assert [item["action"] for item in exact.json()["items"]] == [action]
+
+    contains = await client.get("/v1/audit", params={"action": action}, headers=_bearer_for(admin))
+    assert contains.status_code == 200, contains.text
+    assert sorted(item["action"] for item in contains.json()["items"]) == sorted(
+        [action, f"un{action}"]
+    )

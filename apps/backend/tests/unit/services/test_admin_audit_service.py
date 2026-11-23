@@ -233,6 +233,128 @@ async def test_search_audit_pagination_has_more(db_session: AsyncSession) -> Non
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# action_match: the admin UI's Action select sends ``exact``; the API default
+# stays the documented case-insensitive substring match.
+# ---------------------------------------------------------------------------
+
+
+async def _seed_archive_pair(db_session: AsyncSession) -> tuple[Any, Any]:
+    """One ``archive`` and one ``unarchive`` row, scoped by a fresh actor.
+
+    The real verbs are used on purpose (not unique ``act-*`` strings): the
+    defect is that ``archive`` is a substring of ``unarchive``. The fresh
+    actor keeps rows other tests wrote out of the result.
+    """
+    owner = await make_user(db_session)
+    await _seed_audit_row(db_session, actor_user_id=owner.id, action="archive")
+    await _seed_audit_row(db_session, actor_user_id=owner.id, action="unarchive")
+    admin = await make_user(db_session, is_superuser=True)
+    return owner, principal_for(admin, role="super_admin")
+
+
+async def test_search_audit_exact_action_excludes_superstrings(
+    db_session: AsyncSession,
+) -> None:
+    from services.admin_audit_service import search_audit
+
+    owner, actor = await _seed_archive_pair(db_session)
+
+    page = await search_audit(
+        db_session,
+        actor=actor,
+        query=AuditSearchQuery(
+            actor_user_id=owner.id, action="archive", action_match="exact"
+        ),
+    )
+    assert [item.action for item in page.items] == ["archive"]
+    assert page.total == 1
+
+
+async def test_search_audit_exact_action_ignores_case(db_session: AsyncSession) -> None:
+    # TC-AUDIT-04-003 pins case-insensitivity for the API; exact keeps it.
+    from services.admin_audit_service import search_audit
+
+    owner, actor = await _seed_archive_pair(db_session)
+
+    page = await search_audit(
+        db_session,
+        actor=actor,
+        query=AuditSearchQuery(
+            actor_user_id=owner.id, action="ARCHIVE", action_match="exact"
+        ),
+    )
+    assert [item.action for item in page.items] == ["archive"]
+
+
+async def test_search_audit_exact_action_treats_wildcards_literally(
+    db_session: AsyncSession,
+) -> None:
+    from services.admin_audit_service import search_audit
+
+    owner, actor = await _seed_archive_pair(db_session)
+
+    exact = await search_audit(
+        db_session,
+        actor=actor,
+        query=AuditSearchQuery(actor_user_id=owner.id, action="%arch%", action_match="exact"),
+    )
+    assert exact.total == 0
+    # The same value in the default mode is a pattern and matches both rows,
+    # so the zero above comes from the mode, not from an unmatched actor.
+    contains = await search_audit(
+        db_session,
+        actor=actor,
+        query=AuditSearchQuery(actor_user_id=owner.id, action="%arch%"),
+    )
+    assert contains.total == 2
+
+
+async def test_search_audit_default_action_match_is_substring(
+    db_session: AsyncSession,
+) -> None:
+    """The API default is unchanged: the guide documents substring matching."""
+    from services.admin_audit_service import search_audit
+
+    owner, actor = await _seed_archive_pair(db_session)
+
+    assert AuditSearchQuery(action="archive").action_match == "contains"
+    page = await search_audit(
+        db_session,
+        actor=actor,
+        query=AuditSearchQuery(actor_user_id=owner.id, action="archive"),
+    )
+    assert sorted(item.action for item in page.items) == ["archive", "unarchive"]
+
+
+async def test_stream_audit_csv_honours_exact_action(db_session: AsyncSession) -> None:
+    from services.admin_audit_service import stream_audit_csv
+
+    owner, actor = await _seed_archive_pair(db_session)
+
+    chunks: list[str] = []
+    async for chunk in stream_audit_csv(
+        db_session,
+        actor=actor,
+        query=AuditSearchQuery(
+            actor_user_id=owner.id, action="archive", action_match="exact"
+        ),
+    ):
+        chunks.append(chunk)
+
+    rows = list(_csv.reader(io.StringIO("".join(chunks).lstrip("﻿"))))
+    action_col = rows[0].index("action")
+    assert [r[action_col] for r in rows[1:]] == ["archive"]
+
+
+@pytest.mark.parametrize("garbage", ["EXACT", "equals", "", "prefix"])
+def test_audit_search_query_rejects_unknown_action_match(garbage: str) -> None:
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        AuditSearchQuery.model_validate({"action": "archive", "action_match": garbage})
+
+
 async def test_stream_audit_csv_yields_header_and_rows(db_session: AsyncSession) -> None:
     from services.admin_audit_service import stream_audit_csv
 

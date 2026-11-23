@@ -103,7 +103,7 @@ The inline filter bar in this release:
 
 - **Actor**: a user picker. Type part of a name or email and choose the person; deactivated accounts are listed too. The URL carries the user's id (`actor=<uuid>`), so a shared link selects the same person. Choose **All actors** to clear it.
 - **Target table** — single-select from the enum (`projects`, `teams`, `users`, `vulnerability_findings`, …).
-- **Action**: a select over every action the portal writes: the generic verbs `create`, `update`, `delete`, `archive` and `unarchive`, followed by named events such as `backup.restore_requested`, `user.mfa_cleared` or `sca_pr_comment.posted`. The server still matches the value as a case-insensitive substring (`ilike`), so `archive` also returns `unarchive` rows and `update` also returns `sca_pr_comment.updated` rows; add the target table to narrow it.
+- **Action**: a select over every action the portal writes: the generic verbs `create`, `update`, `delete`, `archive` and `unarchive`, followed by named events such as `backup.restore_requested`, `user.mfa_cleared` or `sca_pr_comment.posted`. The page asks for an exact match (`action_match=exact`, case-insensitive), so `archive` returns only `archive` rows, not `unarchive`, and `update` does not return `sca_pr_comment.updated`. The CSV export uses the same match. The API keeps a substring match as its default; see [Filtering by action over the API](#action-match).
 - **Date range** — `from` and `to` (custom).
 - **Search** — free-text query (`q`). Performs an `ilike` match against the JSON-encoded `diff` column. `action` and `target_table` are separate filter parameters (`action=`, `target_table=`); `q` does not match those columns.
 
@@ -133,11 +133,35 @@ curl -sS \
 The response is paginated by `page` + `page_size`. `page_size` is capped at
 **200** (values above that return `422`); for larger windows, increment `page`.
 
+### Filtering by action over the API {#action-match}
+
+`GET /v1/admin/audit`, `GET /v1/admin/audit/export.csv` and the team-scoped
+`GET /v1/audit` take `action` together with `action_match`:
+
+- `action_match=contains` (the default when omitted) matches `action` as a
+  case-insensitive substring (`ilike`). `action=archive` returns both
+  `archive` and `unarchive` rows, `action=backup.` returns every backup
+  event, and `%` and `_` in the value act as wildcards. Scripts written
+  before `action_match` existed keep their results.
+- `action_match=exact` matches the whole value, ignoring case:
+  `action=archive&action_match=exact` returns only `archive` rows and
+  `action=CREATE&action_match=exact` returns `create` rows. This is what the
+  admin page sends.
+
+Any other `action_match` value returns `422`.
+
+<!-- docs-uat: id=audit-api-action-match-422 kind=api auth=admin url=/v1/admin/audit?action=archive&action_match=prefix expect=status:422 tier=nightly -->
+```bash
+curl -sS \
+  -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+  "https://trustedoss.example.com/v1/admin/audit?target_table=projects&action=archive&action_match=exact"
+```
+
 ## Common queries
 
 ### "Who deleted project X?"
 
-Filter: `target_table=projects&action=archive&target_id=<project-uuid>`. There is exactly one row. Project deletion is a *soft delete* (the row's `archived_at` is filled, nothing is physically removed), so the audit verb is `archive` — `action=delete` only matches physically deleted rows (memberships, teams' hard deletes, …). Restoring an archived project writes a matching `action=unarchive` row.
+Filter: `target_table=projects&action=archive&action_match=exact&target_id=<project-uuid>` (the admin page adds `action_match=exact` for you; without it `archive` also matches `unarchive`). There is exactly one row. Project deletion is a *soft delete* (the row's `archived_at` is filled, nothing is physically removed), so the audit verb is `archive`; `action=delete` only matches physically deleted rows (memberships, teams' hard deletes, …). Restoring an archived project writes a matching `action=unarchive` row.
 
 ### "What did user Y do last week?"
 

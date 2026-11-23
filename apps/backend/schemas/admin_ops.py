@@ -72,6 +72,13 @@ AuditTargetTable = Literal[
     "license_fetch_cache",
 ]
 
+# How the audit ``action`` filter compares. ``contains`` is the original
+# case-insensitive substring match and stays the default so existing API
+# callers and scripts keep their results. ``exact`` is a case-insensitive
+# equality the admin UI sends, because its Action select names one action and
+# a substring would also return ``unarchive`` for ``archive``.
+AuditActionMatch = Literal["contains", "exact"]
+
 # System Health component status values.
 HealthStatus = Literal["ok", "degraded", "down"]
 
@@ -226,6 +233,7 @@ class AuditSearchQuery(BaseModel):
     actor_user_id: uuid.UUID | None = None
     target_table: AuditTargetTable | None = None
     action: str | None = Field(default=None, max_length=64)
+    action_match: AuditActionMatch = "contains"
     from_: datetime | None = Field(default=None, alias="from")
     to: datetime | None = None
     q: str | None = Field(default=None, max_length=255)

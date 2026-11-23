@@ -11,8 +11,10 @@ Surfaces the immutable ``audit_logs`` table to super-admin operators with:
 Filtering surface (mirror of ``schemas.admin_ops.AuditSearchQuery``):
   - ``actor_user_id`` — UUID equality.
   - ``target_table`` — closed Literal whitelist (rejected at the boundary).
-  - ``action``       — bounded substring; the SQL layer uses ``ILIKE`` with
-                        a parameterized argument.
+  - ``action``       - bounded substring by default; the SQL layer uses
+                        ``ILIKE`` with a parameterized argument.
+                        ``action_match=exact`` switches to case-insensitive
+                        equality (the admin UI's Action select sends it).
   - ``from`` / ``to`` — inclusive timestamp range on ``created_at``.
   - ``q``            — free-text JSONB search across ``diff``. We render
                         ``diff::text ILIKE :pattern`` because GIN-indexed
@@ -135,11 +137,18 @@ def _apply_filters(
         stmt = stmt.where(AuditLog.actor_user_id == query.actor_user_id)
     if query.target_table is not None:
         stmt = stmt.where(AuditLog.target_table == query.target_table)
-    if query.action:
-        # ILIKE substring match — the schema validator already rejected
-        # null / CR / LF, and bound parameters keep this injection-safe.
-        # ``%`` and ``_`` in the input become wildcards; we accept that
-        # behaviour as feature, not bug, for an admin search box.
+    if query.action and query.action_match == "exact":
+        # Case-insensitive equality for a value picked from the UI's Action
+        # select: ``archive`` must not also return ``unarchive`` rows.
+        # Case-folding keeps ``action=CREATE`` meaning the same row set in
+        # both modes.
+        stmt = stmt.where(func.lower(AuditLog.action) == query.action.lower())
+    elif query.action:
+        # ILIKE substring match (the default, ``action_match=contains``).
+        # The schema validator already rejected null / CR / LF, and bound
+        # parameters keep this injection-safe. ``%`` and ``_`` in the input
+        # become wildcards; we accept that behaviour as feature, not bug,
+        # for an API search.
         stmt = stmt.where(AuditLog.action.ilike(f"%{query.action}%"))
     if query.from_ is not None:
         stmt = stmt.where(AuditLog.created_at >= query.from_)
