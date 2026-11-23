@@ -50,16 +50,11 @@ const SIZE_EXCEPTIONS: Record<string, number> = {
 };
 
 /**
- * Uppercase labels still present in files other agents are editing at the
- * time this guard landed. Each count must match exactly: the owners clear
- * them and lower the number (to removal) in the same change.
+ * Files allowed to keep uppercase labels, with an exact count. Empty: every
+ * label is sentence case. A new entry needs a reason (data that must render
+ * in caps) and the count is checked exactly, so it cannot grow unnoticed.
  */
-const UPPERCASE_BASELINE: Record<string, number> = {
-  "src/features/projects/components/ComplianceTab.tsx": 1,
-  "src/features/projects/components/ComponentsTab.tsx": 1,
-  "src/features/projects/components/OverviewTab.tsx": 4,
-  "src/features/projects/components/SbomTab.tsx": 1,
-};
+const UPPERCASE_BASELINE: Record<string, number> = {};
 
 interface Hit {
   line: number;

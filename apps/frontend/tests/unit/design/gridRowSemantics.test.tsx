@@ -114,7 +114,11 @@ describe("grid row semantics", () => {
   });
 });
 
-describe("the grids' own rows", () => {
+// The first dynamic import of a whole tab module plus an axe run takes longer
+// than vitest's 5 s default when the suite runs in parallel on a laptop, and
+// both tests below timed out there repeatedly while passing alone. The limit
+// is for the import, not for axe: a real violation still fails at once.
+describe("the grids' own rows", { timeout: 30_000 }, () => {
   // The cases above describe the rule; these hold the two grids that broke it
   // to their actual markup. Rendering the whole tab would drag in the query
   // client, the router and four APIs, so the rows are rendered through the
