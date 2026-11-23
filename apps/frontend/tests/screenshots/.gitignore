@@ -1,2 +1,4 @@
 .storage-state.json
 .seed.json
+.review/
+.review-output/
