@@ -5,9 +5,11 @@
 The administrator guide (Dynamic scan executor, "Turn on the engine") promises
 that only the engine worker reaches Docker, and only through a filtered proxy,
 that the proxy refuses exec, volumes, networks, swarm, system and build calls,
-that nothing but the engine worker can reach it, and that both are off unless
-their profile is started. Each promise is a line in docker-compose.yml that an edit
-can drop without anything else failing, so each one is asserted here.
+that nothing but the engine worker can reach it, and that both start with the
+stack (the BomLens engine is the default). The demo box holds them back behind
+a profile and keeps the in-process engine. Each promise is a line in
+docker-compose.yml that an edit can drop without anything else failing, so
+each one is asserted here.
 """
 
 from __future__ import annotations
@@ -39,9 +41,9 @@ def _compose() -> dict[str, Any]:
     return document
 
 
-def test_the_proxy_is_opt_in_pinned_and_refuses_everything_but_containers_and_images() -> None:
+def test_the_proxy_is_always_started_pinned_and_refuses_all_but_containers_and_images() -> None:
     proxy = _compose()["services"]["docker-socket-proxy"]
-    assert proxy["profiles"] == ["bomlens-engine"]
+    assert "profiles" not in proxy
     image = proxy["image"]
     ref, _, digest = image.partition("@")
     assert ":" in ref.rsplit("/", 1)[-1] and not ref.endswith(":latest")
@@ -101,7 +103,8 @@ def test_the_egress_network_is_external_and_named_as_the_default() -> None:
 def test_the_engine_settings_reach_the_worker_with_the_code_defaults(monkeypatch: Any) -> None:
     """Each key the guide lists is in the shared env anchor, and an unset .env
     gives the worker the same value as an unset variable gives the code
-    (except the network, which compose sets to its egress network)."""
+    (except the network, which compose sets to its egress network, and the
+    engine choice, which compose moves to the BomLens engine)."""
     env = _compose()["x-backend-env"]
     for key in (
         "SCAN_ENGINE",
@@ -154,6 +157,30 @@ def test_the_engine_settings_reach_the_worker_with_the_code_defaults(monkeypatch
     assert env["SCAN_BOMLENS_IMAGE_TIMEOUT_SECONDS"] == (
         "${SCAN_BOMLENS_IMAGE_TIMEOUT_SECONDS:-" + str(bomlens_image_scan_timeout_seconds()) + "}"
     )
-    assert env["SCAN_CONTAINER_ENGINE"] == (
-        "${SCAN_CONTAINER_ENGINE:-" + scan_container_engine() + "}"
-    )
+    # The one setting where compose is deliberately not the code's default: the
+    # code stays `inprocess` (a dev stack, a test, a Helm install), compose moves to
+    # the engine, and the Helm chart sets its own (env.scan.containerEngine).
+    assert scan_container_engine() == "inprocess"
+    assert env["SCAN_CONTAINER_ENGINE"] == "${SCAN_CONTAINER_ENGINE:-bomlens}"
+
+
+def test_the_engine_is_the_default_and_its_workers_start_with_the_stack() -> None:
+    document = _compose()
+    env = document["x-backend-env"]
+    assert env["SCAN_ENGINE"] == "${SCAN_ENGINE:-bomlens}"
+    assert env["SCAN_CONTAINER_ENGINE"] == "${SCAN_CONTAINER_ENGINE:-bomlens}"
+    # A scan queued for the engine waits for this worker, so it is never optional.
+    assert "profiles" not in document["services"]["worker-engine"]
+    assert "profiles" not in document["services"]["docker-socket-proxy"]
+
+
+def test_the_demo_box_keeps_the_in_process_engine_and_holds_the_engine_services_back() -> None:
+    demo = yaml.safe_load((REPO_ROOT / "docker-compose.demo.yml").read_text(encoding="utf-8"))
+    scan_env = demo["x-demo-scan-env"]
+    assert scan_env["SCAN_ENGINE"] == "inprocess"
+    assert scan_env["SCAN_CONTAINER_ENGINE"] == "inprocess"
+    # Every service that decides which queue a scan goes to reads that anchor.
+    for name in ("backend", "worker-scan", "worker-default", "beat"):
+        assert demo["services"][name]["environment"]["SCAN_ENGINE"] == "inprocess", name
+    assert demo["services"]["worker-engine"]["profiles"] == ["bomlens-engine"]
+    assert demo["services"]["docker-socket-proxy"]["profiles"] == ["bomlens-engine"]

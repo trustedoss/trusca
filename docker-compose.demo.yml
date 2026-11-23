@@ -60,6 +60,10 @@
 #     the Celery persister loops over; 3,000 is ample for a demo upload while
 #     bounding the DB row explosion. Over-cap surfaces as a 422.
 x-demo-scan-env: &demo-scan-env
+  # The demo box scans in-process: it has no room for the BomLens engine
+  # (worker-engine and its Docker proxy are held back by their profile below).
+  SCAN_ENGINE: inprocess
+  SCAN_CONTAINER_ENGINE: inprocess
   SCAN_SOURCE_RAW_DOWNLOAD_MAX_BYTES: "10485760"
   SCAN_CONCURRENCY_CAP_PER_TEAM: "1"
   SCANCODE_ENABLED: "false"
@@ -245,6 +249,14 @@ services:
         limits:
           cpus: "0.5"
           memory: 128M
+
+  # The BomLens engine is the default under docker-compose.yml. The demo box
+  # keeps the in-process engine (SCAN_ENGINE above), so the two services that
+  # only exist for the engine are put back behind a profile nobody starts.
+  worker-engine:
+    profiles: ["bomlens-engine"]
+  docker-socket-proxy:
+    profiles: ["bomlens-engine"]
 
   # NOTE: `traefik` is intentionally absent — the edge (entrypoints, Let's
   # Encrypt resolver, :80/:443 publish, security-headers middleware) is used

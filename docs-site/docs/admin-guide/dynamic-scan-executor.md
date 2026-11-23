@@ -121,13 +121,13 @@ On a graceful scan finish the executor removes its sidecar. On a hard `SIGKILL` 
 - **Multi-tenant SaaS is out of scope.** This model trusts the host boundary, which a single tenant controls. The SaaS path uses a Kubernetes Job per scan with a gVisor sandbox instead — a separate follow-up increment, not this executor.
 - **Only the Android environment is routed today.** Every other environment still runs `inprocess`; `local_docker` adds environments incrementally.
 
-## Scan engine (preview) {#scan-engine}
+## Scan engine {#scan-engine}
 
-:::info Preview, off by default
-`SCAN_ENGINE` is a preview setting. Leave it unset unless you are trying the BomLens engine on a compose deployment or, with `worker.engine.enabled`, on the Helm chart (see [Turn on the engine (Helm)](#engine-helm)).
+:::info The BomLens engine is the default under compose
+Under `docker-compose.yml` the BomLens engine runs source and container image scans, and `inprocess` is the way back: set `SCAN_ENGINE=inprocess` and `SCAN_CONTAINER_ENGINE=inprocess` (see [Turn the engine off](#engine-turn-off)). The Helm chart keeps the in-process engine until you turn the engine on there (see [Turn on the engine (Helm)](#engine-helm)). An air-gapped install keeps the in-process engine too, because the engine pulls its images from ghcr.io when a scan needs them.
 :::
 
-`SCAN_EXECUTOR` above decides where cdxgen runs. `SCAN_ENGINE` decides which engine produces the scan result at all: `inprocess` (the default) is the worker's own pipeline of build preparation, cdxgen, scancode and Trivy; `bomlens` hands SBOM generation, licence detection and vulnerability matching to the BomLens image, and TRUSCA keeps everything it does with the result (persistence, signing, licence policy, approvals, the build gate, notifications). `SCAN_EXECUTOR` has no effect on a BomLens scan.
+`SCAN_EXECUTOR` above decides where cdxgen runs. `SCAN_ENGINE` decides which engine produces the scan result at all: `inprocess` (the default in the code, the Helm chart and the demo; compose sets `bomlens`) is the worker's own pipeline of build preparation, cdxgen, scancode and Trivy; `bomlens` hands SBOM generation, licence detection and vulnerability matching to the BomLens image, and TRUSCA keeps everything it does with the result (persistence, signing, licence policy, approvals, the build gate, notifications). `SCAN_EXECUTOR` has no effect on a BomLens scan.
 
 `SCAN_ENGINE` covers source scans. Container image scans have their own setting, `SCAN_CONTAINER_ENGINE`, with the same two values, so you can move one scan kind to the engine, compare the results, and move the other later. See [Container image scans on the engine](#engine-container-scans).
 
@@ -185,13 +185,15 @@ The Docker API can start a privileged container, so only one worker can reach it
 
 | Worker | Queues | Docker API | Runs |
 |---|---|---|---|
-| `worker-engine` (profile `bomlens-engine`) | `trustedoss.engine` only | through `docker-socket-proxy` | the BomLens source and container scan tasks and the engine-container reaper |
+| `worker-engine` (started with the stack under compose) | `trustedoss.engine` only | through `docker-socket-proxy` | the BomLens source and container scan tasks and the engine-container reaper |
 | `worker-scan` | `trustedoss.scan`, `trustedoss.default` | none | in-process scans (build preparation, cdxgen, scancode, Trivy), in-process container scans, SBOM scans, reachability (govulncheck) |
 | `worker-default` | `trustedoss.default` | none | notifications, backups, retention, catalog refreshes |
 
 The engine worker does not run the in-process pipeline: a source scan goes to it only when `SCAN_ENGINE=bomlens` was set when the scan was queued (a container scan, `SCAN_CONTAINER_ENGINE=bomlens`), and the task it receives can only run the engine. Both directions are also checked on the worker itself. A worker that can reach the Docker API (`DOCKER_HOST` set, a Docker socket at `/var/run/docker.sock` or `/run/docker.sock`, or the name `docker-socket-proxy` resolving) runs the engine's tasks only and refuses any other, and build preparation, cdxgen and govulncheck refuse to start on such a worker; the task fails with that reason instead of running. `worker-engine` also takes no Celery remote control (`CELERY_WORKER_REMOTE_CONTROL=false`), so a broadcast on the broker cannot drive it: a cancelled engine scan stops at its next stage, and the reaper removes its containers.
 
-### Turn on the engine (compose) {#engine-turn-on}
+### The engine under compose {#engine-turn-on}
+
+`scripts/install.sh` and `scripts/upgrade.sh` prepare the host for the engine: they write `SCAN_WORKSPACE_VOLUME` and `SCAN_TRIVY_CACHE_VOLUME` (`<project>_workspace` and `<project>_trivy-cache`) into `.env` when those are empty, and create the egress network `trustedoss-scan-egress` when it does not exist. An air-gapped install (`--offline`, or an older one with `TRIVY_DB_BOOTSTRAP_ON_START=false`) gets `SCAN_ENGINE=inprocess` and `SCAN_CONTAINER_ENGINE=inprocess` instead. Values you set are never overwritten. If you run `docker-compose` without those scripts, do the same by hand, as below.
 
 `worker-engine` reaches Docker through the filtered proxy in `docker-compose.yml`, never through the raw socket. The proxy answers container and image calls only and refuses `exec`, volumes, networks, swarm, system and build calls. It does not inspect the body of a container-create request; the limits in the previous sections are applied by the worker. The engine mounts parts of the workspace volume with `volume-subpath` and refuses to run on a Docker API older than 1.45 (Docker Engine 26).
 
@@ -210,9 +212,9 @@ SCAN_CONTAINER_ENGINE=bomlens
 SCAN_WORKSPACE_VOLUME=<project>_workspace
 SCAN_TRIVY_CACHE_VOLUME=<project>_trivy-cache
 
-# Start the engine worker and its Docker API proxy, and let the API, beat and
-# workers read the new values
-docker-compose --profile bomlens-engine up -d
+# Start the stack: the engine worker and its Docker API proxy start with it, and
+# the API, beat and workers read the new values
+docker-compose up -d
 ```
 
 `SCAN_BOMLENS_NETWORK` defaults to `trustedoss-scan-egress` in compose. To limit stage 1 and the image scans to the registries you use, add an egress firewall to that network.
@@ -235,7 +237,7 @@ done
 Rules added with `iptables` are lost on reboot unless you save them (for example with `iptables-save` and your distribution's persistence service). If a registry or proxy you need is in one of these ranges, add an `ACCEPT` rule for it above the `REJECT` rules and name it in `CONTAINER_SCAN_ALLOWED_REGISTRIES`.
 
 :::warning Set `SCAN_ENGINE=bomlens` only with the engine worker running
-Source scans queued with `SCAN_ENGINE=bomlens`, and container scans queued with `SCAN_CONTAINER_ENGINE=bomlens`, go to `trustedoss.engine`, which only `worker-engine` consumes. Without it they stay queued, and a project with a queued scan does not start another, so the project's scans stop until the engine worker runs or the queued scans are cancelled. Start the profile before setting either to `bomlens`, and set both to `inprocess` before stopping it.
+Source scans queued with `SCAN_ENGINE=bomlens`, and container scans queued with `SCAN_CONTAINER_ENGINE=bomlens`, go to `trustedoss.engine`, which only `worker-engine` consumes. Without it they stay queued, and a project with a queued scan does not start another, so the project's scans stop until the engine worker runs or the queued scans are cancelled. Under compose the engine worker starts with the stack. Start it before setting either to `bomlens` on a stack that has it stopped, and set both to `inprocess` before stopping it.
 :::
 
 When several TRUSCA installations share one Docker daemon, give each its own `TRUSCA_INSTANCE_ID`. Engine containers carry it as a label, and each installation's reaper removes only its own.
@@ -323,7 +325,7 @@ If you mirror these images into your own registry and make that registry availab
 
 ### Turn the engine off {#engine-turn-off}
 
-Both services have `restart: unless-stopped`, so a later `docker-compose up -d` without the profile leaves them running, and the proxy keeps the Docker API open. Stop and remove them explicitly:
+Both services have `restart: unless-stopped` and start with every `docker-compose up -d`, so stopping them is not enough to keep them off; the proxy keeps the Docker API open while it runs. With both engines set back to `inprocess` they only idle. To remove them, stop and remove them explicitly, and start the stack with `--scale worker-engine=0 --scale docker-socket-proxy=0` from then on:
 
 <!-- docs-uat: id=dynamic-scan-executor-engine-off kind=shell ctx=host tier=manual waiver=env-config-snippet-not-a-command -->
 ```bash
@@ -339,11 +341,11 @@ docker-compose up -d    # the API, beat and workers read both settings again
 docker ps -aq --filter label=app.kubernetes.io/part-of=bomlens-engine \
   --filter label=trusca.instance=<instance> | xargs -r docker rm -f
 
-docker-compose --profile bomlens-engine stop worker-engine docker-socket-proxy
-docker-compose --profile bomlens-engine rm -f worker-engine docker-socket-proxy
+docker-compose stop worker-engine docker-socket-proxy
+docker-compose rm -f worker-engine docker-socket-proxy
 ```
 
-Scans already queued for the engine stay queued until the engine worker runs again; cancel them, or start the profile once more to let them finish.
+Scans already queued for the engine stay queued until the engine worker runs again; cancel them, or start the two services once more to let them finish.
 
 ### Check that it ran {#engine-verify}
 
@@ -367,8 +369,8 @@ These mirror the **Dynamic scan executor** section of `.env.example`. All are re
 | Key | Default | Description |
 |---|---|---|
 | `SCAN_EXECUTOR` | `inprocess` | `inprocess` runs cdxgen as a worker subprocess; `local_docker` launches a per-environment sidecar over the Docker socket (on-prem only). |
-| `SCAN_ENGINE` | `inprocess` | Preview. `bomlens` runs source scans on the BomLens engine (see [Scan engine](#scan-engine)). |
-| `SCAN_CONTAINER_ENGINE` | `inprocess` | Preview. `bomlens` runs container image scans on the BomLens engine (see [Container image scans on the engine](#engine-container-scans)). Any other value reads as `inprocess`. |
+| `SCAN_ENGINE` | `inprocess` | `bomlens` runs source scans on the BomLens engine (see [Scan engine](#scan-engine)). `docker-compose.yml` sets `bomlens`; the code, the Helm chart and the demo default to `inprocess`. |
+| `SCAN_CONTAINER_ENGINE` | `inprocess` | `bomlens` runs container image scans on the BomLens engine (see [Container image scans on the engine](#engine-container-scans)). Any other value reads as `inprocess`. `docker-compose.yml` sets `bomlens`. |
 | `SCAN_BOMLENS_IMAGE_TIMEOUT_SECONDS` | `1800` | Time limit of one BomLens image scan. A scan past it is stopped and fails. |
 | `SCAN_BOMLENS_IMAGE` | pinned in the release | BomLens image for the plan and stage 2. An override must be `repo:tag@sha256:...` with a tag other than `latest`. |
 | `SCAN_BOMLENS_DEEP_LICENSE_IMAGE` | pinned in the release | BomLens variant with scancode, used for stage 2 when `SCANCODE_ENABLED` is on. Same pinning rule. |

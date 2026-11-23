@@ -366,6 +366,10 @@ DELIBERATE_COMPOSE_DEFAULTS: dict[str, str] = {
     "APP_ENV": "the production file runs as prod; the code defaults to dev",
     "CORS_ALLOWED_ORIGINS": "required, no fallback (CLAUDE.md rule 13); install.sh writes it",
     "SCAN_BOMLENS_NETWORK": "names the egress network this compose file declares",
+    # Decided 2026-11: compose runs the BomLens engine by default; the code,
+    # the Helm chart and the demo stay on the in-process engine.
+    "SCAN_ENGINE": "compose runs the BomLens engine by default; the code and Helm do not",
+    "SCAN_CONTAINER_ENGINE": "compose runs the BomLens engine by default; code and Helm do not",
     "SCAN_WORKSPACE_MOUNT": "the workspace volume is mounted at /workspace here",
     "TRUSCA_INSTANCE_ID": "the code reads an empty value as 'default', the value given here",
     # Decided: compose deployments run scancode by default; the code default

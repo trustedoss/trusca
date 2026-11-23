@@ -121,13 +121,13 @@ SCAN_ANDROID_IMAGE_TAG=v1.0.0                            # semver 또는 sha256:
 - **멀티 테넌트 SaaS는 범위 밖입니다.**이 모델은 단일 테넌트가 통제하는 호스트 경계를 신뢰합니다. SaaS 경로는 대신 스캔마다 gVisor 샌드박스를 적용한 Kubernetes Job을 사용합니다 — 이 실행기가 아니라 별도의 후속 증분입니다.
 - **현재 라우팅되는 환경은 Android뿐입니다.** 그 외 환경은 모두 `inprocess`로 실행되며, `local_docker`는 환경을 점진적으로 추가합니다.
 
-## 스캔 엔진(미리 보기) {#scan-engine}
+## 스캔 엔진 {#scan-engine}
 
-:::info 미리 보기 기능이며 기본값은 꺼짐입니다
-`SCAN_ENGINE`은 미리 보기 설정입니다. compose 배포에서, 또는 Helm 차트에서 `worker.engine.enabled`로 BomLens 엔진을 시험해 볼 때가 아니면 설정하지 않은 채로 두십시오([엔진 켜기(Helm)](#engine-helm) 참고).
+:::info compose에서는 BomLens 엔진이 기본입니다
+`docker-compose.yml`에서는 BomLens 엔진이 소스 스캔과 컨테이너 이미지 스캔을 실행하며, 되돌리는 길은 `inprocess`입니다. `SCAN_ENGINE=inprocess`와 `SCAN_CONTAINER_ENGINE=inprocess`로 설정하십시오([엔진 끄기](#engine-turn-off) 참고). Helm 차트는 엔진을 직접 켜기 전까지 기존 방식(in-process) 엔진을 유지합니다([엔진 켜기(Helm)](#engine-helm) 참고). 망 분리 설치도 기존 방식을 유지합니다. 엔진은 스캔에 필요할 때 ghcr.io에서 이미지를 받기 때문입니다.
 :::
 
-위의 `SCAN_EXECUTOR`는 cdxgen을 어디에서 실행할지를 정합니다. `SCAN_ENGINE`은 스캔 결과를 어느 엔진이 만들지를 정합니다. 기본값 `inprocess`는 워커가 빌드 준비, cdxgen, scancode, Trivy를 직접 실행하는 기존 방식입니다. `bomlens`는 SBOM 생성, 라이선스 탐지, 취약점 매칭을 BomLens 이미지에 맡기고, 그 결과로 하는 일(저장, 서명, 라이선스 정책, 승인, 빌드 게이트, 알림)은 TRUSCA가 그대로 맡습니다. BomLens 스캔에는 `SCAN_EXECUTOR`가 적용되지 않습니다.
+위의 `SCAN_EXECUTOR`는 cdxgen을 어디에서 실행할지를 정합니다. `SCAN_ENGINE`은 스캔 결과를 어느 엔진이 만들지를 정합니다. 코드, Helm 차트, 데모의 기본값 `inprocess`(compose는 `bomlens`로 설정합니다)는 워커가 빌드 준비, cdxgen, scancode, Trivy를 직접 실행하는 기존 방식입니다. `bomlens`는 SBOM 생성, 라이선스 탐지, 취약점 매칭을 BomLens 이미지에 맡기고, 그 결과로 하는 일(저장, 서명, 라이선스 정책, 승인, 빌드 게이트, 알림)은 TRUSCA가 그대로 맡습니다. BomLens 스캔에는 `SCAN_EXECUTOR`가 적용되지 않습니다.
 
 `SCAN_ENGINE`은 소스 스캔에만 적용됩니다. 컨테이너 이미지 스캔은 같은 두 값을 받는 별도 설정 `SCAN_CONTAINER_ENGINE`으로 정합니다. 그래서 한 종류의 스캔만 먼저 엔진으로 옮겨 결과를 비교한 뒤 나머지를 옮길 수 있습니다. [엔진으로 실행하는 컨테이너 이미지 스캔](#engine-container-scans)을 참고하십시오.
 
@@ -185,13 +185,15 @@ Docker API로는 권한 있는(privileged) 컨테이너를 만들 수 있습니�
 
 | 워커 | 큐 | Docker API | 실행하는 작업 |
 |---|---|---|---|
-| `worker-engine`(프로필 `bomlens-engine`) | `trustedoss.engine`만 | `docker-socket-proxy` 경유 | BomLens 소스·컨테이너 스캔 작업, 엔진 컨테이너 정리 작업 |
+| `worker-engine`(compose에서는 스택과 함께 시작) | `trustedoss.engine`만 | `docker-socket-proxy` 경유 | BomLens 소스·컨테이너 스캔 작업, 엔진 컨테이너 정리 작업 |
 | `worker-scan` | `trustedoss.scan`, `trustedoss.default` | 없음 | 기존 방식 스캔(빌드 준비, cdxgen, scancode, Trivy), 기존 방식 컨테이너 스캔, SBOM 스캔, 도달 가능성 분석(govulncheck) |
 | `worker-default` | `trustedoss.default` | 없음 | 알림, 백업, 보존 기간 정리, 카탈로그 갱신 |
 
 엔진 워커는 기존 방식(in-process) 파이프라인을 실행하지 않습니다. 소스 스캔은 큐에 들어갈 때 `SCAN_ENGINE=bomlens`였던 경우에만(컨테이너 스캔은 `SCAN_CONTAINER_ENGINE=bomlens`) 엔진 워커로 가고, 엔진 워커가 받는 작업은 엔진만 실행할 수 있습니다. 워커 자체에서도 양방향을 확인합니다. Docker API에 접근할 수 있는 워커(`DOCKER_HOST` 설정, `/var/run/docker.sock` 또는 `/run/docker.sock`의 Docker 소켓, `docker-socket-proxy` 이름 해석 중 하나)는 엔진 작업만 실행하고 다른 작업은 거부합니다. 이런 워커에서는 빌드 준비, cdxgen, govulncheck도 시작하지 않습니다. 이때 작업은 실행하지 않고 그 이유와 함께 실패합니다. `worker-engine`은 Celery 원격 제어도 받지 않으므로(`CELERY_WORKER_REMOTE_CONTROL=false`) 브로커에 보낸 브로드캐스트로 이 워커를 조작할 수 없습니다. 취소된 엔진 스캔은 다음 단계에서 멈추고, 정리 작업이 그 컨테이너를 제거합니다.
 
-### 엔진 켜기(compose) {#engine-turn-on}
+### compose의 엔진 {#engine-turn-on}
+
+`scripts/install.sh`와 `scripts/upgrade.sh`가 호스트를 엔진에 맞게 준비합니다. `SCAN_WORKSPACE_VOLUME`과 `SCAN_TRIVY_CACHE_VOLUME`(`<project>_workspace`, `<project>_trivy-cache`)이 비어 있으면 `.env`에 쓰고, 송신 네트워크 `trustedoss-scan-egress`가 없으면 만듭니다. 망 분리 설치(`--offline`, 또는 `TRIVY_DB_BOOTSTRAP_ON_START=false`인 이전 설치)에는 대신 `SCAN_ENGINE=inprocess`와 `SCAN_CONTAINER_ENGINE=inprocess`를 씁니다. 직접 설정한 값은 덮어쓰지 않습니다. 이 스크립트 없이 `docker-compose`를 직접 실행한다면 아래처럼 직접 하십시오.
 
 `worker-engine`은 `docker-compose.yml`의 필터링 프록시를 거쳐 Docker에 접근하며, 원시 소켓은 받지 않습니다. 프록시는 컨테이너와 이미지 호출에만 응답하고 `exec`, 볼륨, 네트워크, swarm, 시스템, 빌드 호출은 거부합니다. 컨테이너 생성 요청의 본문은 검사하지 않으며, 앞 절의 제한은 워커가 적용합니다. 엔진은 워크스페이스 볼륨의 일부를 `volume-subpath`로 마운트하므로, Docker API 1.45(Docker Engine 26)보다 오래된 데몬에서는 실행하지 않습니다.
 
@@ -209,8 +211,9 @@ SCAN_CONTAINER_ENGINE=bomlens
 SCAN_WORKSPACE_VOLUME=<project>_workspace
 SCAN_TRIVY_CACHE_VOLUME=<project>_trivy-cache
 
-# 엔진 워커와 Docker API 프록시를 시작하고, API·beat·워커가 새 값을 읽게 함
-docker-compose --profile bomlens-engine up -d
+# 스택을 시작함. 엔진 워커와 Docker API 프록시가 함께 시작되고, API·beat·워커가
+# 새 값을 읽음
+docker-compose up -d
 ```
 
 compose에서 `SCAN_BOMLENS_NETWORK` 기본값은 `trustedoss-scan-egress`입니다. 1단계와 이미지 스캔이 쓰는 레지스트리로만 나가게 하려면 이 네트워크에 송신 방화벽을 적용하십시오.
@@ -233,7 +236,7 @@ done
 `iptables`로 추가한 규칙은 저장하지 않으면 재부팅할 때 사라집니다(예: `iptables-save`와 배포판의 규칙 유지 서비스로 저장합니다). 필요한 레지스트리나 프록시가 이 대역에 있으면 `REJECT` 규칙보다 위에 그 주소의 `ACCEPT` 규칙을 넣고, `CONTAINER_SCAN_ALLOWED_REGISTRIES`에도 적으십시오.
 
 :::warning `SCAN_ENGINE=bomlens`는 엔진 워커를 실행한 상태에서만 설정하십시오
-`SCAN_ENGINE=bomlens`일 때 큐에 들어간 소스 스캔과 `SCAN_CONTAINER_ENGINE=bomlens`일 때 큐에 들어간 컨테이너 스캔은 `trustedoss.engine`으로 가며, 이 큐는 `worker-engine`만 처리합니다. 엔진 워커가 없으면 스캔이 대기 상태로 남고, 대기 중인 스캔이 있는 프로젝트는 새 스캔을 시작하지 않으므로 엔진 워커를 실행하거나 대기 중인 스캔을 취소할 때까지 그 프로젝트의 스캔이 멈춥니다. 두 설정 중 하나라도 `bomlens`로 바꾸기 전에 프로필을 시작하고, 프로필을 내리기 전에 둘 다 `inprocess`로 되돌리십시오.
+`SCAN_ENGINE=bomlens`일 때 큐에 들어간 소스 스캔과 `SCAN_CONTAINER_ENGINE=bomlens`일 때 큐에 들어간 컨테이너 스캔은 `trustedoss.engine`으로 가며, 이 큐는 `worker-engine`만 처리합니다. 엔진 워커가 없으면 스캔이 대기 상태로 남고, 대기 중인 스캔이 있는 프로젝트는 새 스캔을 시작하지 않으므로 엔진 워커를 실행하거나 대기 중인 스캔을 취소할 때까지 그 프로젝트의 스캔이 멈춥니다. compose에서는 엔진 워커가 스택과 함께 시작됩니다. 엔진 워커를 내려 둔 스택에서는 두 설정 중 하나라도 `bomlens`로 바꾸기 전에 먼저 시작하고, 내리기 전에 둘 다 `inprocess`로 되돌리십시오.
 :::
 
 여러 TRUSCA 설치본이 Docker 데몬 하나를 함께 쓰면 설치본마다 다른 `TRUSCA_INSTANCE_ID`를 지정하십시오. 엔진 컨테이너에 이 값이 레이블로 붙고, 각 설치본의 정리 작업은 자기 컨테이너만 제거합니다.
@@ -321,7 +324,7 @@ skopeo inspect --override-os linux --override-arch amd64 \
 
 ### 엔진 끄기 {#engine-turn-off}
 
-두 서비스는 `restart: unless-stopped`이므로, 이후에 프로필 없이 `docker-compose up -d`를 실행해도 계속 실행되고 프록시도 Docker API를 계속 열어 둡니다. 명시적으로 중지하고 제거하십시오.
+두 서비스는 `restart: unless-stopped`이고 `docker-compose up -d`를 실행할 때마다 함께 시작되므로, 중지만으로는 계속 꺼 둘 수 없고 프록시는 실행되는 동안 Docker API를 열어 둡니다. 두 엔진을 `inprocess`로 되돌리면 두 서비스는 놀고만 있습니다. 완전히 없애려면 명시적으로 중지하고 제거한 뒤, 이후에는 `--scale worker-engine=0 --scale docker-socket-proxy=0`을 붙여 스택을 시작하십시오.
 
 <!-- docs-uat: id=dynamic-scan-executor-engine-off kind=shell ctx=host tier=manual waiver=env-config-snippet-not-a-command -->
 ```bash
@@ -337,11 +340,11 @@ docker-compose up -d    # API, beat, 워커가 두 설정을 다시 읽음
 docker ps -aq --filter label=app.kubernetes.io/part-of=bomlens-engine \
   --filter label=trusca.instance=<instance> | xargs -r docker rm -f
 
-docker-compose --profile bomlens-engine stop worker-engine docker-socket-proxy
-docker-compose --profile bomlens-engine rm -f worker-engine docker-socket-proxy
+docker-compose stop worker-engine docker-socket-proxy
+docker-compose rm -f worker-engine docker-socket-proxy
 ```
 
-이미 엔진 큐에 들어간 스캔은 엔진 워커가 다시 실행될 때까지 대기 상태로 남습니다. 취소하거나, 프로필을 한 번 더 시작해 끝까지 처리하십시오.
+이미 엔진 큐에 들어간 스캔은 엔진 워커가 다시 실행될 때까지 대기 상태로 남습니다. 취소하거나, 두 서비스를 한 번 더 시작해 끝까지 처리하십시오.
 
 ### 실행 확인 {#engine-verify}
 
@@ -365,8 +368,8 @@ docker-compose --profile bomlens-engine rm -f worker-engine docker-socket-proxy
 | 키 | 기본값 | 설명 |
 |---|---|---|
 | `SCAN_EXECUTOR` | `inprocess` | `inprocess`는 cdxgen을 워커 서브프로세스로 실행하고, `local_docker`는 Docker 소켓으로 환경별 사이드카를 띄웁니다(온프레 전용). |
-| `SCAN_ENGINE` | `inprocess` | 미리 보기. `bomlens`로 설정하면 소스 스캔을 BomLens 엔진으로 실행합니다([스캔 엔진](#scan-engine) 참고). |
-| `SCAN_CONTAINER_ENGINE` | `inprocess` | 미리 보기. `bomlens`로 설정하면 컨테이너 이미지 스캔을 BomLens 엔진으로 실행합니다([엔진으로 실행하는 컨테이너 이미지 스캔](#engine-container-scans) 참고). 그 밖의 값은 `inprocess`로 읽습니다. |
+| `SCAN_ENGINE` | `inprocess` | `bomlens`로 설정하면 소스 스캔을 BomLens 엔진으로 실행합니다([스캔 엔진](#scan-engine) 참고). `docker-compose.yml`은 `bomlens`로 설정하고, 코드, Helm 차트, 데모의 기본값은 `inprocess`입니다. |
+| `SCAN_CONTAINER_ENGINE` | `inprocess` | `bomlens`로 설정하면 컨테이너 이미지 스캔을 BomLens 엔진으로 실행합니다([엔진으로 실행하는 컨테이너 이미지 스캔](#engine-container-scans) 참고). 그 밖의 값은 `inprocess`로 읽습니다. `docker-compose.yml`은 `bomlens`로 설정합니다. |
 | `SCAN_BOMLENS_IMAGE_TIMEOUT_SECONDS` | `1800` | BomLens 이미지 스캔 한 번의 시간 한도입니다. 넘기면 중지하고 스캔이 실패합니다. |
 | `SCAN_BOMLENS_IMAGE` | 릴리스에 고정된 이미지 | 실행 계획과 2단계에 쓰는 BomLens 이미지입니다. 바꿀 때는 `latest`가 아닌 태그와 다이제스트를 함께 적어 `repo:tag@sha256:...` 형식으로 지정해야 합니다. |
 | `SCAN_BOMLENS_DEEP_LICENSE_IMAGE` | 릴리스에 고정된 이미지 | scancode를 포함한 BomLens 변형 이미지로, `SCANCODE_ENABLED`가 켜져 있으면 2단계에 씁니다. 고정 규칙은 위와 같습니다. |

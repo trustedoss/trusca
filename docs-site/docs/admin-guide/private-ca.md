@@ -62,9 +62,8 @@ services:
 Compose reads `docker-compose.override.yml` automatically, so upgrades that
 replace `docker-compose.yml` leave your settings alone, and it adds these
 variables to each service's own environment rather than replacing it. Apply a
-change with `docker-compose up -d`. If you run the `bomlens-engine` profile,
-add the same entries for `worker-engine`; it stays off unless that profile is
-started.
+change with `docker-compose up -d`. If you run the BomLens engine (the default under compose),
+add the same entries for `worker-engine`.
 
 The file must hold your authority **and** the public roots, concatenated. The
 next section says why.
@@ -204,7 +203,7 @@ it. If you already have an override file from the certificate step, put the
 
 `NO_PROXY` keeps the stack's own traffic off the proxy. The service names in
 the example are the containers that talk to each other; `docker-socket-proxy`
-matters only with the `bomlens-engine` profile. Add your internal Git host,
+matters only while the BomLens engine is on. Add your internal Git host,
 registry and package mirrors (a leading dot covers a whole domain) when the
 proxy cannot reach them.
 

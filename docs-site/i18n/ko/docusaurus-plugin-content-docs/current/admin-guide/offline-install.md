@@ -151,17 +151,19 @@ bash scripts/install.sh --no-prompt --offline /path/to/trusca-offline-bundle-0.2
 ## BomLens 엔진 이미지 {#bomlens-engine-images}
 
 번들에는 [BomLens 스캔 엔진](./dynamic-scan-executor.md#scan-engine)
-(`SCAN_ENGINE=bomlens`, 미리 보기 기능)이 들어 있지 않습니다. 엔진 워커는
-스캔에 필요할 때 이미지를 받으므로, 망 분리 설치에서 엔진을 쓰려면 다음
-이미지를 대상 호스트의 Docker 데몬이 접근할 수 있는 레지스트리로 복사해야
-합니다.
+(compose의 기본값)이 들어 있지 않습니다. 엔진 워커는 스캔에 필요할 때
+이미지를 받으므로 망 분리 설치는 기존 방식(in-process) 엔진을 유지합니다.
+`scripts/install.sh --offline`이 `.env`에 `SCAN_ENGINE=inprocess`와
+`SCAN_CONTAINER_ENGINE=inprocess`를 씁니다. 망 분리 설치에서 엔진을 쓰려면
+다음 이미지를 대상 호스트의 Docker 데몬이 접근할 수 있는 레지스트리로 복사한 뒤
+`.env`에서 그 두 줄을 지워야 합니다.
 
 - BomLens 이미지 `ghcr.io/sktelecom/bomlens`
 - BomLens 이미지 `ghcr.io/sktelecom/bomlens-deep-license`
 - 실행 계획이 1단계용으로 고르는 `ghcr.io/cdxgen/` 아래의 cdxgen 언어
   이미지([1단계 이미지](#bomlens-stage1-images) 참고)
 
-`bomlens-engine` compose 프로필이 시작하는 `docker-socket-proxy` 이미지도
+엔진 워커가 Docker에 접근하는 통로인 `docker-socket-proxy` 이미지도
 번들에 들어 있지 않습니다.
 
 TRUSCA는 BomLens 이미지를 다이제스트로 실행합니다. 각 이미지는 멀티 플랫폼
