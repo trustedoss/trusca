@@ -41,6 +41,7 @@ from typing import Any, Final
 import structlog
 from sqlalchemy import select
 
+from core.config import scan_engine_backend
 from core.db import sync_session_scope
 from integrations.bomlens import engine as bomlens_engine
 from models import Project, RegistryCredential, Scan, Team
@@ -228,7 +229,9 @@ def run_bomlens_container_pipeline(
         raise InternalRegistryRefused(internal_registry_refusal(host))
     if _stored_credential_exists(scan_uuid, image_ref):
         raise RegistryCredentialNotPassed(credential_refusal(split_registry_host(image_ref)))
-    if shutil.which("docker") is None:
+    # On Kubernetes the worker reaches the API with its service account token,
+    # which the backend checks when it is built; there is no docker CLI.
+    if scan_engine_backend() == "docker" and shutil.which("docker") is None:
         raise bomlens_engine.BomLensEngineError(
             "the BomLens engine needs the docker CLI and a Docker endpoint on the worker"
         )

@@ -21,7 +21,11 @@ import pytest
 from bomlens_runner import SecretRef
 from bomlens_runner import errors as package_errors
 
-from core.config import BOMLENS_DEEP_LICENSE_IMAGE_DEFAULT, BOMLENS_IMAGE_DEFAULT
+from core.config import (
+    BOMLENS_DEEP_LICENSE_IMAGE_DEFAULT,
+    BOMLENS_IMAGE_DEFAULT,
+    trusca_instance_id,
+)
 from integrations.bomlens import engine
 from integrations.bomlens.contract import BomLensError
 
@@ -582,3 +586,269 @@ def test_every_container_logs_its_start_and_exit_for_the_comparison_report(
     # The report finds the container's label in the name the package gives.
     label = shadow_report._CONTAINER_LABEL.search("bomlens-0123abcd-2-stage1")
     assert label is not None and label.group(1) == "stage1"
+
+
+# --------------------------------------------------------------------------
+# The Kubernetes backend (SCAN_ENGINE_BACKEND=kubernetes)
+# --------------------------------------------------------------------------
+
+
+@pytest.fixture
+def _kubernetes(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+    trivy = tmp_path / "trivy"
+    (trivy / "db").mkdir(parents=True)
+    monkeypatch.setenv("SCAN_ENGINE_BACKEND", "kubernetes")
+    monkeypatch.setenv("SCAN_ENGINE_K8S_NAMESPACE", "trusca")
+    monkeypatch.setenv("SCAN_ENGINE_K8S_WORKSPACE_CLAIM", "trusca-workspace")
+    monkeypatch.setenv("SCAN_ENGINE_K8S_TRIVY_CLAIM", "trusca-trivy")
+    monkeypatch.setenv("WORKSPACE_HOST_PATH", str(tmp_path))
+    monkeypatch.setenv("TRIVY_CACHE_DIR", str(trivy))
+    monkeypatch.delenv("SCAN_ENGINE_K8S_SECRET_NAME", raising=False)
+    monkeypatch.delenv("SCAN_ENGINE_K8S_FS_GROUP", raising=False)
+    return tmp_path
+
+
+def test_the_backend_is_docker_unless_the_setting_says_kubernetes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from core.config import scan_engine_backend
+
+    monkeypatch.delenv("SCAN_ENGINE_BACKEND", raising=False)
+    assert scan_engine_backend() == "docker"
+    for value in ("", "nomad", "DOCKER ", "k8s"):
+        monkeypatch.setenv("SCAN_ENGINE_BACKEND", value)
+        assert scan_engine_backend() == "docker", value
+    monkeypatch.setenv("SCAN_ENGINE_BACKEND", " Kubernetes ")
+    assert scan_engine_backend() == "kubernetes"
+
+
+def test_the_kubernetes_options_come_from_the_settings(
+    monkeypatch: pytest.MonkeyPatch, _kubernetes: Path
+) -> None:
+    from bomlens_runner.kubernetes import KubernetesOptions
+
+    monkeypatch.setenv("SCAN_ENGINE_K8S_SERVICE_ACCOUNT", "trusca-engine")
+    monkeypatch.setenv("SCAN_ENGINE_K8S_IMAGE_PULL_SECRETS", "regcred, other")
+    monkeypatch.setenv("SCAN_ENGINE_K8S_NODE_SELECTOR", "pool=scan,disk=ssd,junk")
+    monkeypatch.setenv("SCAN_ENGINE_K8S_PRIORITY_CLASS", "low")
+    monkeypatch.setenv("SCAN_ENGINE_K8S_FS_GROUP", "2000")
+    policy, options = engine.build_policy(deep_license=False, include_non_shipped=False)
+    assert isinstance(options, KubernetesOptions)
+    assert options.namespace == "trusca"
+    assert (options.workspace_claim, options.trivy_db_claim) == ("trusca-workspace", "trusca-trivy")
+    assert options.service_account == "trusca-engine"
+    assert options.image_pull_secrets == ("regcred", "other")
+    assert dict(options.node_selector) == {"pool": "scan", "disk": "ssd"}
+    assert options.priority_class == "low"
+    assert options.fs_group == 2000
+    # The Jobs carry the instance as a label; the Docker backend takes it by option.
+    assert policy.labels == {"trusca.instance": trusca_instance_id()}
+
+
+def test_the_pods_write_the_workspace_as_the_workers_group_by_default(
+    _kubernetes: Path,
+) -> None:
+    import os
+
+    _, options = engine.build_policy(deep_license=False, include_non_shipped=False)
+    assert options.fs_group == os.getgid()
+
+
+@pytest.mark.parametrize(
+    "missing", ["SCAN_ENGINE_K8S_WORKSPACE_CLAIM", "SCAN_ENGINE_K8S_TRIVY_CLAIM"]
+)
+def test_a_missing_claim_is_refused_before_any_job(
+    monkeypatch: pytest.MonkeyPatch, _kubernetes: Path, missing: str
+) -> None:
+    monkeypatch.delenv(missing)
+    with pytest.raises(engine.BomLensEngineError, match=missing):
+        engine.build_policy(deep_license=False, include_non_shipped=False)
+
+
+def test_without_a_namespace_setting_the_pods_own_is_read(
+    monkeypatch: pytest.MonkeyPatch, _kubernetes: Path
+) -> None:
+    from bomlens_runner.kubernetes import KubeApi
+
+    monkeypatch.delenv("SCAN_ENGINE_K8S_NAMESPACE")
+    monkeypatch.setattr(KubeApi, "in_cluster_namespace", staticmethod(lambda: "from-the-pod"))
+    _, options = engine.build_policy(deep_license=False, include_non_shipped=False)
+    assert options.namespace == "from-the-pod"
+
+    def no_file() -> str:
+        raise FileNotFoundError("namespace")
+
+    monkeypatch.setattr(KubeApi, "in_cluster_namespace", staticmethod(no_file))
+    with pytest.raises(engine.BomLensEngineError, match="SCAN_ENGINE_K8S_NAMESPACE"):
+        engine.build_policy(deep_license=False, include_non_shipped=False)
+
+
+def test_a_proxy_with_a_login_needs_the_secret_the_pods_read_it_from(
+    monkeypatch: pytest.MonkeyPatch, _kubernetes: Path
+) -> None:
+    """On Docker the value is read from the worker's environment. A Job can
+    only refer to a Secret, and one that does not exist stops the Pod at
+    CreateContainerConfigError, so the missing name is refused up front."""
+    monkeypatch.setenv("HTTPS_PROXY", "http://user:pw@proxy.example:3128")
+    with pytest.raises(engine.BomLensEngineError, match="SCAN_ENGINE_K8S_SECRET_NAME") as caught:
+        engine.build_policy(deep_license=False, include_non_shipped=False)
+    assert "pw" not in str(caught.value)
+
+    monkeypatch.setenv("SCAN_ENGINE_K8S_SECRET_NAME", "trusca-engine-env")
+    policy, _ = engine.build_policy(deep_license=False, include_non_shipped=False)
+    for env in (policy.stage1_env, policy.image_env):
+        ref = env["HTTPS_PROXY"]
+        assert isinstance(ref, SecretRef)
+        assert (ref.name, ref.key) == ("trusca-engine-env", "HTTPS_PROXY")
+
+
+def test_a_plain_proxy_needs_no_secret_on_kubernetes(
+    monkeypatch: pytest.MonkeyPatch, _kubernetes: Path
+) -> None:
+    monkeypatch.setenv("HTTPS_PROXY", "http://proxy.example:3128")
+    policy, _ = engine.build_policy(deep_license=False, include_non_shipped=False)
+    assert policy.stage1_env["HTTPS_PROXY"] == "http://proxy.example:3128"
+
+
+def _job(policy: Any, options: Any, component: str = "stage1") -> dict[str, Any]:
+    """The Job the package would create for a stage-1 style container."""
+    from bomlens_runner import ContainerSpec, Limits
+    from bomlens_runner import backend as b
+    from bomlens_runner.kubernetes import job_manifest
+
+    spec = ContainerSpec(
+        name="bomlens-abc-2-stage1",
+        component=f"engine-{component}",
+        image="ghcr.io/cdxgen/x@sha256:" + "0" * 64,
+        user=None,
+        entrypoint=None,
+        args=(),
+        workdir=None,
+        env=dict(policy.stage1_env),
+        mounts=(b.MountSpec("/app", b.VOLUME_WORKSPACE, "scan/source", False),),
+        network="egress",
+        read_only_root=True,
+        capabilities=("CHOWN",),
+        limits=Limits(),
+        timeout=60,
+        labels={**policy.labels, b.LABEL_PART_OF: b.PART_OF, b.LABEL_NETWORK: "egress"},
+    )
+    return job_manifest(spec, options)  # type: ignore[no-any-return]
+
+
+def test_the_job_the_package_builds_carries_what_the_settings_ask_for(
+    monkeypatch: pytest.MonkeyPatch, _kubernetes: Path
+) -> None:
+    monkeypatch.setenv("HTTPS_PROXY", "http://user:pw@proxy.example:3128")
+    monkeypatch.setenv("SCAN_ENGINE_K8S_SECRET_NAME", "trusca-engine-env")
+    monkeypatch.setenv("SCAN_ENGINE_K8S_SERVICE_ACCOUNT", "trusca-engine")
+    monkeypatch.setenv("SCAN_ENGINE_K8S_FS_GROUP", "2000")
+    policy, options = engine.build_policy(deep_license=False, include_non_shipped=False)
+    job = _job(policy, options)
+    pod = job["spec"]["template"]["spec"]
+    assert pod["serviceAccountName"] == "trusca-engine"
+    assert pod["securityContext"]["fsGroup"] == 2000
+    # No token for the Pod: only the worker that creates Jobs has one.
+    assert pod["automountServiceAccountToken"] is False
+    claims = {
+        v["name"]: v["persistentVolumeClaim"]["claimName"]
+        for v in pod["volumes"]
+        if "persistentVolumeClaim" in v
+    }
+    assert claims == {"workspace": "trusca-workspace"}
+    labels = job["metadata"]["labels"]
+    assert labels["trusca.instance"] == trusca_instance_id()
+    assert labels["bomlens.engine/network"] == "egress"
+    env = {e["name"]: e for e in pod["containers"][0]["env"]}
+    assert env["HTTPS_PROXY"]["valueFrom"]["secretKeyRef"] == {
+        "name": "trusca-engine-env",
+        "key": "HTTPS_PROXY",
+    }
+    assert "pw" not in repr(job)
+
+
+def test_the_kubernetes_backend_is_built_from_the_pods_token_for_each_run(
+    monkeypatch: pytest.MonkeyPatch, _kubernetes: Path
+) -> None:
+    """The package reads the token when it builds its client and a pod's token
+    expires, so a backend is never kept between runs."""
+    from bomlens_runner.kubernetes import KubeApi
+
+    built: list[object] = []
+
+    def in_cluster() -> object:
+        built.append(object())
+        return SimpleNamespace(request=lambda *a, **k: (200, {}))
+
+    monkeypatch.setattr(KubeApi, "in_cluster", staticmethod(in_cluster))
+    engine.engine_backend()
+    engine.engine_backend()
+    assert len(built) == 2
+
+
+def test_a_worker_with_no_token_is_refused_with_a_plain_message(
+    monkeypatch: pytest.MonkeyPatch, _kubernetes: Path
+) -> None:
+    from bomlens_runner.kubernetes import KubeApi
+
+    def no_token() -> object:
+        raise FileNotFoundError("token")
+
+    monkeypatch.setattr(KubeApi, "in_cluster", staticmethod(no_token))
+    with pytest.raises(engine.BomLensEngineError, match="service account token"):
+        engine.engine_backend()
+
+
+def test_a_stage_needing_the_registries_needs_no_network_name_on_kubernetes(
+    monkeypatch: pytest.MonkeyPatch, _kubernetes: Path, tmp_path: Path
+) -> None:
+    """On Docker the stage is refused when SCAN_BOMLENS_NETWORK is unset. A Job
+    has no network to name: its label and the cluster's NetworkPolicy decide."""
+    from bomlens_runner.kubernetes import KubeApi
+
+    monkeypatch.delenv("SCAN_BOMLENS_NETWORK", raising=False)
+    api = SimpleNamespace(request=lambda *a, **k: (200, {}))
+    monkeypatch.setattr(KubeApi, "in_cluster", staticmethod(lambda: api))
+    seen: list[str] = []
+
+    def run(policy: Any, backend: Any, **kwargs: Any) -> Any:  # noqa: ARG001
+        spec = SimpleNamespace(
+            name="bomlens-abc-1-stage1",
+            component="engine-stage1",
+            image="img@sha256:" + "0" * 64,
+            network="egress",
+        )
+        backend._inner = SimpleNamespace(
+            run=lambda s, on_line, cancelled: SimpleNamespace(  # noqa: ARG005
+                exit_code=0, oom_killed=False, timed_out=False, start_error=None
+            ),
+            reset_ownership=True,
+        )
+        backend.run(spec, lambda _line: None, lambda: False)
+        seen.append("ran")
+        return _result()
+
+    monkeypatch.setattr(engine, "run_source_scan", run)
+    _run_source(scan_dir=tmp_path)
+    assert seen == ["ran"]
+
+
+def test_the_reaper_skips_the_docker_only_cleanup_on_kubernetes(
+    monkeypatch: pytest.MonkeyPatch, _kubernetes: Path
+) -> None:
+    from tasks import bomlens_engine_reaper
+
+    calls: list[str] = []
+
+    def legacy() -> int:
+        calls.append("docker")
+        return 1
+
+    monkeypatch.setattr(
+        bomlens_engine_reaper, "reap_engine_containers", lambda *a, **k: {"seen": 0, "removed": 0}
+    )
+    monkeypatch.setattr(bomlens_engine_reaper, "remove_legacy_containers", legacy)
+    assert bomlens_engine_reaper.bomlens_engine_reaper_task.run()["legacy_removed"] == 0
+    assert calls == []
+    monkeypatch.setenv("SCAN_ENGINE_BACKEND", "docker")
+    assert bomlens_engine_reaper.bomlens_engine_reaper_task.run()["legacy_removed"] == 1

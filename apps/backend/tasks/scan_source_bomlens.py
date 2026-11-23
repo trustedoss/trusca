@@ -32,6 +32,7 @@ import structlog
 
 from core.config import (
     cdxgen_fetch_license,
+    scan_engine_backend,
     scan_scope_filter_enabled,
     scan_scope_filter_non_deployable_enabled,
     scancode_enabled,
@@ -148,7 +149,9 @@ def run_bomlens_pipeline(
     engine cannot be run or its result cannot become a succeeded scan; the
     task body records that as a terminal failure.
     """
-    if shutil.which("docker") is None:
+    # On Kubernetes the worker reaches the API with its service account token,
+    # which the backend checks when it is built; there is no docker CLI.
+    if scan_engine_backend() == "docker" and shutil.which("docker") is None:
         raise bomlens_engine.BomLensEngineError(
             "the BomLens engine needs the docker CLI and a Docker endpoint on the worker"
         )

@@ -55,6 +55,7 @@ from bomlens_runner import (
     EngineWroteNoResult as PackageWroteNoResult,
 )
 from bomlens_runner.docker import DockerBackend, DockerCli, DockerOptions
+from bomlens_runner.kubernetes import KubeApi, KubernetesBackend, KubernetesOptions
 
 from core.config import (
     bomlens_deep_license_image,
@@ -67,6 +68,16 @@ from core.config import (
     bomlens_stage1_timeout_seconds,
     bomlens_stage2_timeout_seconds,
     bomlens_trivy_cache_volume,
+    engine_k8s_fs_group,
+    engine_k8s_image_pull_secrets,
+    engine_k8s_namespace,
+    engine_k8s_node_selector,
+    engine_k8s_priority_class,
+    engine_k8s_secret_name,
+    engine_k8s_service_account,
+    engine_k8s_trivy_claim,
+    engine_k8s_workspace_claim,
+    scan_engine_backend,
     trusca_instance_id,
     workspace_root,
 )
@@ -153,13 +164,18 @@ class EngineWroteNoResult(BomLensEngineError):
 # --------------------------------------------------------------------------
 
 
-def _worker_env(names: frozenset[str] | tuple[str, ...]) -> dict[str, object]:
+def _worker_env(
+    names: frozenset[str] | tuple[str, ...], secret_store: str = _WORKER_SECRETS
+) -> dict[str, object]:
     """The listed names that the worker's environment sets, fit to hand on.
 
     A proxy address that names a loopback host is left out (the container is
     not the worker's host). A proxy address with a login in it is passed as a
-    reference the Docker backend resolves when it creates the container, so it
-    never sits in a command line.
+    reference, so it never sits in a command line or a Job: the Docker backend
+    resolves it from the worker's environment when it creates the container
+    (``secret_store`` is :data:`_WORKER_SECRETS`), and on Kubernetes it is a
+    ``secretKeyRef`` into the Secret ``secret_store`` names, whose key is the
+    variable's name.
     """
     env: dict[str, object] = {}
     for name in sorted(names):
@@ -173,7 +189,13 @@ def _worker_env(names: frozenset[str] | tuple[str, ...]) -> dict[str, object]:
             log.info("bomlens_loopback_proxy_not_passed", name=name)
             continue
         if name in _PROXY_ADDRESS_ENV and "@" in value:
-            env[name] = SecretRef(_WORKER_SECRETS, name)
+            if not secret_store:
+                raise BomLensEngineError(
+                    f"{name} holds a login and SCAN_ENGINE_K8S_SECRET_NAME names no Secret to "
+                    "hand it to the engine Pods in; put the address in that Secret or remove "
+                    "the login"
+                )
+            env[name] = SecretRef(secret_store, name)
             continue
         env[name] = value
     return env
@@ -189,14 +211,65 @@ def _resolve_secret(ref: SecretRef) -> str:
     return value
 
 
-def _volumes() -> tuple[Volume, Volume | None, DockerOptions]:
-    """The workspace and Trivy database volumes and the Docker options for them.
+def _kubernetes_options() -> tuple[Volume, Volume, KubernetesOptions]:
+    """The volumes and the Job options when the engine runs on Kubernetes.
+
+    The worker and the engine Pods share one PersistentVolumeClaim for the scan
+    workspaces and one for the Trivy database, which the Pods mount read-only;
+    the worker mounts them where ``WORKSPACE_HOST_PATH`` and ``TRIVY_CACHE_DIR``
+    say. Both claims must be ones several Pods can mount at once.
+    """
+    workspace_claim, trivy_claim = engine_k8s_workspace_claim(), engine_k8s_trivy_claim()
+    if not workspace_claim:
+        raise BomLensEngineError("SCAN_ENGINE_K8S_WORKSPACE_CLAIM is not set")
+    if not trivy_claim:
+        raise BomLensEngineError(
+            "SCAN_ENGINE_K8S_TRIVY_CLAIM is not set; stage 2 has no Trivy database to read"
+        )
+    from integrations.trivy import trivy_cache_dir
+
+    namespace = engine_k8s_namespace()
+    if not namespace:
+        try:
+            namespace = KubeApi.in_cluster_namespace()
+        except OSError:
+            raise BomLensEngineError(
+                "SCAN_ENGINE_K8S_NAMESPACE is not set and the worker has no service account "
+                "namespace to read"
+            ) from None
+    fs_group = engine_k8s_fs_group()
+    options = KubernetesOptions(
+        namespace=namespace,
+        workspace_claim=workspace_claim,
+        trivy_db_claim=trivy_claim,
+        service_account=engine_k8s_service_account() or None,
+        image_pull_secrets=engine_k8s_image_pull_secrets(),
+        node_selector=engine_k8s_node_selector(),
+        priority_class=engine_k8s_priority_class() or None,
+        fs_group=fs_group if fs_group is not None else os.getgid(),
+    )
+    return (
+        Volume(_WORKSPACE_VOLUME, Path(workspace_root())),
+        Volume(_TRIVY_VOLUME, Path(os.path.realpath(trivy_cache_dir()))),
+        options,
+    )
+
+
+def _volumes() -> tuple[Volume, Volume | None, DockerOptions | KubernetesOptions]:
+    """The workspace and Trivy database volumes and the options of the backend for them.
+
+    ``SCAN_ENGINE_BACKEND=kubernetes`` selects the Job backend
+    (:func:`_kubernetes_options`). Otherwise ``SCAN_DOCKER_VOLUME_STRATEGY`` selects
+    named volumes (compose) or host folders (a worker on the Docker host), read
+    per call.
 
     ``SCAN_DOCKER_VOLUME_STRATEGY`` selects named volumes (compose) or host
     folders (a worker on the Docker host), read per call. ``volumes_from`` has
     no equivalent: it would hand the worker's volumes, the signing key
     included, to containers that run the scanned project's build.
     """
+    if scan_engine_backend() == "kubernetes":
+        return _kubernetes_options()
     strategy = os.getenv("SCAN_DOCKER_VOLUME_STRATEGY", "named").strip().lower()
     instance = {"trusca.instance": trusca_instance_id()}
     network = bomlens_network() or None
@@ -249,19 +322,21 @@ def _volumes() -> tuple[Volume, Volume | None, DockerOptions]:
 
 def build_policy(
     *, deep_license: bool, include_non_shipped: bool
-) -> tuple[RunnerPolicy, DockerOptions]:
-    """The package's policy and Docker options from TRUSCA's settings, read per call."""
+) -> tuple[RunnerPolicy, DockerOptions | KubernetesOptions]:
+    """The package's policy and backend options from TRUSCA's settings, read per call."""
     prefix = stage1_image_prefix(bomlens_stage1_image_prefix())
     getuid, getgid = getattr(os, "getuid", None), getattr(os, "getgid", None)
     if getuid is None or getgid is None:
         raise BomLensEngineError("the BomLens engine needs a POSIX worker")
     workspace, trivy_db, options = _volumes()
-    stage1_env = _worker_env(STAGE1_WORKER_ENV | frozenset(_PROXY_ENV))
+    on_kubernetes = isinstance(options, KubernetesOptions)
+    secret_store = engine_k8s_secret_name() if on_kubernetes else _WORKER_SECRETS
+    stage1_env = _worker_env(STAGE1_WORKER_ENV | frozenset(_PROXY_ENV), secret_store)
     stage2_env: dict[str, object] = {"BOMLENS_TRIVY_DB_MAX_AGE_DAYS": str(trivy_db_max_age_days())}
     if include_non_shipped:
         stage1_env["BOMLENS_INCLUDE_NON_SHIPPED"] = "true"
         stage2_env["BOMLENS_INCLUDE_NON_SHIPPED"] = "true"
-    image_env = _worker_env(frozenset(_PROXY_ENV))
+    image_env = _worker_env(frozenset(_PROXY_ENV), secret_store)
     image_env["BOMLENS_TRIVY_DB_MAX_AGE_DAYS"] = str(trivy_db_max_age_days())
     try:
         images = Images.parse(
@@ -284,6 +359,10 @@ def build_policy(
             stage1_env=stage1_env,
             stage2_env=stage2_env,
             image_env=image_env,
+            # On Kubernetes the Jobs carry the instance as a label (the Docker
+            # backend gets it through its own options), which is what scopes the
+            # reaper's listing to this installation.
+            labels={"trusca.instance": trusca_instance_id()} if on_kubernetes else {},
             deep_license=deep_license,
         )
     except PackageError as exc:
@@ -443,16 +522,38 @@ def _docker_backend(options: DockerOptions) -> Any:
     return DockerBackend(options, cli=_ContainerOnlyCli(options.docker))
 
 
-def engine_backend() -> Any:
-    """The package's Docker backend as the settings describe it, for what is not a run.
+def _kubernetes_backend(options: KubernetesOptions) -> Any:
+    """The package's Job backend, with the API address and token the pod was given.
 
-    The reaper lists and removes engine containers with it. Its options carry
-    the instance label, so the backend only ever sees this installation's
-    containers.
+    Built for each run, not kept: the package reads the service account token
+    once when it builds the client, and the token a pod is given expires.
+    """
+    try:
+        return KubernetesBackend(KubeApi.in_cluster(), options)
+    except PackageError as exc:
+        raise BomLensEngineError(_message(exc)) from None
+    except OSError:
+        raise BomLensEngineError(
+            "the engine worker has no service account token to reach the Kubernetes API with"
+        ) from None
+
+
+def _make_backend(options: DockerOptions | KubernetesOptions) -> Any:
+    if isinstance(options, KubernetesOptions):
+        return _kubernetes_backend(options)
+    return _docker_backend(options)
+
+
+def engine_backend() -> Any:
+    """The package's backend as the settings describe it, for what is not a run.
+
+    The reaper lists and removes engine containers with it. On Docker its
+    options carry the instance label, so the backend only ever sees this
+    installation's containers; on Kubernetes the reaper asks for that label.
     """
     _, _, options = _volumes()
     try:
-        return _docker_backend(options)
+        return _make_backend(options)
     except PackageError as exc:
         raise BomLensEngineError(_message(exc)) from None
 
@@ -478,9 +579,11 @@ class _RecordingBackend:
     still has to say how its containers ended, so the record is kept here.
     """
 
-    def __init__(self, inner: Any, *, egress_network: str | None) -> None:
+    def __init__(self, inner: Any, *, egress_network: str | None, named: bool) -> None:
         self._inner = inner
         self._egress_network = egress_network
+        #: Whether a stage that needs the registries must be given a network by name.
+        self._named = named
         self.stages: dict[str, _Stage] = {}
 
     @property
@@ -500,7 +603,7 @@ class _RecordingBackend:
         return bool(self._inner.remove_engine_container(name))
 
     def run(self, spec: Any, on_line: Callable[[str], None], cancelled: Callable[[], bool]) -> Any:
-        if spec.network == "egress" and not self._egress_network:
+        if spec.network == "egress" and self._named and not self._egress_network:
             # Refused before the container exists, as the stage that needs the
             # package registries must not be put on a network TRUSCA did not choose.
             raise BomLensEngineError(
@@ -536,15 +639,20 @@ class _RecordingBackend:
         return outcome
 
 
-def _recording_backend(options: DockerOptions) -> _RecordingBackend:
-    """The Docker backend for ``options`` with the record around it.
+def _recording_backend(options: DockerOptions | KubernetesOptions) -> _RecordingBackend:
+    """The backend for ``options`` with the record around it.
 
-    The backend refuses an egress network it must not join (``host``, the
+    The Docker backend refuses an egress network it must not join (``host``, the
     compose networks, an id) when it is built, so that is an error here, before
-    any container.
+    any container. On Kubernetes there is no network to name: the Pods carry the
+    package's network label and the cluster's NetworkPolicy does the rest.
     """
+    if isinstance(options, KubernetesOptions):
+        return _RecordingBackend(_kubernetes_backend(options), egress_network=None, named=False)
     try:
-        return _RecordingBackend(_docker_backend(options), egress_network=options.egress_network)
+        return _RecordingBackend(
+            _docker_backend(options), egress_network=options.egress_network, named=True
+        )
     except PackageError as exc:
         # Most often the egress network: the package refuses the default
         # ``bridge`` network too, where containers reach each other.
