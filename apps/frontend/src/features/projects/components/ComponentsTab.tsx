@@ -4,6 +4,8 @@ import {
   ChevronDownIcon,
   ChevronRightIcon,
   PackageIcon,
+  TableIcon,
+  WorkflowIcon,
 } from "@primer/octicons-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -512,7 +514,8 @@ export function ComponentsTab({
   // View toggle: Table (virtual list) vs Graph (dependency graph, H-1).
   // The choice is mirrored into `?view=graph` so reload and deep links keep
   // it. Rendered as the shared segmented control, keyboard-reachable, with
-  // the active view marked via aria-pressed (not color alone). In the table
+  // the active view marked via aria-pressed (not color alone). The segments
+  // are icon-only with the label as accessible name and tooltip. In the table
   // view it sits at the end of the toolbar row beside Columns and Export; the
   // graph view has no filters, so there it keeps a row of its own.
   const viewToggle = (
@@ -525,11 +528,13 @@ export function ComponentsTab({
         {
           value: "table",
           label: t("components.view_toggle.table"),
+          icon: TableIcon,
           testId: "components-view-toggle-table",
         },
         {
           value: "graph",
           label: t("components.view_toggle.graph"),
+          icon: WorkflowIcon,
           testId: "components-view-toggle-graph",
         },
       ]}

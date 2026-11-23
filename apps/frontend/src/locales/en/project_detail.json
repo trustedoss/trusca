@@ -396,11 +396,15 @@
         "unspecified": "Unspecified"
       },
       "eol_label": "End-of-life",
-      "eol_only": "EOL only",
       "currency_label": "Version currency",
-      "outdated_only": "Outdated only",
       "malicious_label": "Malicious",
-      "malicious_only": "Flagged only"
+      "show_only": {
+        "label": "Show only",
+        "label_active": "Show only ({{active}})",
+        "malicious": "Known-malicious",
+        "eol": "Past end of life",
+        "outdated": "Behind latest patch"
+      }
     },
     "empty": {
       "title": "No components match these filters",

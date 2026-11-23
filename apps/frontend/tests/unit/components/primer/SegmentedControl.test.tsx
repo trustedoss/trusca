@@ -5,6 +5,7 @@
  * key press hands back the option's value (not its index), each option keeps
  * its test id, and the group carries the accessible name it was given.
  */
+import { TableIcon, WorkflowIcon } from "@primer/octicons-react";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
@@ -109,5 +110,27 @@ describe("SegmentedControl", () => {
     expect(screen.getByTestId("all")).toHaveAttribute("aria-pressed", "true");
     await userEvent.click(screen.getByTestId("transitive"));
     expect(onChange).toHaveBeenCalledWith(false);
+  });
+
+  it("renders an icon-only segment named by its label", async () => {
+    const onChange = vi.fn();
+    render(
+      <SegmentedControl
+        aria-label="View"
+        value="table"
+        onChange={onChange}
+        options={[
+          { value: "table", label: "Table", icon: TableIcon, testId: "v-table" },
+          { value: "graph", label: "Graph", icon: WorkflowIcon, testId: "v-graph" },
+        ]}
+      />,
+    );
+    const graph = screen.getByTestId("v-graph");
+    expect(graph.textContent?.trim()).toBe("");
+    expect(graph).toHaveAccessibleName("Graph");
+    expect(screen.getByTestId("v-table")).toHaveAttribute("data-active", "true");
+    expect(graph).toHaveAttribute("data-active", "false");
+    await userEvent.click(graph);
+    expect(onChange).toHaveBeenCalledWith("graph");
   });
 });

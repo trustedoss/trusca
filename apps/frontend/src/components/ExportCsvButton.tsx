@@ -21,6 +21,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "@/components/primer/Button";
+import { IconButton } from "@/components/primer/IconButton";
 import { useToast } from "@/components/primer/toast";
 import { problemMessage } from "@/lib/problemMessage";
 import { ProblemError } from "@/lib/problem";
@@ -46,6 +47,11 @@ export interface ExportCsvButtonProps {
    * control.
    */
   disabledReason?: string;
+  /**
+   * Icon-only button. "Export CSV" stays as the accessible name and shows as
+   * a tooltip. For toolbars that are short of width.
+   */
+  compact?: boolean;
   "data-testid": string;
 }
 
@@ -56,6 +62,7 @@ export function ExportCsvButton({
   namespace,
   disabled,
   disabledReason,
+  compact = false,
   "data-testid": testId,
 }: ExportCsvButtonProps) {
   const { t } = useTranslation(namespace);
@@ -102,6 +109,32 @@ export function ExportCsvButton({
   const blocked = Boolean(disabled && disabledReason);
   const reasonId = `${testId}-reason`;
 
+  const reason = blocked ? (
+    <span id={reasonId} className="sr-only">
+      {disabledReason}
+    </span>
+  ) : null;
+
+  if (compact) {
+    return (
+      <>
+        <IconButton
+          type="button"
+          icon={DownloadIcon}
+          aria-label={tCommon("export.csv")}
+          onClick={blocked ? undefined : handleClick}
+          disabled={exporting || (Boolean(disabled) && !blocked)}
+          aria-disabled={blocked || undefined}
+          aria-describedby={blocked ? reasonId : undefined}
+          className={blocked ? "opacity-50" : undefined}
+          data-testid={testId}
+          data-exporting={exporting ? "true" : undefined}
+        />
+        {reason}
+      </>
+    );
+  }
+
   return (
     <>
       <Button
@@ -123,11 +156,7 @@ export function ExportCsvButton({
         <DownloadIcon size={16} />
         {tCommon("export.csv")}
       </Button>
-      {blocked ? (
-        <span id={reasonId} className="sr-only">
-          {disabledReason}
-        </span>
-      ) : null}
+      {reason}
     </>
   );
 }

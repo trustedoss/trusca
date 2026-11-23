@@ -3,6 +3,7 @@
 import {
   XIcon,
 } from "@primer/octicons-react";
+import { ActionList, ActionMenu } from "@primer/react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -308,77 +309,32 @@ export function ComponentsToolbar({
         />
       </div>
 
-      {/* #26 — known-malicious-only toggle. Sits ahead of the EOL and
-          currency pills because the axis outranks them: those are things to
-          schedule, this is a package that was published to attack whoever
-          installs it. "off" means no opinion — `?malicious=false` is never
-          emitted from here. */}
-      <div className={FILTER_GROUP}>
-        <button
-          type="button"
-          aria-pressed={maliciousOnly}
-          data-testid="components-malicious-filter"
-          data-active={maliciousOnly ? "true" : "false"}
-          onClick={() => onMaliciousOnlyChange(!maliciousOnly)}
-          className={cn(
-            "inline-flex h-8 items-center rounded-md border border-input px-3 text-xs font-medium",
-            "transition-colors duration-fast ease-out-soft",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
-            maliciousOnly
-              ? "bg-primary text-primary-foreground"
-              : "bg-background text-muted-foreground hover:bg-muted",
-          )}
-        >
-          {t("components.toolbar.malicious_only")}
-        </button>
-      </div>
-
-      {/* Phase M — EOL-only toggle. A single pressed-state pill (not a
-          3-state segment): "on" narrows to past-end-of-life components,
-          "off" means no opinion — `?eol=false` is never emitted from here. */}
-      <div className={FILTER_GROUP}>
-        <button
-          type="button"
-          aria-pressed={eolOnly}
-          data-testid="components-eol-filter"
-          data-active={eolOnly ? "true" : "false"}
-          onClick={() => onEolOnlyChange(!eolOnly)}
-          className={cn(
-            "inline-flex h-8 items-center rounded-md border border-input px-3 text-xs font-medium",
-            "transition-colors duration-fast ease-out-soft",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
-            eolOnly
-              ? "bg-primary text-primary-foreground"
-              : "bg-background text-muted-foreground hover:bg-muted",
-          )}
-        >
-          {t("components.toolbar.eol_only")}
-        </button>
-      </div>
-
-      {/* Version-currency-only toggle — sibling of the EOL toggle. "on"
-          narrows to components behind the newest patch in their release line;
-          "off" means no opinion — `?outdated=false` is never emitted here. A
-          lower-urgency signal than EOL (a newer patch exists, not end-of-life). */}
-      <div className={FILTER_GROUP}>
-        <button
-          type="button"
-          aria-pressed={outdatedOnly}
-          data-testid="components-outdated-filter"
-          data-active={outdatedOnly ? "true" : "false"}
-          onClick={() => onOutdatedOnlyChange(!outdatedOnly)}
-          className={cn(
-            "inline-flex h-8 items-center rounded-md border border-input px-3 text-xs font-medium",
-            "transition-colors duration-fast ease-out-soft",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
-            outdatedOnly
-              ? "bg-primary text-primary-foreground"
-              : "bg-background text-muted-foreground hover:bg-muted",
-          )}
-        >
-          {t("components.toolbar.outdated_only")}
-        </button>
-      </div>
+      {/* #26, Phase M and the currency axis: three "only" filters in one
+          menu. Each stays its own URL flag (`?malicious=true`, `?eol=true`,
+          `?outdated=true`), so links from the Overview banners still land
+          filtered; "off" is no opinion and never emits `=false`. */}
+      <ShowOnlyMenu
+        options={[
+          {
+            key: "malicious",
+            active: maliciousOnly,
+            onChange: onMaliciousOnlyChange,
+            testId: "components-malicious-filter",
+          },
+          {
+            key: "eol",
+            active: eolOnly,
+            onChange: onEolOnlyChange,
+            testId: "components-eol-filter",
+          },
+          {
+            key: "outdated",
+            active: outdatedOnly,
+            onChange: onOutdatedOnlyChange,
+            testId: "components-outdated-filter",
+          },
+        ]}
+      />
 
       {/* W9 #52 — optional severity facet, mount-on-demand. */}
       {showSeverityFacet ? (
@@ -479,8 +435,10 @@ export function ComponentsToolbar({
 
       {/* What leaves this screen and how it is drawn: the column picker, the
           CSV of the rows as they are filtered right now (B5), and the Table /
-          Graph switch. One right-aligned cluster, so when the row wraps at a
-          narrow width the three move together and stay on the right. */}
+          Graph switch. Icon-only, each named by its tooltip and accessible
+          name, so the whole filter area fits one line at 1440 px with the
+          sidebar open. One right-aligned cluster, so when the row wraps at a
+          narrower width the three move together and stay on the right. */}
       <div
         className="flex flex-wrap items-end gap-2 lg:ml-auto"
         data-testid="components-toolbar-actions"
@@ -491,6 +449,7 @@ export function ComponentsToolbar({
           onChange={onVisibleColumnsChange}
           storageKey={columnsStorageKey}
           testId="components-columns-picker-trigger"
+          compact
         />
         <ExportCsvButton
           onExport={() => onExportCsv()}
@@ -498,9 +457,66 @@ export function ComponentsToolbar({
           tooLargeExtension="components_export_too_large"
           tooLargeMessageKey="export.too_large.components"
           data-testid="components-export-csv"
+          compact
         />
         {viewToggle}
       </div>
+    </div>
+  );
+}
+
+interface ShowOnlyOption {
+  key: "malicious" | "eol" | "outdated";
+  active: boolean;
+  onChange: (value: boolean) => void;
+  testId: string;
+}
+
+/**
+ * The "Show only" menu: independent on/off narrowing flags behind one
+ * trigger. They used to be three pills, which with the rest of the row did
+ * not fit one line at 1440 px. Each option keeps the test id its pill had
+ * and reports its state as `aria-checked` (Primer drops other data
+ * attributes on menu items). The trigger says how many are on, in its text
+ * and in `data-active-count` / `data-active-keys`, so the state is visible
+ * while the menu is closed.
+ */
+function ShowOnlyMenu({ options }: { options: ShowOnlyOption[] }) {
+  const { t } = useTranslation("project_detail");
+  const active = options.filter((option) => option.active);
+  return (
+    <div className="flex items-end">
+      <ActionMenu>
+        <ActionMenu.Button
+          data-testid="components-show-only-trigger"
+          data-active-count={active.length}
+          data-active-keys={active.map((option) => option.key).join(",")}
+        >
+          {active.length > 0
+            ? t("components.toolbar.show_only.label_active", {
+                active: active.length,
+              })
+            : t("components.toolbar.show_only.label")}
+        </ActionMenu.Button>
+        <ActionMenu.Overlay width="small">
+          <ActionList selectionVariant="multiple">
+            {options.map((option) => (
+              <ActionList.Item
+                key={option.key}
+                selected={option.active}
+                // Keep the menu open so several can be toggled in one visit.
+                onSelect={(event) => {
+                  event.preventDefault();
+                  option.onChange(!option.active);
+                }}
+                data-testid={option.testId}
+              >
+                {t(`components.toolbar.show_only.${option.key}`)}
+              </ActionList.Item>
+            ))}
+          </ActionList>
+        </ActionMenu.Overlay>
+      </ActionMenu>
     </div>
   );
 }

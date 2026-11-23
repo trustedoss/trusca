@@ -526,18 +526,41 @@ export class PortalPage {
   }
 
   /**
-   * Toggle the "Outdated only" version-currency filter (sibling of the EOL
-   * toggle). The pill is a plain on/off toggle mirrored into `?outdated=true`,
-   * so this reads the current `data-active` state and clicks only when the
-   * requested state differs — calling it twice with the same arg is a no-op.
+   * Open the Components toolbar's "Show only" menu, which holds the
+   * known-malicious, end-of-life and outdated filters. Returns once the
+   * options are visible; a no-op when the menu is already open.
    */
-  async filterComponentsByOutdated(enable: boolean = true): Promise<void> {
-    const toggle = this.page.getByTestId("components-outdated-filter");
-    const active = (await toggle.getAttribute("data-active")) === "true";
+  async openComponentsShowOnlyMenu(): Promise<void> {
+    const option = this.page.getByTestId("components-malicious-filter");
+    if (await option.isVisible()) return;
+    await this.page.getByTestId("components-show-only-trigger").click();
+    await option.waitFor({ state: "visible" });
+  }
+
+  /**
+   * Set one "Show only" filter on or off. Each is an on/off flag mirrored
+   * into its own URL param (`?malicious=true`, `?eol=true`,
+   * `?outdated=true`). Reads the option's `aria-checked` and clicks only when
+   * the requested state differs, so calling it twice with the same argument
+   * is a no-op. Closes the menu afterwards.
+   */
+  async setComponentsShowOnly(
+    key: "malicious" | "eol" | "outdated",
+    enable: boolean = true,
+  ): Promise<void> {
+    await this.openComponentsShowOnlyMenu();
+    const option = this.page.getByTestId(`components-${key}-filter`);
+    const active = (await option.getAttribute("aria-checked")) === "true";
     if (active !== enable) {
-      await toggle.click();
+      await option.click();
     }
+    await this.page.keyboard.press("Escape");
     await this.expectComponentsTabReady();
+  }
+
+  /** The "Outdated only" filter; kept for callers of the older verb. */
+  async filterComponentsByOutdated(enable: boolean = true): Promise<void> {
+    await this.setComponentsShowOnly("outdated", enable);
   }
 
   /**

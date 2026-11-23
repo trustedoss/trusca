@@ -42,9 +42,10 @@ The inline filter bar at the top supports:
 - **Usage** — multi-select (`Required` / `Optional`). Selecting both is equivalent to no filter; selecting only an unknown value drops to an empty page rather than 422-rejecting (consistent with severity / license-category filter semantics).
 - **Severity** — multi-select badges (Critical / High / Medium / Low / Info).
 - **License category** — multi-select (`Allowed` / `Conditional` / `Forbidden` / `Unknown`).
-- **Flagged only** — a toggle that narrows the table to known-malicious packages (`?malicious=true`). See [Known-malicious packages](#known-malicious-packages).
-- **EOL only** — a toggle that narrows the table to components past their end-of-life (`?eol=true`).
-- **Outdated only** — a toggle that narrows the table to components behind the latest patch of their release line (`?outdated=true`). See [Version currency](#version-currency).
+- **Show only**: a menu of three on/off filters. The trigger shows how many are on, for example **Show only (2)**, and the menu stays open while you tick several. Each keeps its own URL parameter, so links from the Overview banners land already filtered.
+  - **Known-malicious** narrows the table to known-malicious packages (`?malicious=true`). See [Known-malicious packages](#known-malicious-packages).
+  - **Past end of life** narrows it to components past their end-of-life (`?eol=true`).
+  - **Behind latest patch** narrows it to components behind the latest patch of their release line (`?outdated=true`). See [Version currency](#version-currency).
 - **Sort** + **order** — column-driven sort with ascending / descending toggle.
 
 Filters compose. The URL updates (`?direct=…`, `?dependency_scope=…`, …) so you can share a filtered view.
@@ -122,7 +123,7 @@ How to read the surfaces:
 - **Overview chip** — a flagged component puts a chip at the top of the
   Overview tab, ahead of the Critical CVE count. A CVE is a defect to schedule
   a fix for; this is an attack already running inside the build.
-- **Filter** — the **Flagged only** toggle narrows the table
+- **Filter**: **Show only → Known-malicious** narrows the table
   (`?malicious=true`).
 - **This is not a vulnerability** — no finding is created and the count never
   enters severity totals or the risk score.
@@ -199,7 +200,7 @@ is equally offline — zero network at scan time, air-gap safe — and the same
 closed whitelist of tracked products applies: a component outside the
 whitelist simply shows no currency data, never a guess.
 
-![Components tab — Outdated only filter on, with the Currency column badge](/img/screenshots/user-components-outdated.png)
+![Components tab with Show only set to Behind latest patch, and the Currency column badge](/img/screenshots/user-components-outdated.png)
 
 How to read the surfaces:
 
@@ -214,8 +215,8 @@ How to read the surfaces:
 - **Overview chip** — when the anchored scan contains outdated components the
   Overview tab shows an "N component(s) behind latest patch" chip with a
   one-click jump to the pre-filtered list.
-- **Filter** — the **Outdated only** toggle narrows the table to outdated
-  rows (`?outdated=true`).
+- **Filter**: **Show only → Behind latest patch** narrows the table to
+  outdated rows (`?outdated=true`).
 
 Two boundaries worth knowing:
 
@@ -241,7 +242,7 @@ see [Environment variables](../reference/env-variables.md).
 
 ## Table view vs. graph view
 
-The Components tab has a **Table / Graph** toggle at the right end of the filter row, next to **Columns** and **Export CSV**. **Table** is the default virtualized list above. **Graph** renders the scan's resolved **dependency graph** (every *parent → child* edge the scanner recorded) as an interactive node-link diagram (left-to-right layout), so you can see *how* a package is pulled in rather than just *that* it is present. Each node is coloured by its highest-severity finding (colour is never the only signal: the detail panel and the tree fallback show a severity label too), and a search box highlights matching packages. Clicking a node opens its details beside the canvas.
+The Components tab has a **Table / Graph** toggle at the right end of the filter row, next to the **Columns** and **Export CSV** buttons. All three are icon buttons; hover or focus one to see its name. **Table** is the default virtualized list above. **Graph** renders the scan's resolved **dependency graph** (every *parent → child* edge the scanner recorded) as an interactive node-link diagram (left-to-right layout), so you can see *how* a package is pulled in rather than just *that* it is present. Each node is coloured by its highest-severity finding (colour is never the only signal: the detail panel and the tree fallback show a severity label too), and a search box highlights matching packages. Clicking a node opens its details beside the canvas.
 
 The choice is mirrored into `?view=graph` so a reload or shared link keeps the graph open; the graph is scoped to the currently pinned `?scan=` snapshot like every other tab.
 

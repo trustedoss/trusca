@@ -162,4 +162,22 @@ describe("ColumnsPicker", () => {
     const next = loadInitialVisibility(STORAGE_KEY, COLUMNS);
     expect(next.has("removed_column")).toBe(false);
   });
+
+  it("in compact mode is an icon button that still opens the menu", async () => {
+    render(
+      <ColumnsPicker
+        columns={COLUMNS}
+        visibleColumns={new Set(COLUMNS.map((c) => c.id))}
+        onChange={vi.fn()}
+        compact
+      />,
+    );
+    const trigger = screen.getByTestId("columns-picker-trigger");
+    expect(trigger.textContent?.trim()).toBe("");
+    expect(trigger).toHaveAccessibleName("Choose visible columns");
+    await userEvent.click(trigger);
+    expect(
+      await screen.findByTestId("columns-picker-option-cvss"),
+    ).toBeInTheDocument();
+  });
 });

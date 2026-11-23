@@ -104,9 +104,12 @@ test.describe.serial("@components end-of-life badge + filter", () => {
   });
 
   test("E2) the EOL-only toggle narrows the list and mirrors ?eol=true", async () => {
+    // The filter is an option in the toolbar's "Show only" menu; the menu
+    // stays open while options are toggled.
+    await new PortalPage(sharedPage).openComponentsShowOnlyMenu();
     const toggle = sharedPage.getByTestId("components-eol-filter");
     await toggle.click();
-    await expect(toggle).toHaveAttribute("data-active", "true");
+    await expect(toggle).toHaveAttribute("aria-checked", "true");
     await expect(sharedPage).toHaveURL(/eol=true/);
 
     const summary = sharedPage.getByTestId("components-summary");
@@ -116,7 +119,7 @@ test.describe.serial("@components end-of-life badge + filter", () => {
     ).toBeVisible();
 
     await toggle.click();
-    await expect(toggle).toHaveAttribute("data-active", "false");
+    await expect(toggle).toHaveAttribute("aria-checked", "false");
     await expect(sharedPage).not.toHaveURL(/eol=true/);
     await expect(summary).toHaveAttribute(
       "data-total",
@@ -151,8 +154,9 @@ test.describe.serial("@components end-of-life badge + filter", () => {
     await sharedPage.getByTestId("overview-eol-chip-link").click();
     await expect(sharedPage).toHaveURL(/tab=components/);
     await expect(sharedPage).toHaveURL(/eol=true/);
+    // The menu is closed on arrival; its trigger names the active filters.
     await expect(
-      sharedPage.getByTestId("components-eol-filter"),
-    ).toHaveAttribute("data-active", "true");
+      sharedPage.getByTestId("components-show-only-trigger"),
+    ).toHaveAttribute("data-active-keys", "eol");
   });
 });

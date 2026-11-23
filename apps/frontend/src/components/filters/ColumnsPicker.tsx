@@ -5,6 +5,8 @@ import { ActionList, ActionMenu } from "@primer/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { IconButton } from "@/components/primer/IconButton";
+
 /**
  * ColumnsPicker — W9 #52 generic "Columns" affordance.
  *
@@ -62,6 +64,12 @@ export interface ColumnsPickerProps {
   disabled?: boolean;
   /** Trigger width utility. */
   className?: string;
+  /**
+   * Icon-only trigger. The name ("Choose visible columns") stays as the
+   * accessible name and shows as a tooltip. For toolbars that are short of
+   * width; the default keeps the text label.
+   */
+  compact?: boolean;
 }
 
 /**
@@ -132,6 +140,7 @@ export function ColumnsPicker({
   testId = "columns-picker-trigger",
   disabled = false,
   className,
+  compact = false,
 }: ColumnsPickerProps) {
   const { t } = useTranslation("common");
   // Track the menu's open state so we can rebuild it when columns change. The
@@ -169,15 +178,27 @@ export function ColumnsPicker({
   const baseId = testId.replace(/-trigger$/, "");
   return (
     <ActionMenu>
-      <ActionMenu.Button
-        leadingVisual={ColumnsIcon}
-        disabled={disabled}
-        aria-label={t("filters.columns.aria")}
-        data-testid={testId}
-        className={className}
-      >
-        {t("filters.columns.trigger")}
-      </ActionMenu.Button>
+      {compact ? (
+        <ActionMenu.Anchor>
+          <IconButton
+            icon={ColumnsIcon}
+            disabled={disabled}
+            aria-label={t("filters.columns.aria")}
+            data-testid={testId}
+            className={className}
+          />
+        </ActionMenu.Anchor>
+      ) : (
+        <ActionMenu.Button
+          leadingVisual={ColumnsIcon}
+          disabled={disabled}
+          aria-label={t("filters.columns.aria")}
+          data-testid={testId}
+          className={className}
+        >
+          {t("filters.columns.trigger")}
+        </ActionMenu.Button>
+      )}
       <ActionMenu.Overlay width="small">
         <ActionList selectionVariant="multiple">
           {columns.map((column) => {

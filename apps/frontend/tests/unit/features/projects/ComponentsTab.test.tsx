@@ -639,7 +639,8 @@ describe("ComponentsTab", () => {
     });
     mockedList.mockClear();
 
-    await userEvent.click(screen.getByTestId("components-malicious-filter"));
+    await userEvent.click(screen.getByTestId("components-show-only-trigger"));
+    await userEvent.click(await screen.findByTestId("components-malicious-filter"));
 
     await waitFor(() => {
       expect(mockedList).toHaveBeenCalledWith(
@@ -647,6 +648,44 @@ describe("ComponentsTab", () => {
         expect.objectContaining({ malicious: true, offset: 0 }),
       );
     });
+  });
+
+  it("keeps each Show only option on its own URL flag", async () => {
+    mockedList.mockResolvedValue(listResponse([comp("Alpha")]));
+    renderTab();
+    const trigger = await screen.findByTestId("components-show-only-trigger");
+    expect(trigger).toHaveAttribute("data-active-count", "0");
+    expect(trigger.textContent).toBe("Show only");
+    await userEvent.click(trigger);
+    await userEvent.click(await screen.findByTestId("components-eol-filter"));
+    // The EOL option sets the EOL flag, and only that one.
+    await waitFor(() => {
+      expect(mockedList).toHaveBeenLastCalledWith(
+        "proj-1",
+        expect.objectContaining({ eol: true }),
+      );
+    });
+    const afterEol = mockedList.mock.calls.at(-1)?.[1] as Record<string, unknown>;
+    expect(afterEol.outdated ?? null).toBeNull();
+    expect(afterEol.malicious ?? null).toBeNull();
+    await userEvent.click(screen.getByTestId("components-outdated-filter"));
+    await waitFor(() => {
+      expect(mockedList).toHaveBeenCalledWith(
+        "proj-1",
+        expect.objectContaining({ eol: true, outdated: true }),
+      );
+    });
+    // The menu stays open while options are toggled.
+    expect(screen.getByTestId("components-eol-filter")).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    expect(screen.getByTestId("components-malicious-filter")).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
+    expect(trigger).toHaveAttribute("data-active-keys", "eol,outdated");
+    expect(trigger.textContent).toContain("Show only (2)");
   });
 
   it("hydrates ?malicious=true into the Flagged-only toggle on first render", async () => {
@@ -658,9 +697,17 @@ describe("ComponentsTab", () => {
         expect.objectContaining({ malicious: true }),
       );
     });
-    expect(screen.getByTestId("components-malicious-filter")).toHaveAttribute(
-      "data-active",
+    const trigger = screen.getByTestId("components-show-only-trigger");
+    expect(trigger).toHaveAttribute("data-active-keys", "malicious");
+    expect(trigger.textContent).toContain("Show only (1)");
+    await userEvent.click(trigger);
+    expect(await screen.findByTestId("components-malicious-filter")).toHaveAttribute(
+      "aria-checked",
       "true",
+    );
+    expect(screen.getByTestId("components-eol-filter")).toHaveAttribute(
+      "aria-checked",
+      "false",
     );
   });
 });

@@ -95,7 +95,7 @@ test.describe.serial("@screenshots user-guide/components-and-licenses (version c
     await portal.expectProjectDetailMounted();
     await portal.selectTab("components");
     await portal.expectComponentsTabReady();
-    await page.getByTestId("components-outdated-filter").click();
+    await portal.setComponentsShowOnly("outdated", true);
     await page
       .getByTestId("component-row-cell-currency")
       .first()

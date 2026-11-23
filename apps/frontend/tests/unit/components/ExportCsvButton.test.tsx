@@ -11,7 +11,7 @@ import { ProblemError } from "@/lib/problem";
 
 function renderButton(
   onExport: () => Promise<void>,
-  extra: { disabled?: boolean; disabledReason?: string } = {},
+  extra: { disabled?: boolean; disabledReason?: string; compact?: boolean } = {},
 ) {
   return render(
     <ToastProvider>
@@ -153,5 +153,30 @@ describe("ExportCsvButton", () => {
     await userEvent.click(button);
 
     await waitFor(() => expect(button).not.toBeDisabled());
+  });
+
+  it("in compact mode shows only the icon and keeps its name", async () => {
+    const onExport = vi.fn(() => Promise.resolve());
+    renderButton(onExport, { compact: true });
+    const button = screen.getByTestId("export-csv");
+    // No visible text: the name is the accessible name (and the tooltip).
+    expect(button.textContent?.trim()).toBe("");
+    expect(button).toHaveAccessibleName("Export CSV");
+    await userEvent.click(button);
+    expect(onExport).toHaveBeenCalledTimes(1);
+  });
+
+  it("in compact mode still refuses and says why when blocked", async () => {
+    const onExport = vi.fn(() => Promise.resolve());
+    renderButton(onExport, {
+      compact: true,
+      disabled: true,
+      disabledReason: "Clear the filter first.",
+    });
+    const button = screen.getByTestId("export-csv");
+    expect(button).toHaveAttribute("aria-disabled", "true");
+    expect(button).toHaveAccessibleDescription("Clear the filter first.");
+    await userEvent.click(button);
+    expect(onExport).not.toHaveBeenCalled();
   });
 });
