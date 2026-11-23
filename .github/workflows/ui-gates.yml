@@ -425,6 +425,28 @@ jobs:
           npx playwright test --config=playwright.screenshots.config.ts \
                               --grep-invert "@w18dark"
 
+      # The committed screenshots are quantized, and screenshot-size-gate.yml
+      # fails a PR whose PNGs grow more than 10%. Raw Playwright captures are
+      # two to five times larger, and the local `make screenshots-optimize`
+      # needs tools a contributor may not have, so the artifact is optimized
+      # here with the same pngquant quality range. optipng stands in for
+      # oxipng, which ubuntu-22.04 does not package. A file pngquant cannot
+      # bring inside the quality range keeps its lossless optipng pass only.
+      - name: Optimize documentation screenshots
+        if: ${{ inputs.capture_screenshots && steps.scope.outputs.run == 'true' }}
+        working-directory: docs-site/static/img/screenshots
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq pngquant optipng >/dev/null
+          before=$(du -cb ./*.png | tail -1 | cut -f1)
+          for f in ./*.png; do
+            pngquant --quality=75-90 --speed 1 --force --skip-if-larger \
+                     --output "$f" "$f" || true
+            optipng -quiet -o2 -strip all "$f"
+          done
+          after=$(du -cb ./*.png | tail -1 | cut -f1)
+          echo "screenshots: ${before} -> ${after} bytes"
+
       - name: Upload documentation screenshots
         if: ${{ always() && inputs.capture_screenshots && steps.scope.outputs.run == 'true' }}
         uses: actions/upload-artifact@v4
