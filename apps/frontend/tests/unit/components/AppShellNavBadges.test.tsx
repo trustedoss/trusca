@@ -150,7 +150,7 @@ const BADGE_QUERY_COUNT = 3;
 describe("sidebar count badges", () => {
   beforeEach(() => {
     window.localStorage.clear();
-    useUIStore.setState({ sidebarCollapsed: false });
+    useUIStore.setState({ sidebarCollapsedChoice: false });
     useAuthStore.setState({
       user: fakeUser,
       accessToken: "tok",
@@ -308,7 +308,7 @@ describe("sidebar count badges", () => {
   it("survives the collapsed rail, where the label is gone", async () => {
     // The rail is where a count matters most: with no labels, the badge is
     // the only thing on screen saying anything is waiting.
-    useUIStore.setState({ sidebarCollapsed: true });
+    useUIStore.setState({ sidebarCollapsedChoice: true });
     apiGet.mockImplementation(
       respond({ approvals: 4, scans: { running: 1, queued: 0 } }),
     );
