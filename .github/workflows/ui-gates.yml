@@ -89,6 +89,14 @@ on:
           empty every time, which is the property that matters here.
         type: boolean
         default: false
+      capture_review:
+        description: >-
+          Capture the design-review matrix (main screens at 1024 and 1280
+          wide, English light, English dark and Korean light) and upload it
+          as the review-captures artifact. These images are for reviewers
+          only; they are never committed and the docs do not use them.
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -171,7 +179,7 @@ jobs:
           #
           # When adding a step to this job, add its inputs here in the same
           # commit.
-          if printf '%s\n' "$changed" | grep -qE '^(apps/frontend/(src/|index\.html|tests/(visual|a11y|_harness|screenshots|responsive)/|tailwind\.config\.ts|package(-lock)?\.json|playwright\.(visual|a11y|responsive|screenshots)\.config\.ts)|apps/backend/(api|schemas|services|models)/|\.github/workflows/ui-gates\.yml)'; then
+          if printf '%s\n' "$changed" | grep -qE '^(apps/frontend/(src/|index\.html|tests/(visual|a11y|_harness|screenshots|responsive)/|tailwind\.config\.ts|package(-lock)?\.json|playwright\.(visual|a11y|responsive|screenshots|review)\.config\.ts)|apps/backend/(api|schemas|services|models)/|\.github/workflows/ui-gates\.yml)'; then
             echo "Rendered surface touched — running the gates."
             echo "run=true" >> "$GITHUB_OUTPUT"
           else
@@ -423,6 +431,32 @@ jobs:
         with:
           name: doc-screenshots
           path: docs-site/static/img/screenshots/
+          if-no-files-found: error
+          retention-days: 7
+
+      # Design-review matrix, on demand only. Same fresh seeded stack as the
+      # docs capture above, but a separate config and a gitignored output
+      # folder, so it cannot touch the committed guide assets.
+      - name: Capture design-review screenshots
+        if: ${{ inputs.capture_review && steps.scope.outputs.run == 'true' }}
+        working-directory: apps/frontend
+        env:
+          PLAYWRIGHT_BASE_URL: http://localhost:5173
+          DATABASE_URL: postgresql+asyncpg://trustedoss:trustedoss@localhost:5432/trustedoss
+          APP_ENV: dev
+          PYTHON: python3
+          CI: "true"
+        run: npx playwright test --config=playwright.review.config.ts
+
+      - name: Upload design-review screenshots
+        if: ${{ always() && inputs.capture_review && steps.scope.outputs.run == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: review-captures
+          path: apps/frontend/tests/screenshots/.review/
+          # `.review` is a dot directory; stated explicitly so the upload
+          # does not depend on how the action treats a hidden upload root.
+          include-hidden-files: true
           if-no-files-found: error
           retention-days: 7
 

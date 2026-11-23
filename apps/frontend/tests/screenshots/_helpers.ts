@@ -59,6 +59,11 @@ export function readSeedProjectNames(): string[] {
   return readSeed().project_names;
 }
 
+/** Project ids persisted by `global-setup.ts`, in the same order as the names. */
+export function readSeedProjectIds(): string[] {
+  return readSeed().project_ids;
+}
+
 /**
  * Inject the seeded super-admin's access token into the in-memory
  * zustand store on every navigation in this `Page`.
@@ -196,6 +201,38 @@ export async function captureScreenshot(
 }
 
 /**
+ * Where the design-review captures land. Gitignored and never committed: the
+ * `capture_review` dispatch of ui-gates.yml uploads this folder as the
+ * `review-captures` artifact, and nothing in the docs references it.
+ */
+export const REVIEW_CAPTURE_DIR = path.join(__dirname, ".review");
+
+/**
+ * Write a viewport screenshot for design review under `REVIEW_CAPTURE_DIR`.
+ *
+ * Same shutter preparation as the docs captures (dev chrome hidden, web
+ * fonts loaded, finite animations run to their end state), but a different
+ * destination so a review run can never overwrite a guide asset.
+ */
+export async function captureReviewScreenshot(
+  page: Page,
+  name: string,
+): Promise<void> {
+  if (!/^[a-z0-9-]+$/.test(name)) {
+    throw new Error(
+      `captureReviewScreenshot: name "${name}" must be kebab-case ([a-z0-9-]+)`,
+    );
+  }
+  await prepareForShutter(page);
+  fs.mkdirSync(REVIEW_CAPTURE_DIR, { recursive: true });
+  await page.screenshot({
+    path: path.join(REVIEW_CAPTURE_DIR, `${name}.png`),
+    fullPage: false,
+    animations: "disabled",
+  });
+}
+
+/**
  * Marathon bundle 9 (4d) — switch the SPA into a target locale before
  * a capture so the resulting PNG mirrors what a real KO user sees.
  *
@@ -236,6 +273,24 @@ export async function setUiLanguage(
       }
     },
     { key: LANGUAGE_STORAGE_KEY, language: lang },
+  );
+}
+
+/**
+ * Wait until the SPA is actually running in `lang`.
+ *
+ * `src/lib/i18n.ts` mirrors the resolved language onto `<html lang>`, so
+ * this catches a `setUiLanguage` that silently stopped working (the G0-5
+ * storage-key bug) instead of filing an English frame under a `-ko` name.
+ */
+export async function expectUiLanguageApplied(
+  page: Page,
+  lang: "en" | "ko",
+): Promise<void> {
+  await page.waitForFunction(
+    (expected) => document.documentElement.lang === expected,
+    lang,
+    { timeout: 10_000 },
   );
 }
 

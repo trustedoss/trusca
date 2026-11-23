@@ -24,6 +24,9 @@ const STORAGE_STATE_PATH = "./tests/screenshots/.storage-state.json";
 
 export default defineConfig({
   testDir: "./tests/screenshots",
+  // The design-review matrix is not a docs asset; it has its own config
+  // (`playwright.review.config.ts`) and writes outside the docs tree.
+  testIgnore: ["capture_review.spec.ts"],
   timeout: 60_000,
   expect: { timeout: 10_000 },
   fullyParallel: false,
