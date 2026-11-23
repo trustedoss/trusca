@@ -125,46 +125,6 @@ function TrendSpark({ points }: { points: GovernanceTrendPoint[] }) {
   );
 }
 
-/**
- * Why the gate failed, in the terms that actually failed it.
- *
- * The first version always printed both counts, so a deployment with
- * `GATE_EPSS_THRESHOLD` set showed "0 critical · 0 forbidden licences" beside
- * a blocked gate — every number in the sentence true, the sentence itself
- * useless. Only non-zero clauses appear, and the EPSS clause exists at all
- * because that condition can block on its own.
- */
-function gateReason(
-  gate: {
-    critical_cve_count: number;
-    forbidden_license_count: number;
-    epss_gate_count: number;
-    malicious_component_count: number;
-  },
-  t: (key: string, options?: Record<string, unknown>) => string,
-): string {
-  const clauses: string[] = [];
-  if (gate.critical_cve_count > 0) {
-    clauses.push(t("governance.gate_reason_critical", { count: gate.critical_cve_count }));
-  }
-  if (gate.forbidden_license_count > 0) {
-    clauses.push(t("governance.gate_reason_licenses", { count: gate.forbidden_license_count }));
-  }
-  if (gate.malicious_component_count > 0) {
-    // First clause, not last: this one says remove-and-rotate, and a reader
-    // who stops after the first phrase should get that one.
-    clauses.unshift(
-      t("governance.gate_reason_malicious", {
-        count: gate.malicious_component_count,
-      }),
-    );
-  }
-  if (gate.epss_gate_count > 0) {
-    clauses.push(t("governance.gate_reason_epss", { count: gate.epss_gate_count }));
-  }
-  return clauses.join(" · ");
-}
-
 export function GovernanceBand({ projectId }: { projectId: string | null }) {
   const { t } = useTranslation("project_detail");
   const query = useProjectGovernance(projectId);
@@ -172,7 +132,7 @@ export function GovernanceBand({ projectId }: { projectId: string | null }) {
   if (query.isPending) {
     return (
       <div
-        className="grid gap-2 px-6 pb-2 sm:grid-cols-2 xl:grid-cols-5"
+        className="grid gap-2 px-6 pb-2 pt-3 sm:grid-cols-2 xl:grid-cols-5"
         data-testid="governance-band-loading"
       >
         {[0, 1, 2, 3, 4].map((index) => (
@@ -186,7 +146,7 @@ export function GovernanceBand({ projectId }: { projectId: string | null }) {
   // overdue deadlines. It says nothing rather than something false.
   if (query.isError) {
     return (
-      <p className="px-6 pb-2 text-xs text-muted-foreground" data-testid="governance-band-error">
+      <p className="px-6 pb-2 pt-3 text-xs text-muted-foreground" data-testid="governance-band-error">
         {t("governance.error")}
       </p>
     );
@@ -200,7 +160,7 @@ export function GovernanceBand({ projectId }: { projectId: string | null }) {
 
   return (
     <div
-      className="grid gap-2 px-6 pb-2 sm:grid-cols-2 xl:grid-cols-5"
+      className="grid gap-2 px-6 pb-2 pt-3 sm:grid-cols-2 xl:grid-cols-5"
       data-testid="governance-band"
       data-scanned={band.scanned ? "true" : "false"}
     >
@@ -223,9 +183,8 @@ export function GovernanceBand({ projectId }: { projectId: string | null }) {
               ? "ok"
               : "neutral"
         }
-        hint={
-          band.gate.status === "fail" ? gateReason(band.gate, t) : undefined
-        }
+        // State only. The reasons live once, in the Overview tab's build gate
+        // card; repeating them here put the same counts on screen four times.
         to={
           band.gate.status === "fail"
             ? `/projects/${band.project_id}?tab=vulnerabilities`
@@ -278,7 +237,7 @@ export function GovernanceBand({ projectId }: { projectId: string | null }) {
         data-testid="governance-trend"
         data-delta={delta}
       >
-        <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+        <span className="text-xs text-muted-foreground">
           {t("governance.trend")}
         </span>
         {band.trend.length < 2 ? (

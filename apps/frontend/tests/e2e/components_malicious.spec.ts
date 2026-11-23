@@ -105,16 +105,19 @@ test.describe.serial("@components known-malicious badge + filter", () => {
   });
 
   test("M2) the Flagged-only toggle mirrors ?malicious=true and narrows the list", async () => {
+    // The filter is an option in the toolbar's "Show only" menu; the menu
+    // stays open while options are toggled.
+    await new PortalPage(sharedPage).openComponentsShowOnlyMenu();
     const toggle = sharedPage.getByTestId("components-malicious-filter");
     await toggle.click();
-    await expect(toggle).toHaveAttribute("data-active", "true");
+    await expect(toggle).toHaveAttribute("aria-checked", "true");
     await expect(sharedPage).toHaveURL(/malicious=true/);
 
     const summary = sharedPage.getByTestId("components-summary");
     await expect(summary).toHaveAttribute("data-total", "1");
 
     await toggle.click();
-    await expect(toggle).toHaveAttribute("data-active", "false");
+    await expect(toggle).toHaveAttribute("aria-checked", "false");
     await expect(sharedPage).not.toHaveURL(/malicious=true/);
     await expect(summary).toHaveAttribute(
       "data-total",

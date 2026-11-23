@@ -117,9 +117,12 @@ test.describe.serial("@components version-currency badge + filter", () => {
   });
 
   test("C2) the Outdated-only toggle mirrors ?outdated=true and narrows the list", async () => {
+    // The filter is an option in the toolbar's "Show only" menu; the menu
+    // stays open while options are toggled.
+    await new PortalPage(sharedPage).openComponentsShowOnlyMenu();
     const toggle = sharedPage.getByTestId("components-outdated-filter");
     await toggle.click();
-    await expect(toggle).toHaveAttribute("data-active", "true");
+    await expect(toggle).toHaveAttribute("aria-checked", "true");
     await expect(sharedPage).toHaveURL(/outdated=true/);
 
     // Exactly the one seeded outdated component survives the filter.
@@ -127,7 +130,7 @@ test.describe.serial("@components version-currency badge + filter", () => {
     await expect(summary).toHaveAttribute("data-total", "1");
 
     await toggle.click();
-    await expect(toggle).toHaveAttribute("data-active", "false");
+    await expect(toggle).toHaveAttribute("aria-checked", "false");
     await expect(sharedPage).not.toHaveURL(/outdated=true/);
     await expect(summary).toHaveAttribute(
       "data-total",

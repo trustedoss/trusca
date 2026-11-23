@@ -178,7 +178,7 @@ Between the project header and the tabs sits a five-tile strip that summarises w
 | Tile | What it says |
 |---|---|
 | **Risk score** | The Overview tab's overall score, from the same computation — the worse of the security and licence axes. |
-| **Build gate** | What CI would decide right now: **Pass**, **Blocked** (with the blocking counts, linking to the Vulnerabilities tab), or **Never scanned**. |
+| **Build gate** | What CI would decide right now: **Pass**, **Blocked** (linking to the Vulnerabilities tab), or **Never scanned**. The tile shows the state only; what blocked the build is listed in the Overview tab's [build gate card](#build-gate-verdict-overview-tab). |
 | **KEV deadlines** | Known-exploited findings against their CISA remediation date, split into overdue and due within a week. |
 | **Approvals waiting** | Component approvals still pending or under review for this project. |
 | **Critical trend** | The critical count across the last few succeeded scans, with the change in words. Fewer than two scans draws no line — one point is not a trend. |
@@ -213,8 +213,8 @@ The card shows:
 | Element | Meaning |
 |---|---|
 | **Pass / Fail badge** | `Pass` (green, shield-check) when the latest successful scan has no critical CVEs and no forbidden licenses; `Fail` (red, shield-x) otherwise. |
-| **Reason** | On `Fail`, a one-line explanation of what tripped the gate. |
-| **Critical CVEs** | Count of open critical-severity findings on the evaluated scan. Open = status not in `not_affected`, `fixed`, `false_positive`. |
+| **Reason** | On `Fail`, one line per condition that tripped the gate, each with its count. The counts carry the risk colour; the text and the rest of the card keep the normal text colour, so only the badge reads as an alarm. Known-malicious packages come first, with what to do about them. |
+| **Critical CVEs** | Count of open critical-severity findings on the evaluated scan. Open = status not in `not_affected`, `fixed`, `false_positive`. On `Fail`, a count already listed under **Reason** is not repeated as a tile here, and the same goes for the forbidden-license and EPSS counts below. |
 | **Forbidden licenses** | Count of distinct components carrying at least one forbidden-tier license. |
 | **`EPSS ≥ {threshold}`** | Shown **only** when an operator has enabled the EPSS gate (`GATE_EPSS_THRESHOLD` set on the portal). Count of open findings whose EPSS score meets or exceeds the threshold. Hidden when the EPSS gate is disabled (the default). See [Gate the build on EPSS](../ci-integration/github-actions.md#gate-the-build-on-epss-optional). |
 

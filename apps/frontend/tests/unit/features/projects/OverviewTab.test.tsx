@@ -580,6 +580,34 @@ describe("OverviewTab", () => {
     expect(chip.textContent).toMatch(/3/);
   });
 
+  it("keeps the malicious banner to one line: the count and its link", async () => {
+    // What to do about the packages is said once, in the build gate card's
+    // reason list. The banner repeating it was one of four places the same
+    // blocking reasons appeared on this screen.
+    mockedGet.mockResolvedValue(overview({ malicious_count: 2 }));
+    renderTab();
+    const chip = await screen.findByTestId("overview-malicious-chip");
+    expect(chip.textContent).toContain("2 known-malicious packages");
+    expect(chip.textContent).toContain("View them");
+    expect(chip.textContent).not.toContain("rotate");
+  });
+
+  it("drops the dark-theme fill from warning and info banners but not from the danger one", async () => {
+    mockedGet.mockResolvedValue(
+      overview({ malicious_count: 1, eol_count: 1, outdated_count: 1 }),
+    );
+    renderTab();
+    const danger = await screen.findByTestId("overview-malicious-chip");
+    const warning = screen.getByTestId("overview-eol-chip");
+    const info = screen.getByTestId("overview-outdated-chip");
+    expect(warning.className).toContain("dark:bg-transparent");
+    expect(info.className).toContain("dark:bg-transparent");
+    expect(danger.className).not.toContain("dark:bg-transparent");
+    // The light theme keeps every fill.
+    expect(warning.className).toContain("bg-status-warning-subtle");
+    expect(info.className).toContain("bg-status-info-subtle");
+  });
+
   it("hides the outdated KPI chip when outdated_count is 0", async () => {
     mockedGet.mockResolvedValue(overview({ outdated_count: 0 }));
     renderTab();

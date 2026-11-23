@@ -4,6 +4,8 @@ import {
   ChevronDownIcon,
   ChevronRightIcon,
   PackageIcon,
+  TableIcon,
+  WorkflowIcon,
 } from "@primer/octicons-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -509,38 +511,47 @@ export function ComponentsTab({
     overview.data?.component_outcome === "empty_no_manifests" ||
     overview.data?.component_outcome === "empty_with_manifests";
 
+  // View toggle: Table (virtual list) vs Graph (dependency graph, H-1).
+  // The choice is mirrored into `?view=graph` so reload and deep links keep
+  // it. Rendered as the shared segmented control, keyboard-reachable, with
+  // the active view marked via aria-pressed (not color alone). The segments
+  // are icon-only with the label as accessible name and tooltip. In the table
+  // view it sits at the end of the toolbar row beside Columns and Export; the
+  // graph view has no filters, so there it keeps a row of its own.
+  const viewToggle = (
+    <SegmentedControl
+      data-testid="components-view-toggle"
+      aria-label={t("components.view_toggle.aria")}
+      value={view}
+      onChange={setView}
+      options={[
+        {
+          value: "table",
+          label: t("components.view_toggle.table"),
+          icon: TableIcon,
+          testId: "components-view-toggle-table",
+        },
+        {
+          value: "graph",
+          label: t("components.view_toggle.graph"),
+          icon: WorkflowIcon,
+          testId: "components-view-toggle-graph",
+        },
+      ]}
+    />
+  );
+
   return (
     <div data-testid="components-tab" className="flex flex-1 flex-col">
-      {/* View toggle — Table (virtual list) vs Graph (dependency graph, H-1).
-          The choice is mirrored into `?view=graph` so reload / deep-link keep
-          it. Rendered as the shared segmented control, keyboard-reachable,
-          with the active view marked via aria-pressed (not color alone). */}
-      <div className="flex items-center justify-end border-b border-border/60 px-6 py-2">
-        <SegmentedControl
-          data-testid="components-view-toggle"
-          aria-label={t("components.view_toggle.aria")}
-          size="small"
-          value={view}
-          onChange={setView}
-          options={[
-            {
-              value: "table",
-              label: t("components.view_toggle.table"),
-              testId: "components-view-toggle-table",
-            },
-            {
-              value: "graph",
-              label: t("components.view_toggle.graph"),
-              testId: "components-view-toggle-graph",
-            },
-          ]}
-        />
-      </div>
-
       {view === "graph" ? (
-        <div className="flex flex-1 flex-col" data-testid="components-graph-view">
-          <DependencyGraph projectId={projectId} scanId={scanId} />
-        </div>
+        <>
+          <div className="flex items-center justify-end border-b border-border/60 px-6 py-2">
+            {viewToggle}
+          </div>
+          <div className="flex flex-1 flex-col" data-testid="components-graph-view">
+            <DependencyGraph projectId={projectId} scanId={scanId} />
+          </div>
+        </>
       ) : (
         <>
       {/* Two summary cards mirroring the Overview tab. Clicking a segment or
@@ -647,6 +658,7 @@ export function ComponentsTab({
         visibleColumns={visibleColumns}
         onVisibleColumnsChange={setVisibleColumns}
         columnsStorageKey={COMPONENT_COLUMNS_STORAGE_KEY}
+        viewToggle={viewToggle}
       />
 
       <ActiveFilterChips
@@ -842,6 +854,13 @@ interface ComponentsTableHeaderProps {
   visibleColumns: Set<string>;
 }
 
+/**
+ * The shared sortable head is uppercase and tracked by default. This table's
+ * heads are sentence case like the static ones beside them, so the row reads
+ * as one line of labels.
+ */
+const HEADER_LABEL_CASE = "normal-case tracking-normal";
+
 function ComponentsTableHeader({
   currentSort,
   onSortChange,
@@ -850,11 +869,12 @@ function ComponentsTableHeader({
   const { t } = useTranslation("project_detail");
   return (
     <div
-      // W11-C polish — table header lands on the canonical px-6 gutter +
-      // --muted token (no /30 opacity hack), softer border-border/60 seam,
-      // and tracking-wider matches the SortableColumnHeader chip typography.
+      // W11-C polish: table header lands on the canonical px-6 gutter +
+      // --muted token (no /30 opacity hack), softer border-border/60 seam.
+      // Sentence-case 12 px labels, no uppercase tracking; the sortable
+      // heads get the same through HEADER_LABEL_CASE.
       // Height stays 32 px (compact identity).
-      className="flex items-center gap-3 border-b border-border/60 bg-muted px-6 text-xs font-medium uppercase tracking-wider text-muted-foreground"
+      className="flex items-center gap-3 border-b border-border/60 bg-muted px-6 text-xs font-medium text-muted-foreground"
       style={{ height: "32px" }}
       data-testid="components-header"
       role="row"
@@ -876,6 +896,7 @@ function ComponentsTableHeader({
           currentSort={currentSort}
           onSort={onSortChange}
           testId="components-sort-header-name"
+          className={HEADER_LABEL_CASE}
         />
       </span>
       {visibleColumns.has("type") ? (
@@ -903,6 +924,7 @@ function ComponentsTableHeader({
             currentSort={currentSort}
             onSort={onSortChange}
             testId="components-sort-header-license"
+            className={HEADER_LABEL_CASE}
           />
         </span>
       ) : null}
@@ -964,6 +986,7 @@ function ComponentsTableHeader({
             currentSort={currentSort}
             onSort={onSortChange}
             testId="components-sort-header-severity"
+            className={HEADER_LABEL_CASE}
           />
         </span>
       ) : null}

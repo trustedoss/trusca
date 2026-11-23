@@ -287,15 +287,15 @@
         "incomplete_scan_incomplete": "스캔이 완전하지 않아 컴포넌트나 의존성이 빠졌을 수 있고, 수치가 위험을 실제보다 작게 보여 줍니다",
         "incomplete_scan_unknown": "스캔의 완전성을 확인할 수 없고, 게이트가 이 경우 차단하도록 설정되어 있습니다",
         "intro": "다음 사유로 이 빌드가 차단되었습니다:",
-        "critical_cve": "미해결 Critical CVE {{count}}건",
-        "critical_cve_other": "미해결 Critical CVE {{count}}건",
-        "forbidden_license": "금지 라이선스 {{count}}건",
-        "forbidden_license_other": "금지 라이선스 {{count}}건",
-        "epss": "EPSS ≥ {{threshold}} 취약점 {{count}}건",
-        "epss_other": "EPSS ≥ {{threshold}} 취약점 {{count}}건",
+        "critical_cve": "미해결 Critical CVE <count>{{count}}</count>건",
+        "critical_cve_other": "미해결 Critical CVE <count>{{count}}</count>건",
+        "forbidden_license": "금지 라이선스 <count>{{count}}</count>건",
+        "forbidden_license_other": "금지 라이선스 <count>{{count}}</count>건",
+        "epss": "EPSS ≥ {{threshold}} 취약점 <count>{{count}}</count>건",
+        "epss_other": "EPSS ≥ {{threshold}} 취약점 <count>{{count}}</count>건",
         "fallback": "빌드 차단 게이트가 실패했습니다. 자세한 내용은 아래 지표를 확인하세요.",
-        "malicious": "알려진 악성 패키지 {{count}}개를 제거하고, 이 빌드가 접근할 수 있던 자격증명을 교체하십시오",
-        "malicious_other": "알려진 악성 패키지 {{count}}개를 제거하고, 이 빌드가 접근할 수 있던 자격증명을 교체하십시오"
+        "malicious": "알려진 악성 패키지 <count>{{count}}</count>개를 제거하고, 이 빌드가 접근할 수 있던 자격증명을 교체하십시오",
+        "malicious_other": "알려진 악성 패키지 <count>{{count}}</count>개를 제거하고, 이 빌드가 접근할 수 있던 자격증명을 교체하십시오"
       },
       "subtitle": "최근 성공한 스캔을 기준으로 한 빌드 차단 판정입니다.",
       "title": "빌드 차단 게이트"
@@ -312,7 +312,6 @@
     },
     "malicious_chip": {
       "title": "알려진 악성 패키지 {{count}}개",
-      "body": "제거하고 이 빌드가 접근할 수 있던 자격증명을 교체하십시오.",
       "link": "확인하기",
       "title_other": "알려진 악성 패키지 {{count}}개"
     }
@@ -397,11 +396,15 @@
         "unspecified": "지정 안 됨"
       },
       "eol_label": "지원 종료",
-      "eol_only": "EOL만",
       "currency_label": "버전 최신성",
-      "outdated_only": "뒤처진 것만",
       "malicious_label": "악성",
-      "malicious_only": "악성만"
+      "show_only": {
+        "label": "보기 조건",
+        "label_active": "보기 조건 ({{active}})",
+        "malicious": "알려진 악성 패키지",
+        "eol": "지원 종료",
+        "outdated": "최신 패치보다 뒤처짐"
+      }
     },
     "empty": {
       "title": "이 필터에 맞는 컴포넌트가 없습니다",
@@ -1568,13 +1571,7 @@
     "trend_needs_history": "아직 스캔이 부족합니다.",
     "trend_delta": "최근 스캔 {{scans}}회 사이 {{delta}}",
     "never_scanned": "성공한 스캔이 아직 없음",
-    "error": "거버넌스 요약을 불러오지 못했습니다. 값이 비어 있는 것을 좋은 신호로 읽기 전에 다시 시도하세요.",
-    "gate_reason_critical": "치명 {{count}}건",
-    "gate_reason_licenses": "금지 라이선스 {{count}}건",
-    "gate_reason_licenses_other": "금지 라이선스 {{count}}건",
-    "gate_reason_epss": "EPSS 임계 초과 {{count}}건",
-    "gate_reason_malicious": "알려진 악성 패키지 {{count}}개",
-    "gate_reason_malicious_other": "알려진 악성 패키지 {{count}}개"
+    "error": "거버넌스 요약을 불러오지 못했습니다. 값이 비어 있는 것을 좋은 신호로 읽기 전에 다시 시도하세요."
   },
   "export": {
     "too_large": {

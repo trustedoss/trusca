@@ -81,6 +81,15 @@ export interface OverviewTabProps {
   onScan?: () => void;
 }
 
+/**
+ * Warning and info banners on this tab. In the dark theme they drop their
+ * fill and keep the tone in the border and the icon, so that the danger
+ * banner is the only filled one and still reads as the most urgent when
+ * several are stacked. The body text goes to the foreground colour there,
+ * because the tone's foreground shade is chosen against its own fill.
+ */
+const QUIET_BANNER = "md:col-span-2 dark:bg-transparent dark:text-foreground";
+
 export function OverviewTab({
   projectId,
   project,
@@ -231,7 +240,7 @@ export function OverviewTab({
       data.component_outcome === "empty_with_manifests" ? (
         <Alert
           variant="warning"
-          className="md:col-span-2"
+          className={QUIET_BANNER}
           data-testid="overview-empty-sbom"
           data-outcome={data.component_outcome}
         >
@@ -258,7 +267,7 @@ export function OverviewTab({
       {data.license_lookup_gap ? (
         <Alert
           variant="warning"
-          className="md:col-span-2"
+          className={QUIET_BANNER}
           data-testid="overview-license-lookup-gap"
           data-reason={data.license_lookup_gap.reason}
         >
@@ -279,7 +288,7 @@ export function OverviewTab({
       {data.scancode_skipped_reason ? (
         <Alert
           variant="warning"
-          className="md:col-span-2"
+          className={QUIET_BANNER}
           data-testid="overview-scancode-skipped"
           data-reason={data.scancode_skipped_reason}
         >
@@ -301,7 +310,7 @@ export function OverviewTab({
       {data.degraded_stages.length > 0 ? (
         <Alert
           variant="warning"
-          className="md:col-span-2"
+          className={QUIET_BANNER}
           data-testid="overview-degraded-stages"
         >
           <AlertIcon size={16} />
@@ -342,10 +351,11 @@ export function OverviewTab({
       {/* #26 — known-malicious KPI. First among the attention chips, ahead
           of critical CVEs: a CVE is a defect to schedule a fix for, a
           malicious package is an attack already running inside the build.
-          Destructive tone, and the body text says what to do rather than
-          restating the count. Rendered only when the anchored scan carries
-          flagged components — a zero here could equally mean "nothing was
-          assessed", so it is never drawn as reassurance. */}
+          Destructive tone, one line: the count and the way to the rows. What
+          to do about them is said once, in the build gate card's reason list,
+          rather than here as well. Rendered only when the anchored scan
+          carries flagged components; a zero here could equally mean "nothing
+          was assessed", so it is never drawn as reassurance. */}
       {data.malicious_count > 0 ? (
         <Alert
           variant="destructive"
@@ -360,7 +370,6 @@ export function OverviewTab({
                 count: data.malicious_count,
               })}
             </span>
-            <span>{t("overview.malicious_chip.body")}</span>
             <button
               type="button"
               className="underline underline-offset-2 hover:no-underline"
@@ -391,7 +400,7 @@ export function OverviewTab({
       {data.eol_count > 0 ? (
         <Alert
           variant="warning"
-          className="md:col-span-2"
+          className={QUIET_BANNER}
           data-testid="overview-eol-chip"
           data-eol-count={data.eol_count}
         >
@@ -429,7 +438,7 @@ export function OverviewTab({
       {data.outdated_count > 0 ? (
         <Alert
           variant="info"
-          className="md:col-span-2"
+          className={QUIET_BANNER}
           data-testid="overview-outdated-chip"
           data-outdated-count={data.outdated_count}
         >
@@ -474,7 +483,7 @@ export function OverviewTab({
           <CardContent>
             <dl className="grid gap-3 text-sm md:grid-cols-2">
               <div className="flex flex-col gap-1">
-                <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+                <dt className="text-xs text-muted-foreground">
                   {t("overview.info_card.description", {
                     defaultValue: "Description",
                   })}
@@ -490,7 +499,7 @@ export function OverviewTab({
                 </dd>
               </div>
               <div className="flex flex-col gap-1">
-                <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+                <dt className="text-xs text-muted-foreground">
                   {t("overview.info_card.git_url", {
                     defaultValue: "Repository",
                   })}
@@ -517,7 +526,7 @@ export function OverviewTab({
                 </dd>
               </div>
               <div className="flex flex-col gap-1">
-                <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+                <dt className="text-xs text-muted-foreground">
                   {t("overview.info_card.default_branch", {
                     defaultValue: "Default branch",
                   })}
@@ -529,7 +538,7 @@ export function OverviewTab({
                 </dd>
               </div>
               <div className="flex flex-col gap-1">
-                <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+                <dt className="text-xs text-muted-foreground">
                   {t("overview.info_card.visibility", {
                     defaultValue: "Visibility",
                   })}

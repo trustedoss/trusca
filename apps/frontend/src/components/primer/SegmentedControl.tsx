@@ -20,12 +20,18 @@
  * `aria-labelledby`, so callers pass a translated name.
  */
 import { SegmentedControl as PrimerSegmentedControl } from "@primer/react";
-import type { ReactElement } from "react";
+import type { IconProps } from "@primer/octicons-react";
+import type { FunctionComponent, PropsWithChildren, ReactElement } from "react";
 
 export interface SegmentedControlOption<V> {
   value: V;
-  /** Translated visible label. */
+  /**
+   * Translated label. Visible text, or with `icon` the accessible name and
+   * the tooltip of an icon-only segment.
+   */
   label: string;
+  /** Renders the segment icon-only. Use only where the icon is familiar. */
+  icon?: FunctionComponent<PropsWithChildren<IconProps>>;
   /** `data-testid` for this option's button. */
   testId?: string;
   disabled?: boolean;
@@ -71,6 +77,19 @@ export function SegmentedControl<V>({
     >
       {options.map((option) => {
         const selected = Object.is(option.value, value);
+        if (option.icon) {
+          return (
+            <PrimerSegmentedControl.IconButton
+              key={String(option.value)}
+              icon={option.icon}
+              aria-label={option.label}
+              selected={selected}
+              disabled={option.disabled}
+              data-testid={option.testId}
+              data-active={selected ? "true" : "false"}
+            />
+          );
+        }
         return (
           <PrimerSegmentedControl.Button
             key={String(option.value)}
