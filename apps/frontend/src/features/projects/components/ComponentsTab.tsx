@@ -68,6 +68,13 @@ import {
   writeTabSearchParam,
 } from "@/features/projects/components/tabSearchParam";
 import { problemMessage } from "@/lib/problemMessage";
+import {
+  effectiveColumns,
+  useEmptyColumns,
+  usePinnedColumns,
+  type EmptyColumnRule,
+} from "@/hooks/useEmptyColumns";
+import { componentTrackMinWidth } from "@/features/projects/lib/componentColumnLayout";
 import { toggleSingleValue } from "@/lib/searchParamsToggle";
 import { cn } from "@/lib/utils";
 
@@ -96,6 +103,16 @@ const PAGE_SIZE = 100;
  * preferences survive reload independently of the Vulnerabilities tab.
  */
 const COMPONENT_COLUMNS_STORAGE_KEY = "column-visibility:components";
+/**
+ * Columns that are dropped while no loaded row has a value for them: Type when
+ * the scan captured no dependency graph (every depth is null), Usage when no
+ * row has a dependency scope. See `useEmptyColumns`.
+ */
+const EMPTY_COLUMN_RULES: readonly EmptyColumnRule<ComponentSummary>[] = [
+  { id: "type", hasValue: (c) => c.depth != null },
+  { id: "usage", hasValue: (c) => c.dependency_scope != null },
+];
+const COMPONENT_PINNED_STORAGE_KEY = "column-pinned:components";
 const DEFAULT_HIDDEN_COLUMNS = ["malicious", "eol", "currency"];
 
 function getComponentColumnsCatalog(
@@ -307,7 +324,7 @@ export function ComponentsTab({
   // Malicious, EOL and currency are empty for most components, and each one
   // is also a toolbar filter. They start hidden; the Columns menu brings them
   // back, and a stored choice always wins over this default.
-  const [visibleColumns, setVisibleColumns] = useState<Set<string>>(() => {
+  const [chosenColumns, setChosenColumns] = useState<Set<string>>(() => {
     let stored: string | null = null;
     try {
       stored = window.localStorage.getItem(COMPONENT_COLUMNS_STORAGE_KEY);
@@ -470,6 +487,18 @@ export function ComponentsTab({
   }, [components.data]);
 
   const total = components.data?.pages[0]?.total ?? 0;
+
+  // Type and Usage drop out while every loaded row is empty in them, unless
+  // the user switched them on in the Columns menu. The menu keeps showing the
+  // user's own choice (`chosenColumns`); the table renders `visibleColumns`.
+  const { pinned: pinnedColumns, notePicked } = usePinnedColumns(
+    COMPONENT_PINNED_STORAGE_KEY,
+  );
+  const emptyColumns = useEmptyColumns(items, EMPTY_COLUMN_RULES, projectId);
+  const visibleColumns = useMemo(
+    () => effectiveColumns(chosenColumns, emptyColumns, pinnedColumns),
+    [chosenColumns, emptyColumns, pinnedColumns],
+  );
 
   // W4-B #17 — sortable-column-header callback. Cycle is unset→asc→desc→unset;
   // we mirror the next state into the existing `sort` / `order` state which
@@ -655,8 +684,11 @@ export function ComponentsTab({
         onMountExtraFilter={mountExtraFilter}
         onUnmountExtraFilter={unmountExtraFilter}
         columnsCatalog={columnsCatalog}
-        visibleColumns={visibleColumns}
-        onVisibleColumnsChange={setVisibleColumns}
+        visibleColumns={chosenColumns}
+        onVisibleColumnsChange={(next) => {
+          notePicked(chosenColumns, next);
+          setChosenColumns(next);
+        }}
         columnsStorageKey={COMPONENT_COLUMNS_STORAGE_KEY}
         viewToggle={viewToggle}
       />
@@ -772,15 +804,16 @@ export function ComponentsTab({
         // (the row carries an extra open-drawer control), so the columns stop
         // lining up: the Type heading measured 85 px over an 86 px cell.
         //
-        // The sum of the declared widths is 48 (px-6) + 180 (Name's floor)
-        // + 864 (the ten fixed cells: 96 type + 96 version + 112 license
-        // + 96 policy + 96 usage + 80 malicious + 64 eol + 80 currency
-        // + 96 severity + 48 vulns) + 120 (ten gap-3 gutters) = 1212.
-        // Add the width AND the gutter here whenever a column is added.
+        // The floor is computed by `componentTrackMinWidth` from the widths in
+        // lib/componentColumnLayout for the columns that are showing (48 px
+        // side padding + the Name floor + each fixed cell + one gap-3 gutter
+        // per cell). Add the width there whenever a column is added.
         // `tests/e2e/tableColumnAlignment.spec.ts` holds this to the columns.
         <div className="flex flex-1 flex-col overflow-x-auto">
           <div
-            className="min-w-[1184px] flex flex-1 flex-col"
+            className="flex flex-1 flex-col"
+            style={{ minWidth: componentTrackMinWidth(visibleColumns) }}
+            data-testid="components-track"
             // G0-5 backlog — see VulnerabilitiesTab for why the body's
             // `rowgroup` lands on Virtuoso's scroller rather than on a wrapper.
             role="table"

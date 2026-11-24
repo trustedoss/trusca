@@ -22,7 +22,7 @@
  *     is rendered in-tree (a row click should still open it cleanly).
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type React from "react";
 import { MemoryRouter, useSearchParams } from "react-router-dom";
@@ -675,4 +675,31 @@ describe("ComplianceTab unified grid", () => {
     );
   });
 
+
+  it("drops the Affected column when no loaded license lists a component", async () => {
+    mockedList.mockResolvedValue(
+      response([
+        row("MIT", { affected_component_count: 0, affected_components: [] }),
+      ]),
+    );
+    renderTab();
+    await screen.findByTestId("compliance-header");
+    expect(screen.queryByTestId("compliance-row-affected")).toBeNull();
+    const headers = within(screen.getByTestId("compliance-header")).getAllByRole(
+      "columnheader",
+    );
+    const cells = within(screen.getAllByTestId("compliance-row")[0]).getAllByRole(
+      "cell",
+    );
+    expect(cells).toHaveLength(headers.length);
+    expect(headers.map((h) => h.textContent)).not.toContain("Affected");
+  });
+
+  it("keeps the Affected column when a license lists components", async () => {
+    mockedList.mockResolvedValue(
+      response([row("MIT", { affected_component_count: 2 })]),
+    );
+    renderTab();
+    await screen.findByTestId("compliance-row-affected");
+  });
 });

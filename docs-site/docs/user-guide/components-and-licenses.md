@@ -33,6 +33,8 @@ Columns:
 
 The table is virtualized — projects with thousands of components scroll smoothly.
 
+**Type** and **Usage** are hidden while no loaded row has a value for them (for example, a scan that captured no dependency graph). They appear as soon as a row has one. A column you switch on in the **Columns** menu always stays.
+
 ### Filters
 
 The inline filter bar at the top supports:

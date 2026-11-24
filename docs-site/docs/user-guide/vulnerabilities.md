@@ -146,6 +146,8 @@ Columns:
 
 Title, Owner and Discovered start hidden so the default columns fit a 1440 px screen with the sidebar open. Turn them on from the **Columns** menu; the table widens and scrolls sideways when they do not fit, and your choice is remembered in this browser.
 
+The **Reachability** column is hidden while no loaded finding has a reachability verdict. It appears as soon as one does, and a column you switch on in the menu always stays.
+
 Filters on the inline bar: severity, status, an **EPSS threshold** filter (`min_epss`), an **SLA** state filter (`sla`), plus a **search** box (free text against CVE ID / title / component) and sort + order controls. The default sort is **Priority** — KEV-listed findings first, then severity, then EPSS; see [Priority sort](#priority-sort). The sort control also includes **EPSS** (`sort=epss`) and **SLA due** (`sort=sla_due`); rows without a value for the chosen key sort last.
 
 The toolbar also carries a **Group by** control that swaps the flat findings table for the upgrade-centric remediation worklist — see [Group by upgrade](#group-by-upgrade).

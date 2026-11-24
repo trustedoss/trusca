@@ -856,7 +856,7 @@ describe("VulnerabilitiesTab", () => {
   });
 
   it("clicking the reachability column header requests sort=reachable from the wire", async () => {
-    mockedList.mockResolvedValue(listResponse([vuln("CVE-2024-1111")]));
+    mockedList.mockResolvedValue(listResponse([vuln("CVE-2024-1111", { reachable: true })]));
     renderTab();
     await waitFor(() => {
       expect(screen.getAllByTestId("vulnerability-row")).toHaveLength(1);
@@ -1791,7 +1791,7 @@ describe("VulnerabilitiesTab", () => {
     showAllColumns();
     const catalog = getVulnColumnsCatalog((key) => key);
 
-    mockedList.mockResolvedValueOnce(listResponse([vuln("CVE-2024-9999")]));
+    mockedList.mockResolvedValueOnce(listResponse([vuln("CVE-2024-9999", { reachable: true })]));
     renderTab();
 
     await waitFor(() => {
@@ -1823,7 +1823,7 @@ describe("VulnerabilitiesTab", () => {
 
   it("starts a fresh user without Title, Owner and Discovered, and fits the pane", async () => {
     window.localStorage.clear();
-    mockedList.mockResolvedValueOnce(listResponse([vuln("CVE-2024-1212")]));
+    mockedList.mockResolvedValueOnce(listResponse([vuln("CVE-2024-1212", { reachable: true })]));
     renderTab();
     await waitFor(() => {
       expect(screen.getAllByTestId("vulnerability-row")).toHaveLength(1);
@@ -1847,7 +1847,7 @@ describe("VulnerabilitiesTab", () => {
   it("respects a stored column selection and widens the track for it", async () => {
     window.localStorage.clear();
     showAllColumns();
-    mockedList.mockResolvedValueOnce(listResponse([vuln("CVE-2024-1313")]));
+    mockedList.mockResolvedValueOnce(listResponse([vuln("CVE-2024-1313", { reachable: true })]));
     renderTab();
     await waitFor(() => {
       expect(screen.getAllByTestId("vulnerability-row")).toHaveLength(1);
@@ -1867,7 +1867,7 @@ describe("VulnerabilitiesTab", () => {
     // the nightly run.
     window.localStorage.clear();
     showAllColumns();
-    mockedList.mockResolvedValueOnce(listResponse([vuln("CVE-2024-1414")]));
+    mockedList.mockResolvedValueOnce(listResponse([vuln("CVE-2024-1414", { reachable: true })]));
     renderTab();
     await waitFor(() => {
       expect(screen.getAllByTestId("vulnerability-row")).toHaveLength(1);
@@ -1902,5 +1902,47 @@ describe("VulnerabilitiesTab", () => {
     expect(vulnTrackMinWidth(new Set(["cve_id", "severity"]))).toBe(
       48 + 16 + 144 + 96 + 2 * 12,
     );
+  });
+
+  it("hides Reachability while no loaded finding has a verdict, header and rows together", async () => {
+    window.localStorage.clear();
+    showAllColumns();
+    mockedList.mockResolvedValueOnce(
+      listResponse([vuln("CVE-2024-1515"), vuln("CVE-2024-1516")]),
+    );
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getAllByTestId("vulnerability-row")).toHaveLength(2);
+    });
+    expect(
+      screen.queryByTestId("vulnerabilities-header-cell-reachable"),
+    ).toBeNull();
+    expect(screen.queryByTestId("vulnerability-row-reachability")).toBeNull();
+    const visible = new Set(
+      Object.keys(VULN_COLUMN_WIDTH_PX).filter((id) => id !== "reachable"),
+    );
+    const headers = within(screen.getByTestId("vulnerabilities-header")).getAllByRole(
+      "columnheader",
+    );
+    const cells = within(screen.getAllByTestId("vulnerability-row")[0]).getAllByRole(
+      "cell",
+    );
+    expect(headers).toHaveLength(visible.size);
+    expect(cells).toHaveLength(visible.size);
+    expect(
+      screen.getByTestId("vulnerabilities-track").style.minWidth,
+    ).toBe(`${vulnTrackMinWidth(visible)}px`);
+  });
+
+  it("keeps Reachability when the user pinned it in the Columns menu", async () => {
+    window.localStorage.clear();
+    showAllColumns();
+    window.localStorage.setItem(
+      "column-pinned:vulnerabilities",
+      JSON.stringify(["reachable"]),
+    );
+    mockedList.mockResolvedValueOnce(listResponse([vuln("CVE-2024-1517")]));
+    renderTab();
+    await screen.findByTestId("vulnerabilities-header-cell-reachable");
   });
 });

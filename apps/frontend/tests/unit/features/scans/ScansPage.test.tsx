@@ -315,4 +315,28 @@ describe("ScansPage", () => {
       );
     });
   });
+
+  it("hides the Actions column when no listed scan can be cancelled", async () => {
+    mockedListMyScans.mockResolvedValue(
+      pageResponse([scanFixture({ status: "succeeded" })]),
+    );
+    renderPage();
+    await screen.findByTestId("scans-row");
+    expect(screen.queryByText("Actions")).toBeNull();
+    const headers = screen.getByTestId("scans-table").querySelectorAll("th");
+    const cells = screen.getByTestId("scans-row").querySelectorAll("td");
+    expect(headers).toHaveLength(5);
+    expect(cells).toHaveLength(5);
+  });
+
+  it("shows the Actions column when a scan is running", async () => {
+    mockedListMyScans.mockResolvedValue(
+      pageResponse([scanFixture({ status: "running" })]),
+    );
+    renderPage();
+    await screen.findByTestId("scans-row");
+    expect(screen.getByText("Actions")).toBeInTheDocument();
+    expect(screen.getByTestId("scans-table").querySelectorAll("th")).toHaveLength(6);
+    expect(screen.getByTestId("scans-row").querySelectorAll("td")).toHaveLength(6);
+  });
 });

@@ -6,7 +6,7 @@
  * layer and `react-virtuoso` so the test runs in jsdom.
  */
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type React from "react";
 import { MemoryRouter } from "react-router-dom";
@@ -17,6 +17,10 @@ import type {
   ComponentListResponse,
   ComponentSummary,
 } from "@/features/projects/api/projectDetailApi";
+import {
+  COMPONENT_COLUMN_WIDTH_PX,
+  componentTrackMinWidth,
+} from "@/features/projects/lib/componentColumnLayout";
 import { ComponentsTab } from "@/features/projects/components/ComponentsTab";
 
 vi.mock("@/features/projects/api/projectDetailApi", async () => {
@@ -405,7 +409,11 @@ describe("ComponentsTab", () => {
   // -----------------------------------------------------------------------
 
   it("exposes Type and Usage column headers", async () => {
-    mockedList.mockResolvedValueOnce(listResponse([comp("Alpha")]));
+    mockedList.mockResolvedValueOnce(
+      listResponse([
+        comp("Alpha", { direct: true, depth: 1, dependency_scope: "required" }),
+      ]),
+    );
     renderTab();
     const header = await screen.findByTestId("components-header");
     expect(header.textContent).toMatch(/Type/i);
@@ -709,5 +717,73 @@ describe("ComponentsTab", () => {
       "aria-checked",
       "false",
     );
+  });
+
+  // -----------------------------------------------------------------------
+  // Empty columns drop out (design review: Type and Usage were dashes).
+  // -----------------------------------------------------------------------
+
+  /** Declared width in px of a header or row cell, from its Tailwind class. */
+  function declaredWidth(el: HTMLElement): number {
+    const floor = /(?:^|\s)min-w-\[(\d+)px\]/.exec(el.className);
+    if (floor) return Number(floor[1]);
+    const fixed = /(?:^|\s)w-(\d+)(?:\s|$)/.exec(el.className);
+    if (!fixed) throw new Error(`no width class on: ${el.className}`);
+    return Number(fixed[1]) * 4;
+  }
+
+  it("hides Type and Usage when no loaded row has a value, and keeps the track floor in step", async () => {
+    window.localStorage.clear();
+    mockedList.mockResolvedValueOnce(
+      listResponse([comp("Alpha"), comp("Bravo")]),
+    );
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getAllByTestId("component-row")).toHaveLength(2);
+    });
+    expect(screen.queryByTestId("components-header-cell-type")).toBeNull();
+    expect(screen.queryByTestId("components-header-cell-usage")).toBeNull();
+    expect(screen.queryByTestId("component-row-cell-type")).toBeNull();
+    expect(screen.queryByTestId("component-row-cell-usage")).toBeNull();
+
+    // Header and body agree cell by cell, and the floor counts exactly them.
+    const header = within(screen.getByTestId("components-header"))
+      .getAllByRole("columnheader")
+      .map(declaredWidth);
+    const body = within(screen.getAllByTestId("component-row")[0])
+      .getAllByRole("cell")
+      .map(declaredWidth);
+    expect(body).toEqual(header);
+    const visible = new Set(["license", "policy", "severity", "vulns"]);
+    expect(header).toEqual([
+      120,
+      COMPONENT_COLUMN_WIDTH_PX.version,
+      ...[...visible].map((id) => COMPONENT_COLUMN_WIDTH_PX[id]),
+    ]);
+    expect(
+      screen.getByTestId("components-track").style.minWidth,
+    ).toBe(`${componentTrackMinWidth(visible)}px`);
+  });
+
+  it("keeps Type once any row has a depth, even if a later page has none", async () => {
+    window.localStorage.clear();
+    mockedList.mockResolvedValueOnce(
+      listResponse([comp("Alpha", { direct: true, depth: 1 })], 2),
+    );
+    renderTab();
+    await screen.findByTestId("components-header-cell-type");
+    expect(screen.queryByTestId("components-header-cell-usage")).toBeNull();
+  });
+
+  it("keeps a column the user switched on in the Columns menu", async () => {
+    window.localStorage.clear();
+    window.localStorage.setItem(
+      "column-pinned:components",
+      JSON.stringify(["usage"]),
+    );
+    mockedList.mockResolvedValueOnce(listResponse([comp("Alpha")]));
+    renderTab();
+    await screen.findByTestId("components-header-cell-usage");
+    expect(screen.queryByTestId("components-header-cell-type")).toBeNull();
   });
 });

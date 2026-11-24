@@ -37,6 +37,7 @@ import {
   scanCancelErrorKey,
   scanCancelErrorToken,
 } from "@/features/scans/scanErrorMessage";
+import { isScanCancellable } from "@/features/scans/scanCancellable";
 import { cn } from "@/lib/utils";
 import type { ScanStatus } from "@/lib/projectsApi";
 
@@ -51,7 +52,6 @@ export interface ScanCancelButtonProps {
   className?: string;
 }
 
-const CANCELLABLE: ReadonlySet<ScanStatus> = new Set(["queued", "running"]);
 
 export function ScanCancelButton({
   scanId,
@@ -82,7 +82,7 @@ export function ScanCancelButton({
     }
   }
 
-  if (!CANCELLABLE.has(status)) return null;
+  if (!isScanCancellable(status)) return null;
 
   return (
     <>
