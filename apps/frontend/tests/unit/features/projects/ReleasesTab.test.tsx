@@ -134,7 +134,7 @@ describe("ReleasesTab", () => {
 
     // Gate badges paired with a label (not color-only).
     expect(screen.getByTestId("release-gate-fail").textContent).toContain(
-      "Fail",
+      "Blocked",
     );
     expect(screen.getByTestId("release-gate-pass").textContent).toContain(
       "Pass",

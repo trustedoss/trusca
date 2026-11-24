@@ -36,7 +36,7 @@
     "compliance": "컴플라이언스",
     "settings": "설정",
     "releases": "릴리스",
-    "reports": "리포트"
+    "reports": "보고서"
   },
   "compliance": {
     "summary": "{{total}}개 중 {{loaded}}개 표시",
@@ -46,7 +46,7 @@
       "affected": "영향",
       "obligations": "의무사항",
       "notice_required": "NOTICE 파일",
-      "override_source": "재정의",
+      "override_source": "예외",
       "waiver": "면제"
     },
     "filter": {
@@ -142,8 +142,8 @@
     "eol_chip": {
       "title": "지원 종료된 컴포넌트 {{count}}개",
       "title_other": "지원 종료된 컴포넌트 {{count}}개",
-      "body": "지원 종료된 릴리스에는 업스트림 수정이 제공되지 않아, 이후 발견되는 Critical CVE에 패치가 없습니다.",
-      "link": "EOL 컴포넌트 보기"
+      "body": "지원 종료된 릴리스에는 업스트림 수정이 제공되지 않아, 이후 발견되는 치명 CVE에는 패치가 없습니다.",
+      "link": "지원 종료 컴포넌트 보기"
     },
     "info_card": {
       "title": "프로젝트 정보",
@@ -163,7 +163,7 @@
       "title": "리스크 점수",
       "security": "보안",
       "license": "라이선스",
-      "security_counts": "Critical {{critical}} · High {{high}}",
+      "security_counts": "치명 {{critical}} · 높음 {{high}}",
       "license_counts": "금지 {{forbidden}} · 조건부 {{conditional}}",
       "empty_sbom_unsupported_title": "이 스캔은 컴포넌트를 찾지 못했습니다",
       "empty_sbom_unsupported_body": "스캔은 성공했지만 결과가 비어 있고, 소스에도 인식할 수 있는 의존성 매니페스트가 없었습니다. 이 화면의 모든 수치가 0인 것은 그 때문이며 의존성이 없다는 뜻이 아닙니다. 결과를 정상으로 보기 전에 TRUSCA가 이 프로젝트의 빌드 시스템을 지원하는지 확인하세요.",
@@ -258,7 +258,7 @@
       "incomplete_scan_unknown": "이 스캔은 스스로 완전성을 보증하지 못합니다. 위의 수치가 실제보다 작을 수 있습니다.",
       "empty_scan_empty_with_manifests": "소스에 의존성이 선언돼 있는데 컴포넌트를 하나도 찾지 못했습니다. 여기 수치가 모두 0인 것은 그 때문이므로, 이 판정을 이상 없다는 뜻으로 보면 안 됩니다. 스캔 로그를 확인하세요.",
       "empty_scan_empty_no_manifests": "TRUSCA가 읽는 의존성 매니페스트가 소스에 없어 컴포넌트를 찾지 못했습니다. 이 판정을 이상 없다는 뜻으로 보기 전에 이 빌드 시스템을 지원하는지 확인하세요.",
-      "critical_cves": "Critical CVE",
+      "critical_cves": "치명 CVE",
       "epss_findings": "EPSS ≥ {{threshold}}",
       "epss_no_data": "EPSS ≥ {{threshold}} 조건은 평가되지 않았습니다. 이 스캔의 어떤 항목에도 EPSS 점수가 없습니다.",
       "epss_partial": "이 스캔에는 EPSS 점수가 없는 항목이 있어 이 수치는 완전하지 않습니다.",
@@ -282,13 +282,13 @@
       "no_scan_badge": "스캔 전",
       "no_scan_detail": "빌드 차단 게이트를 평가하려면 스캔을 한 번 성공적으로 실행하세요.",
       "pass": "통과",
-      "pass_detail": "이 빌드를 차단하는 Critical CVE나 금지 라이선스가 없습니다.",
+      "pass_detail": "이 빌드를 차단하는 치명 CVE나 금지 라이선스가 없습니다.",
       "reason": {
         "incomplete_scan_incomplete": "스캔이 완전하지 않아 컴포넌트나 의존성이 빠졌을 수 있고, 수치가 위험을 실제보다 작게 보여 줍니다",
         "incomplete_scan_unknown": "스캔의 완전성을 확인할 수 없고, 게이트가 이 경우 차단하도록 설정되어 있습니다",
         "intro": "다음 사유로 이 빌드가 차단되었습니다:",
-        "critical_cve": "미해결 Critical CVE <count>{{count}}</count>건",
-        "critical_cve_other": "미해결 Critical CVE <count>{{count}}</count>건",
+        "critical_cve": "미해결 치명 CVE <count>{{count}}</count>건",
+        "critical_cve_other": "미해결 치명 CVE <count>{{count}}</count>건",
         "forbidden_license": "금지 라이선스 <count>{{count}}</count>건",
         "forbidden_license_other": "금지 라이선스 <count>{{count}}</count>건",
         "epss": "EPSS ≥ {{threshold}} 취약점 <count>{{count}}</count>건",
@@ -317,9 +317,9 @@
     }
   },
   "components": {
-    "summary": "전체 {{total}}개 중 {{loaded}}개 로드됨.",
-    "summary_scope_filtered": "런타임 스코프 필터가 dev/test 컴포넌트 {{count}}개를 제외함",
-    "summary_scope_filtered_other": "런타임 스코프 필터가 dev/test 컴포넌트 {{count}}개를 제외함",
+    "summary": "전체 {{total}}개 중 {{loaded}}개를 불러왔습니다.",
+    "summary_scope_filtered": "런타임 범위 필터로 개발·테스트용 컴포넌트 {{count}}개를 제외했습니다.",
+    "summary_scope_filtered_other": "런타임 범위 필터로 개발·테스트용 컴포넌트 {{count}}개를 제외했습니다.",
     "vulns_link_aria": "{{name}}의 CVE {{count}}건을 취약점 탭에서 보기",
     "vulns_link_aria_other": "{{name}}의 CVE {{count}}건을 취약점 탭에서 보기",
     "distribution_toggle": "분포 차트",
@@ -399,8 +399,8 @@
       "currency_label": "버전 최신성",
       "malicious_label": "악성",
       "show_only": {
-        "label": "보기 조건",
-        "label_active": "보기 조건 ({{active}})",
+        "label": "조건별 보기",
+        "label_active": "조건별 보기 ({{active}})",
         "malicious": "알려진 악성 패키지",
         "eol": "지원 종료",
         "outdated": "최신 패치보다 뒤처짐"
@@ -489,12 +489,12 @@
     }
   },
   "vulnerabilities": {
-    "summary": "전체 {{total}}개 중 {{loaded}}개 로드됨.",
+    "summary": "전체 {{total}}개 중 {{loaded}}개를 불러왔습니다.",
     "summary_vex_suppressed": "로드된 {{scanned}}개 중 VEX로 억제된 항목 {{shown}}개.",
     "summary_vex_suppressed_more": "로드된 {{scanned}}개 중 VEX로 억제된 항목 {{shown}}개. 더 보려면 스크롤하십시오.",
     "group_by": {
       "label": "그룹화",
-      "flat": "플랫",
+      "flat": "구분 없음",
       "upgrade": "업그레이드별"
     },
     "upgrade_cluster": {
@@ -573,7 +573,7 @@
         "imminent": "임박",
         "ok": "여유"
       },
-      "due": "기한 {{date}}",
+      "due": "마감일 {{date}}",
       "tooltip": "조치 SLA — 이 취약점이 프로젝트에서 처음 탐지된 시각부터 심각도별 조치 기간을 적용해 계산합니다.",
       "tooltip_with_due": "조치 SLA 기한 {{date}} — 이 취약점이 프로젝트에서 처음 탐지된 시각부터 심각도별 조치 기간을 적용해 계산합니다.",
       "tooltip_filter": "조치 SLA 상태로 취약점을 필터링합니다. SLA가 없는 취약점(Info/Unknown 심각도)은 어떤 상태에도 해당하지 않습니다.",
@@ -854,7 +854,7 @@
   },
   "licenses": {
     "tab_label": "라이선스",
-    "summary": "전체 {{total}}개 중 {{loaded}}개 로드됨.",
+    "summary": "전체 {{total}}개 중 {{loaded}}개를 불러왔습니다.",
     "distribution": {
       "title": "라이선스 분포",
       "subtitle": "최근 스캔에서 컴포넌트가 보유한 라이선스 기준 분포입니다.",
@@ -1316,7 +1316,7 @@
     },
     "gate": {
       "pass": "통과",
-      "fail": "실패"
+      "fail": "차단"
     },
     "errors": {
       "load_failed": "릴리스를 불러오지 못했습니다. 다시 시도해 주세요."
@@ -1333,7 +1333,7 @@
     "latest": "최신",
     "latest_hint": "가장 최근 성공한 스캔의 실시간 보기",
     "latest_tag": "최신",
-    "gate_fail": "실패",
+    "gate_fail": "차단",
     "item_aria": "{{label}} 스냅샷 보기"
   },
   "snapshot": {
@@ -1404,7 +1404,7 @@
       "delta_decrease_aria": "{{delta}}만큼 감소",
       "gate_change_aria": "게이트가 {{base}}에서 {{target}}(으)로 변경됨",
       "gate_pass": "통과",
-      "gate_fail": "실패",
+      "gate_fail": "차단",
       "gate_none": "게이트 없음"
     },
     "components": {
@@ -1479,7 +1479,7 @@
       },
       "vuln-pdf": {
         "title": "취약점 PDF",
-        "description": "심각도·라이선스 분포 및 CVE 목록이 포함된 리스크 리포트.",
+        "description": "심각도·라이선스 분포와 CVE 목록이 담긴 리스크 보고서.",
         "action": "취약점 탭으로 이동",
         "error": "취약점 보고서를 내려받지 못했습니다."
       },
@@ -1521,9 +1521,9 @@
         "body": "왼쪽 바로가기에서 NOTICE, SBOM, 취약점 PDF 또는 VEX를 생성해 보세요."
       },
       "errors": {
-        "unavailable": "이 프로젝트의 리포트를 사용할 수 없습니다.",
+        "unavailable": "이 프로젝트의 보고서를 사용할 수 없습니다.",
         "rate_limited": "요청이 너무 많습니다 — 잠시 후 다시 시도해 주세요.",
-        "generic": "리포트 이력을 불러올 수 없습니다. 다시 시도해 주세요."
+        "generic": "보고서 이력을 불러오지 못했습니다. 다시 시도해 주세요."
       },
       "user_unknown": "삭제된 사용자",
       "scan_unknown": "—",

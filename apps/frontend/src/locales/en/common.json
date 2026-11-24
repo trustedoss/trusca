@@ -1,7 +1,7 @@
 {
   "app": {
     "name": "TRUSCA",
-    "tagline": "Open-source SCA platform — CVEs, licenses, and SBOMs in one place"
+    "tagline": "Open-source SCA platform: CVEs, licenses, and SBOMs in one place"
   },
   "language": {
     "label": "Language",

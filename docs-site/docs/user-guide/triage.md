@@ -24,7 +24,7 @@ Each surface owns a different kind of decision. Read the linked page for the ful
 |---|---|---|---|
 | [VEX vulnerability triage](./vulnerabilities.md#vex-state-machine) | A CVE finding on a component | The finding's exploitability verdict (New → Analyzing → a terminal VEX state) | **Yes** — excluded states drop out of the Critical-CVE count |
 | [Component approval](./approvals.md#state-machine) | A component carrying a conditional license (LGPL, MPL, EPL, CDDL) | Whether the component's license use is approved (Pending → Under Review → Approved / Rejected) | **No** — the gate never reads the approval verdict (see [the caveat](#approval-does-not-gate)) |
-| [Build gate](./vulnerabilities.md#severity-model) | The project's latest successful scan | Pass / Fail for CI | It **is** the outcome — it reads VEX verdicts and the `forbidden` license tier |
+| [Build gate](./vulnerabilities.md#severity-model) | The project's latest successful scan | Pass / Blocked for CI | It **is** the outcome: it reads VEX verdicts and the `forbidden` license tier |
 
 ## How a finding flows {#flow}
 

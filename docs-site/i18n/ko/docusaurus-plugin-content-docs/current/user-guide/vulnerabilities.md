@@ -717,7 +717,7 @@ curl -sS \
 ### UI에서 다운로드
 
 1. 프로젝트 열기.
-2. **리포트** 탭 클릭.
+2. **보고서** 탭 클릭.
 3. **Vulnerability report** 카드에서 **PDF 보고서 다운로드** 또는 **Excel 다운로드**를 클릭. 문서가 생성되는 동안 버튼에 **생성 중…**이 표시되고, 이어서 다운로드가 시작됩니다.
 
 파일명은 `vulnerability-report-<project>.pdf` 또는 `vulnerability-report-<project>.xlsx`. 직전 시도에서 오류가 있으면 버튼 옆에 인라인으로 표시되며, 각 다운로드는 Reports 탭의 내보내기 이력 표에 기록됩니다.

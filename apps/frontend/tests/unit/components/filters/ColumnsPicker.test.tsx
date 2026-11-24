@@ -66,7 +66,7 @@ describe("ColumnsPicker", () => {
     try {
       setup();
       expect(screen.getByTestId("columns-picker-trigger")).toHaveTextContent(
-        "컬럼",
+        "열",
       );
     } finally {
       await i18n.changeLanguage("en");
