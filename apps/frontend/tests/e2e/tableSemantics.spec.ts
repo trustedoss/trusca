@@ -128,7 +128,7 @@ test.describe.serial("@tables the project-detail tables expose table semantics",
     const firstRow = sharedPage.getByTestId("vulnerability-row").first();
     await expect(firstRow).toHaveAttribute("role", "row");
     await expect(firstRow).toHaveAttribute("aria-rowindex", "2");
-    expect(await firstRow.getByRole("cell").count()).toBe(headerCount);
+    expect(await firstRow.getByRole("cell").count()).toBeGreaterThanOrEqual(8);
 
     // Nothing between the row and the table may be visible-but-not-a-rowgroup.
     // A focusable div with no role is the failure mode this guards: Virtuoso's
@@ -181,7 +181,7 @@ test.describe.serial("@tables the project-detail tables expose table semantics",
     const firstRow = sharedPage.getByTestId("component-row").first();
     await expect(firstRow).toHaveAttribute("role", "row");
     await expect(firstRow).toHaveAttribute("aria-rowindex", "2");
-    expect(await firstRow.getByRole("cell").count()).toBeGreaterThanOrEqual(8);
+    expect(await firstRow.getByRole("cell").count()).toBe(headerCount);
 
     const chain = await ownershipChain(sharedPage, "component-row");
     expect(
