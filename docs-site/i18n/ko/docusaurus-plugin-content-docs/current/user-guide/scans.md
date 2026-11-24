@@ -319,6 +319,8 @@ Swift 툴체인, CocoaPods CLI가 필요하지 않습니다.
 
 좌측 사이드바의 **스캔**은 모든 실행 중·대기 중 스캔의 조직 단위 뷰입니다. 큐는 5개의 상태 탭으로 나뉘어 있습니다: Running, Queued, Succeeded, Failed, All. 프로젝트·팀 단위 필터와 워커별 뷰는 로드맵 항목입니다.
 
+**작업** 열은 목록에 취소할 수 있는 스캔(`queued` 또는 `running`)이 있을 때만 표시되며, 완료된 스캔만 있는 페이지에서는 숨겨집니다.
+
 ![전역 /scans 큐 — Running / Queued / Succeeded / Failed / All 상태 탭과 project · kind · started-at 컬럼의 최근 실행 표](/img/screenshots/user-scans-queue.png)
 
 <!-- 위 스크린샷은 P1 #5 에서 추가된 Project name 컬럼 이전 상태 — 머지 이후 재촬영 -->

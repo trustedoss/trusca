@@ -105,6 +105,10 @@ import {
   LicenseWaiveAction,
   type LicenseWaiveTarget,
 } from "@/features/projects/components/LicenseWaiveAction";
+import {
+  useEmptyColumns,
+  type EmptyColumnRule,
+} from "@/hooks/useEmptyColumns";
 import { useAdvisoryTranslation } from "@/lib/advisoryTranslation";
 import type { LicensePolicyOut } from "@/lib/licensePoliciesApi";
 import { problemMessage } from "@/lib/problemMessage";
@@ -447,6 +451,12 @@ export function ComplianceTab({
   // so the verdict column stays off rather than rendering blank cells that
   // would read as "no conflict".
   const conflictAssessed = declaredLicense != null && conflictSummary != null;
+  // The Affected column drops out while no loaded license lists a component.
+  const showAffected = !useEmptyColumns(
+    items,
+    AFFECTED_COLUMN_RULES,
+    projectId,
+  ).has("affected");
 
   return (
     <div data-testid="compliance-tab" className="flex flex-1 flex-col">
@@ -616,7 +626,10 @@ export function ComplianceTab({
           aria-label={t("compliance.table_aria")}
           aria-rowcount={total + 1}
         >
-          <ComplianceTableHeader showConflict={conflictAssessed} />
+          <ComplianceTableHeader
+            showConflict={conflictAssessed}
+            showAffected={showAffected}
+          />
           <div
             className="flex-1"
             data-testid="compliance-virtual"
@@ -639,6 +652,7 @@ export function ComplianceTab({
                   row={item}
                   rowIndex={index}
                   showConflict={conflictAssessed}
+                  showAffected={showAffected}
                   onSelect={() => setDrawerLicense(item.license_finding_id)}
                   onOpenObligation={setDrawerObligation}
                   projectId={projectId}
@@ -967,7 +981,13 @@ function ComplianceNoticeDownload({
 // Header + row
 // ---------------------------------------------------------------------------
 
-function ComplianceTableHeader({ showConflict }: { showConflict: boolean }) {
+function ComplianceTableHeader({
+  showConflict,
+  showAffected,
+}: {
+  showConflict: boolean;
+  showAffected: boolean;
+}) {
   const { t } = useTranslation("project_detail");
   return (
     <div
@@ -988,9 +1008,11 @@ function ComplianceTableHeader({ showConflict }: { showConflict: boolean }) {
           {t("licenses.column.conflict")}
         </span>
       ) : null}
-      <span className="flex-1" role="columnheader">
-        {t("compliance.column.affected")}
-      </span>
+      {showAffected ? (
+        <span className="flex-1" role="columnheader">
+          {t("compliance.column.affected")}
+        </span>
+      ) : null}
       <span className="w-64" role="columnheader">
         {t("compliance.column.obligations")}
       </span>
@@ -1012,6 +1034,8 @@ interface ComplianceGridRowProps {
   rowIndex: number;
   /** Only rendered when the project declares an outbound license. */
   showConflict: boolean;
+  /** Defaults to true: the Affected cell renders unless every loaded row is empty in it. */
+  showAffected?: boolean;
   onSelect: () => void;
   /** Open the obligation drawer, where the fulfilment record is written. */
   onOpenObligation: (obligationId: string) => void;
@@ -1023,6 +1047,9 @@ interface ComplianceGridRowProps {
 }
 
 const AFFECTED_PREVIEW_CAP = 3;
+const AFFECTED_COLUMN_RULES: readonly EmptyColumnRule<ComplianceRowItem>[] = [
+  { id: "affected", hasValue: (r) => r.affected_component_count > 0 },
+];
 /** Fixed width of the waiver column, shared by header and row. */
 const WAIVE_COLUMN = "flex w-40 shrink-0 justify-end";
 const OBLIGATIONS_PREVIEW_CAP = 3;
@@ -1039,6 +1066,7 @@ function ComplianceGridRow({
   row,
   rowIndex,
   showConflict,
+  showAffected = true,
   onSelect,
   onOpenObligation,
   projectId,
@@ -1157,40 +1185,42 @@ function ComplianceGridRow({
             ) : null}
           </span>
         ) : null}
-        <span
-          className="flex flex-1 items-center gap-1 overflow-hidden"
-          role="cell"
-          data-testid="compliance-row-affected"
-        >
-          <span className="font-mono text-xs tabular-nums text-muted-foreground">
-            {row.affected_component_count}
+        {showAffected ? (
+          <span
+            className="flex flex-1 items-center gap-1 overflow-hidden"
+            role="cell"
+            data-testid="compliance-row-affected"
+          >
+            <span className="font-mono text-xs tabular-nums text-muted-foreground">
+              {row.affected_component_count}
+            </span>
+            <span className="flex flex-1 items-center gap-1 overflow-hidden">
+              {affectedPreview.map((c) => (
+                <Badge
+                  key={c.component_version_id}
+                  tone="info"
+                  className="max-w-[10rem] truncate"
+                  title={`${c.name}@${c.version}`}
+                >
+                  <span className="truncate">{`${c.name}@${c.version}`}</span>
+                </Badge>
+              ))}
+              {extraAffected > 0 ? (
+                <span
+                  // G0-5: `shrink-0 whitespace-nowrap`. This is the last item in
+                  // a flex row whose badges take the space first, so it was
+                  // squeezed to a few pixels and its own text wrapped: "+10개 더"
+                  // rendered as three stacked lines. It is a fixed, short count,
+                  // the thing in the row that must never be the one that gives.
+                  className="shrink-0 whitespace-nowrap text-xs text-muted-foreground"
+                  data-testid="compliance-row-affected-more"
+                >
+                  {t("compliance.affected.more_count", { count: extraAffected })}
+                </span>
+              ) : null}
+            </span>
           </span>
-          <span className="flex flex-1 items-center gap-1 overflow-hidden">
-            {affectedPreview.map((c) => (
-              <Badge
-                key={c.component_version_id}
-                tone="info"
-                className="max-w-[10rem] truncate"
-                title={`${c.name}@${c.version}`}
-              >
-                <span className="truncate">{`${c.name}@${c.version}`}</span>
-              </Badge>
-            ))}
-            {extraAffected > 0 ? (
-              <span
-                // G0-5 — `shrink-0 whitespace-nowrap`. This is the last item in
-                // a flex row whose badges take the space first, so it was
-                // squeezed to a few pixels and its own text wrapped: "+10개 더"
-                // rendered as three stacked lines. It is a fixed, short count —
-                // the thing in the row that must never be the one that gives.
-                className="shrink-0 whitespace-nowrap text-xs text-muted-foreground"
-                data-testid="compliance-row-affected-more"
-              >
-                {t("compliance.affected.more_count", { count: extraAffected })}
-              </span>
-            ) : null}
-          </span>
-        </span>
+        ) : null}
         <span
           className="flex w-64 items-center gap-1 overflow-hidden"
           role="cell"

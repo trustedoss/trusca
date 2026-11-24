@@ -173,12 +173,15 @@ test.describe.serial("@tables the project-detail tables expose table semantics",
 
     const table = sharedPage.getByRole("table");
     await expect(table).toHaveCount(1);
-    expect(await table.getByRole("columnheader").count()).toBeGreaterThanOrEqual(8);
+    // Columns that are empty in every loaded row are hidden, so the count
+    // depends on the seed. The headers and the cells must still agree.
+    const headerCount = await table.getByRole("columnheader").count();
+    expect(headerCount).toBeGreaterThanOrEqual(4);
 
     const firstRow = sharedPage.getByTestId("component-row").first();
     await expect(firstRow).toHaveAttribute("role", "row");
     await expect(firstRow).toHaveAttribute("aria-rowindex", "2");
-    expect(await firstRow.getByRole("cell").count()).toBeGreaterThanOrEqual(8);
+    expect(await firstRow.getByRole("cell").count()).toBe(headerCount);
 
     const chain = await ownershipChain(sharedPage, "component-row");
     expect(

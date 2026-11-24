@@ -330,6 +330,8 @@ The dominant cost in a source scan is the `cdxgen` walk, with scancode adding ti
 
 Visit **Scans** in the left sidebar for an organization-wide view of every running and queued scan. The queue is split into 5 status tabs: Running, Queued, Succeeded, Failed, All. Project- / team-level filters and per-worker views are on the roadmap.
 
+The **Actions** column shows only while a listed scan can still be cancelled (`queued` or `running`); on a page of finished scans it is hidden.
+
 ![Global /scans queue — Running / Queued / Succeeded / Failed / All status tabs above a recent-runs table with project, kind, and started-at columns](/img/screenshots/user-scans-queue.png)
 
 <!-- screenshot above predates the project-name column added in P1 #5; refresh post-merge -->

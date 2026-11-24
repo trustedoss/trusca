@@ -90,6 +90,12 @@ import {
 } from "@/features/projects/components/tabSearchParam";
 import { problemMessage } from "@/lib/problemMessage";
 import RelativeTime from "@/components/RelativeTime";
+import {
+  effectiveColumns,
+  useEmptyColumns,
+  usePinnedColumns,
+  type EmptyColumnRule,
+} from "@/hooks/useEmptyColumns";
 import { toggleSingleValue } from "@/lib/searchParamsToggle";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/stores/authStore";
@@ -132,6 +138,11 @@ const PAGE_SIZE = 100;
  * entries — no new translation work required for the column names themselves.
  */
 const VULN_COLUMNS_STORAGE_KEY = "column-visibility:vulnerabilities";
+const VULN_PINNED_STORAGE_KEY = "column-pinned:vulnerabilities";
+/** Reachability drops out while no loaded finding has a verdict. */
+const EMPTY_COLUMN_RULES: readonly EmptyColumnRule<VulnerabilityListItem>[] = [
+  { id: "reachable", hasValue: (v) => v.reachable != null },
+];
 
 export function getVulnColumnsCatalog(
   t: (key: string) => string,
@@ -435,7 +446,7 @@ export function VulnerabilitiesTab({
     () => getVulnColumnsCatalog((k) => t(k)),
     [t],
   );
-  const [visibleColumns, setVisibleColumns] = useState<Set<string>>(() => {
+  const [chosenColumns, setChosenColumns] = useState<Set<string>>(() => {
     const stored =
       typeof window !== "undefined" &&
       window.localStorage?.getItem(VULN_COLUMNS_STORAGE_KEY) != null;
@@ -666,6 +677,22 @@ export function VulnerabilitiesTab({
     [pages],
   );
 
+  // Reachability drops out while every loaded finding is "unknown", unless the
+  // user switched it on in the Columns menu (the menu keeps the user's own
+  // choice, `chosenColumns`; the table renders `visibleColumns`).
+  const { pinned: pinnedColumns, notePicked } = usePinnedColumns(
+    VULN_PINNED_STORAGE_KEY,
+  );
+  const emptyColumns = useEmptyColumns(
+    fetchedItems,
+    EMPTY_COLUMN_RULES,
+    projectId,
+  );
+  const visibleColumns = useMemo(
+    () => effectiveColumns(chosenColumns, emptyColumns, pinnedColumns),
+    [chosenColumns, emptyColumns, pinnedColumns],
+  );
+
   // Client-side narrowing for the "suppressed via VEX" filter. A finding counts
   // as VEX-suppressed when its last status mutation came from a VEX import.
   const items: VulnerabilityListItem[] = useMemo(
@@ -883,8 +910,11 @@ export function VulnerabilitiesTab({
         onMountExtraFilter={mountExtraFilter}
         onUnmountExtraFilter={unmountExtraFilter}
         columnsCatalog={columnsCatalog}
-        visibleColumns={visibleColumns}
-        onVisibleColumnsChange={setVisibleColumns}
+        visibleColumns={chosenColumns}
+        onVisibleColumnsChange={(next) => {
+          notePicked(chosenColumns, next);
+          setChosenColumns(next);
+        }}
         columnsStorageKey={VULN_COLUMNS_STORAGE_KEY}
       />
 

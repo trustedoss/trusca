@@ -30,6 +30,11 @@ import { Button } from "@/components/primer/Button";
 import { SegmentedControl } from "@/components/primer/SegmentedControl";
 import { TableRowsSkeleton } from "@/components/primer/skeletons";
 import { ScanCancelButton } from "@/features/scans/ScanCancelButton";
+import { isScanCancellable } from "@/features/scans/scanCancellable";
+import {
+  useEmptyColumns,
+  type EmptyColumnRule,
+} from "@/hooks/useEmptyColumns";
 import { useScans } from "@/features/scans/useScans";
 import { useClampPage, usePageParam, useUrlEnum } from "@/hooks/useUrlState";
 import RelativeTime from "@/components/RelativeTime";
@@ -86,6 +91,11 @@ function durationSeconds(scan: ScanPublic): number | null {
   return Math.max(0, Math.round((end - start) / 1000));
 }
 
+/** The Actions column only exists while some listed scan can be cancelled. */
+const SCAN_COLUMN_RULES: readonly EmptyColumnRule<ScanPublic>[] = [
+  { id: "actions", hasValue: (scan) => isScanCancellable(scan.status) },
+];
+
 export function ScansPage() {
   const { t, i18n } = useTranslation("scans");
 
@@ -112,6 +122,9 @@ export function ScansPage() {
   const scansQuery = useScans(queryParams);
   const items = scansQuery.data?.items ?? [];
   const total = scansQuery.data?.total ?? 0;
+  const showActions = !useEmptyColumns(items, SCAN_COLUMN_RULES, tab).has(
+    "actions",
+  );
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   // The page is now something a link or a bookmark can carry, and it can
   // name a page this list no longer has.
@@ -166,16 +179,25 @@ export function ScansPage() {
               <th className="px-3 py-2 text-right">
                 {t("page.column.duration")}
               </th>
-              <th className="py-2 pl-3 pr-6 text-right">
-                {t("page.column.actions")}
-              </th>
+              {showActions ? (
+                <th className="py-2 pl-3 pr-6 text-right">
+                  {t("page.column.actions")}
+                </th>
+              ) : null}
             </tr>
           </thead>
           <tbody data-testid="scans-tbody">
             {scansQuery.isLoading
               ? (
                   <TableRowsSkeleton
-                    columns={["w-40", "w-16", "w-20", "w-24", "w-12", "w-16"]}
+                    columns={[
+                      "w-40",
+                      "w-16",
+                      "w-20",
+                      "w-24",
+                      "w-12",
+                      ...(showActions ? ["w-16"] : []),
+                    ]}
                   />
                 )
               : items.map((scan) => {
@@ -249,14 +271,16 @@ export function ScansPage() {
                       <td className="px-3 text-right text-xs text-muted-foreground">
                         {dur == null ? "—" : `${dur}s`}
                       </td>
-                      <td className="pl-3 pr-6 text-right">
-                        <div className="flex justify-end">
-                          <ScanCancelButton
-                            scanId={scan.id}
-                            status={scan.status}
-                          />
-                        </div>
-                      </td>
+                      {showActions ? (
+                        <td className="pl-3 pr-6 text-right">
+                          <div className="flex justify-end">
+                            <ScanCancelButton
+                              scanId={scan.id}
+                              status={scan.status}
+                            />
+                          </div>
+                        </td>
+                      ) : null}
                     </tr>
                   );
                 })}
@@ -264,7 +288,7 @@ export function ScansPage() {
             !scansQuery.isError &&
             items.length === 0 ? (
               <tr>
-                <td colSpan={6} className="p-0">
+                <td colSpan={showActions ? 6 : 5} className="p-0">
                   {/* C3 - the "all" tab sends no status filter, so on a fresh
                       deployment the filter copy blamed a control nobody had
                       touched and sent the reader looking for it. The two
