@@ -459,6 +459,9 @@ export function ProjectListPage() {
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [items]);
   const showTeamBreadcrumb = teamOptions.length > 1;
+  // An all-empty "Created by" column is noise; render it only when at least
+  // one loaded row has a creator.
+  const showCreatedBy = (items ?? []).some((p) => !!p.created_by_user_name);
 
   const filteredItems = useMemo(() => {
     const source = items ?? [];
@@ -811,18 +814,22 @@ export function ProjectListPage() {
               style={{ height: "var(--table-row)" }}
               data-testid="project-list-header"
             >
-              <span className="flex-1">{t("list.col.project")}</span>
+              <span className={`flex-1 ${NAME_MIN}`}>{t("list.col.project")}</span>
               <span className={SEVERITY_COL}>{t("list.col.vulnerabilities")}</span>
-              <span className={`${COUNT_COL} text-right`}>
+              <span className={`hidden xl:inline ${COUNT_COL} text-right`}>
                 {t("list.col.releases")}
               </span>
-              <span className={`${COUNT_COL} text-right`}>
+              <span className={`hidden xl:inline ${COUNT_COL} text-right`}>
                 {t("list.col.scans")}
               </span>
-              <span className={`${WHEN_COL} text-right`}>
+              <span className={`${WHEN_COL} whitespace-nowrap text-right`}>
                 {t("list.col.last_scan")}
               </span>
-              <span className={CREATED_COL}>{t("list.col.created_by")}</span>
+              {showCreatedBy ? (
+                <span className={`hidden 2xl:inline ${CREATED_COL}`}>
+                  {t("list.col.created_by")}
+                </span>
+              ) : null}
               <span className={STATUS_COL}>{t("list.col.status")}</span>
               <span className={ACTION_COL} aria-hidden />
             </div>
@@ -836,6 +843,7 @@ export function ProjectListPage() {
                   rowIndex={index}
                   writeDisabled={demoReadOnly}
                   showTeamBreadcrumb={showTeamBreadcrumb}
+                  showCreatedBy={showCreatedBy}
                 />
               )}
             />
@@ -901,12 +909,16 @@ export function ProjectListPage() {
 
 // Column widths shared by the header row and every project row, so the
 // numbers sit under their labels. Dense columns only exist from `lg` up.
-const SEVERITY_COL = "w-40 shrink-0";
+const SEVERITY_COL = "w-52 shrink-0 whitespace-nowrap";
 const COUNT_COL = "w-16 shrink-0";
 const WHEN_COL = "w-24 shrink-0";
 const CREATED_COL = "w-36 shrink-0";
+// Secondary columns drop out progressively: counts from `xl`, created-by
+// from `2xl` (and only when some row has a creator), so the name keeps room.
+const META_COL = "w-24 shrink-0 xl:w-[15.5rem]";
+const NAME_MIN = "min-w-[8rem]";
 const STATUS_COL = "w-24 shrink-0";
-const ACTION_COL = "w-16 shrink-0";
+const ACTION_COL = "w-20 shrink-0 whitespace-nowrap";
 
 export interface ProjectRowProps {
   project: ProjectPublic;
@@ -920,6 +932,8 @@ export interface ProjectRowProps {
    * otherwise carry no clue which team they belong to.
    */
   showTeamBreadcrumb?: boolean;
+  /** Render the created-by cell (shown from `2xl`). Off when no row has one. */
+  showCreatedBy?: boolean;
 }
 
 export function ProjectRow({
@@ -928,6 +942,7 @@ export function ProjectRow({
   rowIndex,
   writeDisabled = false,
   showTeamBreadcrumb = false,
+  showCreatedBy = true,
 }: ProjectRowProps) {
   const { t } = useTranslation("projects");
   return (
@@ -945,7 +960,7 @@ export function ProjectRow({
       )}
       style={{ height: "var(--table-row)" }}
     >
-      <div className="flex flex-1 items-center gap-3 truncate">
+      <div className={cn("flex min-w-0 flex-1 items-center gap-3", NAME_MIN)}>
         {/* Team + project were previously one <Link>, with the team name
             nested inside it as a <span>: invalid HTML (no interactive
             descendants inside an <a>) and a link that could only ever go to
@@ -956,7 +971,7 @@ export function ProjectRow({
           <>
             <Link
               to={`/groups/${project.team_id}`}
-              className="shrink-0 truncate font-normal text-muted-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              className="min-w-0 max-w-[8rem] shrink-[4] truncate font-normal text-muted-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               title={project.team_name}
               data-testid="project-row-team"
               data-team-id={project.team_id}
@@ -970,7 +985,7 @@ export function ProjectRow({
         ) : null}
         <Link
           to={`/projects/${project.id}`}
-          className="max-w-[24rem] shrink-0 truncate font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          className="min-w-[6rem] max-w-[24rem] shrink truncate font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
           title={project.name}
           data-testid="project-row-link"
           data-project-id={project.id}
@@ -984,7 +999,7 @@ export function ProjectRow({
           // truncated URL and a readable name, the name is the one the row
           // exists to show; the URL returns with the rest of the dense
           // columns above `lg`.
-          className="hidden min-w-0 truncate font-mono text-xs text-muted-foreground lg:inline"
+          className="hidden min-w-0 truncate font-mono text-xs text-muted-foreground 2xl:inline"
           title={project.git_url ?? ""}
         >
           {project.git_url ?? ""}
@@ -992,17 +1007,19 @@ export function ProjectRow({
       </div>
       <SeveritySummary summary={project.severity_summary} />
       <ScanMetadataSummary project={project} />
-      <span
-        className={cn(
-          "hidden truncate text-xs text-muted-foreground lg:inline-block",
-          CREATED_COL,
-        )}
-        data-testid="project-row-created-by"
-        title={project.created_by_user_name ?? ""}
-      >
-        {project.created_by_user_name ?? "—"}
-      </span>
-      <div className={STATUS_COL} data-testid="project-row-status">
+      {showCreatedBy ? (
+        <span
+          className={cn(
+            "hidden truncate text-xs text-muted-foreground 2xl:inline-block",
+            CREATED_COL,
+          )}
+          data-testid="project-row-created-by"
+          title={project.created_by_user_name ?? ""}
+        >
+          {project.created_by_user_name ?? "\u2014"}
+        </span>
+      ) : null}
+      <div className={cn(STATUS_COL, "whitespace-nowrap")} data-testid="project-row-status">
         <ProjectStatusBadge status={project.latest_scan_status ?? "idle"} />
       </div>
       <Button
@@ -1136,7 +1153,7 @@ function ScanMetadataSummary({ project }: { project: ProjectPublic }) {
   // be worth surfacing ("we tried, lost the timestamp"), and vice versa.
   if (lastScanAt == null && scanCount === 0) {
     return (
-      <div className="hidden w-[15.5rem] shrink-0 lg:block" />
+      <div className={cn("hidden lg:block", META_COL)} />
     );
   }
 
@@ -1157,19 +1174,19 @@ function ScanMetadataSummary({ project }: { project: ProjectPublic }) {
       // G0-5 — hidden below `lg`, for the reason spelled out on
       // `project-row-severity`: these clusters together left the project name
       // no width at all on a phone.
-      className="hidden w-[15.5rem] shrink-0 items-center gap-3 text-xs text-muted-foreground lg:flex"
+      className={cn("hidden items-center gap-3 text-xs text-muted-foreground lg:flex", META_COL)}
       data-testid="project-row-scan-meta"
       data-release-count={releaseCount}
       data-scan-count={scanCount}
       aria-label={ariaLabel}
     >
-      <span className={`${COUNT_COL} text-right tabular-nums`}>
+      <span className={`hidden xl:inline ${COUNT_COL} text-right tabular-nums`}>
         {releaseCount}
       </span>
-      <span className={`${COUNT_COL} text-right tabular-nums`}>
+      <span className={`hidden xl:inline ${COUNT_COL} text-right tabular-nums`}>
         {scanCount}
       </span>
-      <span className={`${WHEN_COL} truncate text-right`}>
+      <span className={`${WHEN_COL} truncate whitespace-nowrap text-right`}>
         {lastScanAt != null ? (
           <RelativeTime
             value={lastScanAt}

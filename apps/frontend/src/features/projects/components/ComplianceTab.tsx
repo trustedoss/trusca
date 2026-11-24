@@ -734,17 +734,17 @@ function ComplianceToolbar({
     // in one group and the NOTICE export in another at the right end, so the
     // export is not read as one more filter and the filters keep to one line.
     <div
-      className="flex flex-col gap-3 border-b bg-background px-6 py-3 lg:flex-row lg:items-end lg:gap-4"
+      className="flex flex-col gap-3 border-b bg-background px-6 py-3 lg:flex-row lg:flex-wrap lg:items-end lg:gap-x-4 lg:gap-y-3"
       data-testid="compliance-toolbar"
     >
       <div
-        className="flex min-w-0 flex-1 flex-col gap-3 lg:flex-row lg:items-end lg:gap-4"
+        className="flex min-w-0 flex-1 flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end lg:gap-x-4 lg:gap-y-3"
         data-testid="compliance-filters"
       >
-      <div className="min-w-0 flex-1">
+      <div className="min-w-[10rem] flex-1">
         <label
           htmlFor="compliance-search"
-          className="block text-xs font-medium text-muted-foreground"
+          className="block whitespace-nowrap text-xs font-medium text-muted-foreground"
         >
           {t("compliance.filter.search")}
         </label>
@@ -759,10 +759,10 @@ function ComplianceToolbar({
         />
       </div>
 
-      <div className="flex flex-col">
+      <div className="flex shrink-0 flex-col">
         <label
           htmlFor="compliance-category-filter"
-          className="text-xs font-medium text-muted-foreground"
+          className="whitespace-nowrap text-xs font-medium text-muted-foreground"
         >
           {t("compliance.filter.category")}
         </label>
@@ -782,8 +782,8 @@ function ComplianceToolbar({
         />
       </div>
 
-      <div className="flex flex-col">
-        <span className="text-xs font-medium text-muted-foreground">
+      <div className="flex shrink-0 flex-col">
+        <span className="whitespace-nowrap text-xs font-medium text-muted-foreground">
           {t("compliance.filter.has_obligations")}
         </span>
         <div className="mt-1 flex h-8 items-center">
@@ -799,10 +799,10 @@ function ComplianceToolbar({
       </div>
 
       {conflictEnabled ? (
-        <div className="flex flex-col">
+        <div className="flex shrink-0 flex-col">
           <label
             htmlFor="compliance-conflict"
-            className="text-xs font-medium text-muted-foreground"
+            className="whitespace-nowrap text-xs font-medium text-muted-foreground"
           >
             {t("licenses.toolbar.filter_conflict")}
           </label>
@@ -829,10 +829,10 @@ function ComplianceToolbar({
         </div>
       ) : null}
 
-      <div className="flex flex-col">
+      <div className="flex shrink-0 flex-col">
         <label
           htmlFor="compliance-sort"
-          className="text-xs font-medium text-muted-foreground"
+          className="whitespace-nowrap text-xs font-medium text-muted-foreground"
         >
           {t("compliance.filter.sort_label")}
         </label>
@@ -842,7 +842,7 @@ function ComplianceToolbar({
           onChange={(event) =>
             onSortChange(event.target.value as ComplianceSortKey)
           }
-          className="mt-1"
+          className="mt-1 min-w-[10.5rem]"
           data-testid="compliance-sort"
         >
           {SORT_OPTIONS.map((key) => (
@@ -853,10 +853,10 @@ function ComplianceToolbar({
         </Select>
       </div>
 
-      <div className="flex flex-col">
+      <div className="flex shrink-0 flex-col">
         <label
           htmlFor="compliance-order"
-          className="text-xs font-medium text-muted-foreground"
+          className="whitespace-nowrap text-xs font-medium text-muted-foreground"
         >
           {t("compliance.filter.order_label")}
         </label>
@@ -864,7 +864,7 @@ function ComplianceToolbar({
           id="compliance-order"
           value={order}
           onChange={(event) => onOrderChange(event.target.value as SortOrder)}
-          className="mt-1"
+          className="mt-1 min-w-[7rem]"
           data-testid="compliance-order"
         >
           <option value="asc">{t("compliance.filter.order_asc")}</option>

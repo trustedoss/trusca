@@ -86,12 +86,12 @@ export function ProjectListToolbar({
         // off-white canvas so the surrounding white cards visually pop, and
         // the inner spacing standardises on the 12 / 16 / 24 px scale (gap-3,
         // px-6, py-3). Inputs get `shadow-sm` so the row reads as raised.
-        "flex flex-col gap-3 border-b bg-background px-6 py-3 md:flex-row md:items-center md:gap-4",
+        "flex flex-col gap-3 border-b bg-background px-6 py-3 md:flex-row md:flex-wrap md:items-center md:gap-x-4 md:gap-y-2",
         className,
       )}
       data-testid="project-list-toolbar"
     >
-      <div className="flex-1">
+      <div className="min-w-[14rem] flex-1">
         <label htmlFor="project-search" className="sr-only">
           {t("toolbar.search_placeholder")}
         </label>
@@ -106,10 +106,10 @@ export function ProjectListToolbar({
         />
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex shrink-0 items-center gap-2">
         <label
           htmlFor="project-status-filter"
-          className="text-xs font-medium text-muted-foreground"
+          className="whitespace-nowrap text-xs font-medium text-muted-foreground"
         >
           {t("toolbar.filter_status_label")}
         </label>
@@ -131,10 +131,10 @@ export function ProjectListToolbar({
         </Select>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex shrink-0 items-center gap-2">
         <label
           htmlFor="project-distribution-filter"
-          className="text-xs font-medium text-muted-foreground"
+          className="whitespace-nowrap text-xs font-medium text-muted-foreground"
         >
           {t("toolbar.filter_distribution_label")}
         </label>
@@ -163,10 +163,10 @@ export function ProjectListToolbar({
       </div>
 
       {teamOptions.length > 1 ? (
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <label
             htmlFor="project-team-filter"
-            className="text-xs font-medium text-muted-foreground"
+            className="whitespace-nowrap text-xs font-medium text-muted-foreground"
           >
             {t("toolbar.filter_team_label")}
           </label>
@@ -186,10 +186,10 @@ export function ProjectListToolbar({
         </div>
       ) : null}
 
-      <div className="flex items-center gap-2">
+      <div className="flex shrink-0 items-center gap-2">
         <label
           htmlFor="project-sort"
-          className="text-xs font-medium text-muted-foreground"
+          className="whitespace-nowrap text-xs font-medium text-muted-foreground"
         >
           {t("toolbar.sort_label")}
         </label>
