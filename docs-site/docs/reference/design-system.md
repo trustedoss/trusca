@@ -62,7 +62,7 @@ All colour decisions reference the CSS custom properties declared in `index.css`
 | `--muted` | `#f4f4f5` | `240 5% 96%` | Subtle fills — table headers, sidebar tint, placeholder backgrounds, disabled inputs. |
 | `--muted-foreground` | `#6c6c75` | `240 4% 44%` | Secondary text, captions, table column headers. |
 | `--border` | `#e7e7e9` | `240 5% 91%` | Hairline borders. Decorative separator only — never the sole means of identifying a UI region. |
-| `--input` | `#e7e7e9` | `240 5% 91%` | Input outline. |
+| `--input` | `#85858e` | `240 4% 54%` | Control boundary: input and button outline, the switch off track. 3:1 or more on `--card` and `--background` (WCAG 1.4.11). |
 | `--primary` | `#1d4ed8` | `224.3 76.3% 48%` | Primary CTA, "the important action on the page". A navy fill, the accent's hue, in both themes. |
 | `--primary-foreground` | `#ffffff` | `0 0% 100%` | Text on primary, 6.70:1. |
 | `--destructive` | `#dc2626` | `0 72% 50.6%` | Destructive CTA. Aligned with `--risk-critical` so destructive buttons share severity-badge visual language. The decimal is load-bearing — `51%` renders `#dc2828`, which is not that hex. |
@@ -230,7 +230,7 @@ A **shadow** lifts a card off the canvas in light. On a dark ground it is a dark
 | `--muted` | `#1c2740` | `222 39% 18%` | Table headers, sidebar tint, disabled inputs. |
 | `--muted-foreground` | `#94a3b8` | `215 20% 65%` | 7.62:1 on the canvas, 6.76:1 on a card, 5.79:1 on `--muted` — the surface the light theme was caught out on. |
 | `--border` | `#2d3b53` | `218 30% 25%` | Carries the card edge. |
-| `--input` | `#2d3b53` | `218 30% 25%` | |
+| `--input` | `#566b8f` | `218 25% 45%` | Control boundary, 3:1 or more on `--card` and `--background`. |
 | `--primary` | `#1d4ed8` | `224.3 76.3% 48%` | Not inverted: the same navy fill and white label as light, 6.70:1. Accent text on a dark ground uses `--brand`, because navy text on a card measures 2.61:1. |
 | `--primary-foreground` | `#ffffff` | `0 0% 100%` | |
 | `--secondary` | `#1c2740` | `222 39% 18%` | |

@@ -20,7 +20,7 @@ import { useSearchParams } from "react-router-dom";
 import { EmptyState } from "@/components/EmptyState";
 import { PageHeader } from "@/components/PageHeader";
 import { Alert, AlertDescription } from "@/components/primer/alert";
-import { Badge } from "@/components/primer/badge";
+import { StatusPill } from "@/components/primer/status-pill";
 import { Button } from "@/components/primer/Button";
 import { TableRowsSkeleton } from "@/components/primer/skeletons";
 import { useAdminUsers } from "@/features/admin/api/useAdminUsers";
@@ -350,18 +350,11 @@ export function AdminUsersPage() {
                       <RoleBadge role={deriveRole(u)} />
                     </td>
                     <td className="px-3">
-                      <Badge
-                        variant="outline"
-                        className={cn(
-                          u.is_active
-                            ? "border-status-success-border bg-status-success-subtle text-status-success-foreground"
-                            : "border-muted bg-muted text-muted-foreground",
-                        )}
-                      >
+                      <StatusPill tone={u.is_active ? "success" : "neutral"}>
                         {u.is_active
                           ? t("admin.users.status.active")
                           : t("admin.users.status.inactive")}
-                      </Badge>
+                      </StatusPill>
                     </td>
                     <td className="px-3 text-xs text-muted-foreground">
                       {u.last_login_at ? (

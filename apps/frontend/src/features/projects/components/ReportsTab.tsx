@@ -112,7 +112,7 @@ type ReportTypeUiMeta = {
   /** Target value for `?tab=…` deeplink. */
   targetTab: "compliance" | "reports" | "vulnerabilities";
   /** Badge tone (design-token via the cva variant). */
-  tone: "info" | "accent" | "high" | "medium";
+  tone: "info" | "accent" | "high" | "progress";
   /** Stable test-id slug used by `reports-card-*` + `reports-history-*`. */
   slug: "notice" | "sbom" | "vuln-pdf" | "vex";
 };
@@ -123,7 +123,7 @@ const REPORT_TYPE_UI: Record<ReportType, ReportTypeUiMeta> = {
   // W4-C #21 — SBOM is an in-page section here in Reports, not a separate tab.
   sbom: { targetTab: "reports", tone: "accent", slug: "sbom" },
   vuln_pdf: { targetTab: "vulnerabilities", tone: "high", slug: "vuln-pdf" },
-  vex_export: { targetTab: "vulnerabilities", tone: "medium", slug: "vex" },
+  vex_export: { targetTab: "vulnerabilities", tone: "progress", slug: "vex" },
 };
 
 export interface ReportsTabProps {

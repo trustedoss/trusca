@@ -526,7 +526,7 @@ function G7SourceBadge({ source }: { source?: string | null }) {
       : source === "inferred"
         ? ({ tone: "info" } as const)
         : source === "na"
-          ? ({ tone: "medium" } as const)
+          ? ({ tone: "warning" } as const)
           : ({ variant: "muted" } as const);
   return (
     <Badge
