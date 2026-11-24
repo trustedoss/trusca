@@ -15,6 +15,7 @@ import ast
 import json
 import re
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 LOCALES = ROOT.parent / "frontend" / "src" / "locales"
@@ -30,9 +31,10 @@ LEGACY_KEYS = (
 )
 
 
-def _catalog(lang: str) -> dict:
+def _catalog(lang: str) -> dict[str, Any]:
     path = LOCALES / lang / "notifications.json"
-    return json.loads(path.read_text(encoding="utf-8"))["message"]
+    message: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))["message"]
+    return message
 
 
 def test_every_legacy_kind_has_en_and_ko_text_with_matching_placeholders() -> None:
