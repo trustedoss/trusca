@@ -42,6 +42,7 @@ import { useAuthStore } from "@/stores/authStore";
 import { useActiveTeam } from "@/hooks/useActiveTeam";
 import { useDeploymentFeatures } from "@/features/about/api/useDeploymentFeatures";
 import { useNavBadges, type NavBadgeKey } from "@/hooks/useNavBadges";
+import { useSidebarCollapsed } from "@/hooks/useSidebarCollapsed";
 import { useUIStore } from "@/stores/uiStore";
 
 interface NavItem {
@@ -771,7 +772,7 @@ export function AppShell() {
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
-  const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed);
+  const sidebarCollapsed = useSidebarCollapsed();
   // W12-C — route-change entrance. Keying <main> on the pathname remounts the
   // routed subtree on navigation so the fade-in replays; search-param changes
   // (tabs, filters) keep the same pathname and therefore do NOT re-animate.

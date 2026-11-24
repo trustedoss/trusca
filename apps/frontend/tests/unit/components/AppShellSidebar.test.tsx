@@ -59,7 +59,7 @@ function renderAppAt(path: string) {
 describe("AppShell — collapsible sidebar", () => {
   beforeEach(() => {
     window.localStorage.clear();
-    useUIStore.setState({ sidebarCollapsed: false });
+    useUIStore.setState({ sidebarCollapsedChoice: false });
     useAuthStore.setState({
       user: fakeUser,
       accessToken: "tok-app",
@@ -69,7 +69,7 @@ describe("AppShell — collapsible sidebar", () => {
   });
   afterEach(() => {
     useAuthStore.getState().reset();
-    useUIStore.setState({ sidebarCollapsed: false });
+    useUIStore.setState({ sidebarCollapsedChoice: false });
     window.history.replaceState(null, "", "/");
   });
 
@@ -99,12 +99,12 @@ describe("AppShell — collapsible sidebar", () => {
     // Persisted so the next visit stays collapsed.
     expect(
       JSON.parse(window.localStorage.getItem("trustedoss-ui") as string).state
-        .sidebarCollapsed,
+        .sidebarCollapsedChoice,
     ).toBe(true);
   });
 
   it("re-renders collapsed when the store was already collapsed", async () => {
-    useUIStore.setState({ sidebarCollapsed: true });
+    useUIStore.setState({ sidebarCollapsedChoice: true });
     renderAppAt("/projects");
     const sidebar = await screen.findByTestId("app-sidebar");
     expect(sidebar).toHaveAttribute("data-collapsed", "true");
@@ -145,7 +145,7 @@ describe("AppShell — collapsible sidebar", () => {
 describe("AppShell - skip link and profile menu (C1)", () => {
   beforeEach(() => {
     window.localStorage.clear();
-    useUIStore.setState({ sidebarCollapsed: false });
+    useUIStore.setState({ sidebarCollapsedChoice: false });
     useAuthStore.setState({
       user: fakeUser,
       accessToken: "tok-app",

@@ -19,13 +19,38 @@ import { createJSONStorage, persist } from "zustand/middleware";
  *   - `partialize` pins exactly which keys are written, so adding ephemeral
  *     fields later does not silently start persisting them.
  */
+/** Viewport width at and above which the sidebar defaults to expanded. */
+export const SIDEBAR_WIDE_QUERY = "(min-width: 1280px)";
+
+/** True when the viewport is at least 1280 px (or matchMedia is absent). */
+export function isWideViewport(): boolean {
+  if (
+    typeof window === "undefined" ||
+    typeof window.matchMedia !== "function"
+  ) {
+    return true;
+  }
+  return window.matchMedia(SIDEBAR_WIDE_QUERY).matches;
+}
+
 interface UIState {
   /**
-   * Desktop sidebar collapsed to a 64 px icon-only rail. Persisted.
-   * Has no effect below the `lg` breakpoint, where the sidebar is replaced
-   * by an overlay drawer (see AppShell).
+   * The user's explicit sidebar choice: `true` = 64 px icon rail, `false` =
+   * 256 px expanded, `null` = never chosen. Persisted.
+   *
+   * `null` lets the viewport decide (see `useSidebarCollapsed`): narrower
+   * than 1280 px defaults to the rail, wider to expanded. Any stored boolean
+   * wins at every width. Has no effect below the `lg` breakpoint, where the
+   * sidebar is replaced by an overlay drawer (see AppShell).
+   *
+   * Migration: before this field existed the store persisted
+   * `sidebarCollapsed: boolean`, and a stored `false` cannot be told apart
+   * from an explicit expand. The choice therefore lives under a new storage
+   * key, so legacy values are ignored (no choice) and only a toggle made
+   * after this change counts as explicit.
    */
-  sidebarCollapsed: boolean;
+  sidebarCollapsedChoice: boolean | null;
+  /** Flip the effective state (the choice, else the viewport default). */
   toggleSidebarCollapsed: () => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
   /**
@@ -67,10 +92,15 @@ interface UIState {
 export const useUIStore = create<UIState>()(
   persist(
     (set) => ({
-      sidebarCollapsed: false,
+      sidebarCollapsedChoice: null,
       toggleSidebarCollapsed: () =>
-        set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
-      setSidebarCollapsed: (sidebarCollapsed) => set({ sidebarCollapsed }),
+        set((s) => ({
+          sidebarCollapsedChoice: !(
+            s.sidebarCollapsedChoice ?? !isWideViewport()
+          ),
+        })),
+      setSidebarCollapsed: (sidebarCollapsedChoice) =>
+        set({ sidebarCollapsedChoice }),
       activeTeamId: null,
       setActiveTeamId: (activeTeamId) => set({ activeTeamId }),
       activeTeamOwnerId: null,
@@ -94,7 +124,7 @@ export const useUIStore = create<UIState>()(
         removeItem: (name) => window.localStorage.removeItem(name),
       })),
       partialize: (s) => ({
-        sidebarCollapsed: s.sidebarCollapsed,
+        sidebarCollapsedChoice: s.sidebarCollapsedChoice,
         activeTeamId: s.activeTeamId,
         activeTeamOwnerId: s.activeTeamOwnerId,
         onboardingDismissed: s.onboardingDismissed,

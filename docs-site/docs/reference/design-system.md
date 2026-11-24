@@ -316,7 +316,7 @@ TRUSCA and BomLens share a lineage and are reviewed against each other. That rev
 
 **Sidebar behaviour.** The left sidebar is **user-collapsible and viewport-responsive**:
 
-- **≥ `lg` (1024 px):** fixed sidebar. A toggle at the bottom of the rail collapses it from 256 px to a 64 px icon-only rail; collapsed labels move to `aria-label` + native hover tooltip. The choice persists across reloads (`uiStore` → `localStorage` key `trustedoss-ui`). Width animates over `--duration-base`.
+- **≥ `lg` (1024 px):** fixed sidebar. A toggle at the bottom of the rail collapses it from 256 px to a 64 px icon-only rail; collapsed labels move to `aria-label` + native hover tooltip. The choice persists across reloads (`uiStore` → `localStorage` key `trustedoss-ui`). Width animates over `--duration-base`. With no stored choice, viewports narrower than 1280 px default to the 64 px rail (a 256 px sidebar leaves too little body width at 1024 px) and 1280 px and wider default to expanded, following window resizes. Once the user toggles the sidebar, that choice wins at every width.
 - **< `lg`:** the fixed sidebar is hidden and a header hamburger opens an overlay drawer (left-side `Sheet`) carrying the full-label nav. The drawer closes on navigate, overlay click, or ESC.
 
 **Card padding** standardises to **16 / 20 / 24 px** (Tailwind `p-4` / `p-5` / `p-6`):

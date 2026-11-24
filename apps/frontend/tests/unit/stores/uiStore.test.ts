@@ -5,31 +5,32 @@ import { useUIStore } from "@/stores/uiStore";
 describe("uiStore", () => {
   beforeEach(() => {
     window.localStorage.clear();
-    useUIStore.setState({ sidebarCollapsed: false });
+    useUIStore.setState({ sidebarCollapsedChoice: null });
   });
 
-  it("defaults to an expanded sidebar", () => {
-    expect(useUIStore.getState().sidebarCollapsed).toBe(false);
+  it("starts with no explicit sidebar choice", () => {
+    expect(useUIStore.getState().sidebarCollapsedChoice).toBeNull();
   });
 
-  it("toggleSidebarCollapsed flips the flag both ways", () => {
+  it("toggleSidebarCollapsed flips the effective state both ways", () => {
+    // The test matchMedia stub is wide (>= 1280), so the default is expanded.
     useUIStore.getState().toggleSidebarCollapsed();
-    expect(useUIStore.getState().sidebarCollapsed).toBe(true);
+    expect(useUIStore.getState().sidebarCollapsedChoice).toBe(true);
     useUIStore.getState().toggleSidebarCollapsed();
-    expect(useUIStore.getState().sidebarCollapsed).toBe(false);
+    expect(useUIStore.getState().sidebarCollapsedChoice).toBe(false);
   });
 
   it("setSidebarCollapsed sets an explicit value", () => {
     useUIStore.getState().setSidebarCollapsed(true);
-    expect(useUIStore.getState().sidebarCollapsed).toBe(true);
+    expect(useUIStore.getState().sidebarCollapsedChoice).toBe(true);
     useUIStore.getState().setSidebarCollapsed(false);
-    expect(useUIStore.getState().sidebarCollapsed).toBe(false);
+    expect(useUIStore.getState().sidebarCollapsedChoice).toBe(false);
   });
 
-  it("persists the collapsed flag to localStorage under trustedoss-ui", () => {
+  it("persists the choice to localStorage under trustedoss-ui", () => {
     useUIStore.getState().setSidebarCollapsed(true);
     const raw = window.localStorage.getItem("trustedoss-ui");
     expect(raw).toBeTruthy();
-    expect(JSON.parse(raw as string).state.sidebarCollapsed).toBe(true);
+    expect(JSON.parse(raw as string).state.sidebarCollapsedChoice).toBe(true);
   });
 });

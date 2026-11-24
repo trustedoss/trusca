@@ -11,7 +11,9 @@ import i18n from "@/lib/i18n";
 if (typeof window !== "undefined" && typeof window.matchMedia !== "function") {
   window.matchMedia = (query: string): MediaQueryList =>
     ({
-      matches: false,
+      // Desktop-wide: the sidebar's min-width 1280 query matches so it
+      // defaults to expanded. Every other query stays false.
+      matches: query.includes("min-width: 1280px"),
       media: query,
       onchange: null,
       addEventListener: () => undefined,
