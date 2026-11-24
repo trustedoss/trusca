@@ -515,6 +515,40 @@ describe("NotificationsPage", () => {
       expect(rowText("k3")).not.toContain("stored english");
     });
 
+    it("renders the seeded kinds in both languages without the kind label", async () => {
+      const seeded = [
+        makeItem("s1", {
+          kind: "cve_detected",
+          title: "stored english",
+          body: "stored english",
+          message_key: "cve_detected",
+          params: { component: "lodash@1.0.0", cve_id: "CVE-2024-99001" },
+        }),
+        makeItem("s2", {
+          kind: "policy_gate_failed",
+          title: "stored english",
+          body: "stored english",
+          message_key: "policy_gate_failed",
+          params: { project_name: "web" },
+        }),
+      ];
+      mockedList.mockResolvedValue(makeList(seeded));
+      renderPage();
+      await waitFor(() => {
+        expect(screen.getAllByTestId("notifications-row")).toHaveLength(2);
+      });
+      expect(rowText("s1")).toContain("New CVE found in lodash@1.0.0");
+      expect(rowText("s1")).toContain("CVE-2024-99001 affects");
+      expect(rowText("s2")).toContain("Build gate blocked a build");
+      // The kind label repeated the title, so it is no longer printed.
+      expect(screen.queryByTestId("notifications-row-kind")).toBeNull();
+      await i18n.changeLanguage("ko");
+      await waitFor(() => {
+        expect(rowText("s1")).toContain("lodash@1.0.0에서 새 CVE 발견");
+      });
+      expect(rowText("s2")).toContain("빌드 게이트가 빌드를 차단함");
+    });
+
     it("ignores params named after i18next options", async () => {
       // A param called `lng` would otherwise switch the row to Korean.
       mockedList.mockResolvedValue(

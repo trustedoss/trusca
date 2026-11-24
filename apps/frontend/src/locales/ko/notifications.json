@@ -75,6 +75,30 @@
     "mfa_cleared_by_admin": {
       "title": "2단계 인증이 해제되었습니다",
       "body": "관리자가 계정의 인증 앱을 해제했습니다. 요청한 적이 없다면 관리자에게 알리고 바로 2단계 인증을 다시 설정하세요."
+    },
+    "scan_completed": {
+      "title": "{{project_name}} 스캔 완료",
+      "body": "구성요소 {{components}}개를 찾았고, 치명적 취약점은 {{critical}}건입니다."
+    },
+    "scan_failed": {
+      "title": "{{project_name}} 스캔 실패",
+      "body": "스캔을 끝내지 못했습니다."
+    },
+    "cve_detected": {
+      "title": "{{component}}에서 새 CVE 발견",
+      "body": "{{cve_id}}가 {{component}}에 영향을 줍니다. 프로젝트를 열어 분류하세요."
+    },
+    "license_violation": {
+      "title": "금지 라이선스 발견",
+      "body": "{{component}}에서 {{license_id}}가 발견되었습니다. 다음 릴리스 전에 검토하세요."
+    },
+    "policy_gate_failed": {
+      "title": "빌드 게이트가 빌드를 차단함",
+      "body": "{{project_name}}에서 금지 라이선스 또는 치명적 취약점이 발견되어 빌드 게이트가 차단했습니다."
+    },
+    "approval_pending": {
+      "title": "구성요소 승인 대기",
+      "body": "구성요소 승인 요청이 검토를 기다리고 있습니다."
     }
   },
   "prefs": {

@@ -70,8 +70,10 @@ function QueueTile({
         active && tone === "warning" && "border-status-warning-border bg-status-warning-subtle",
       )}
     >
-      <span className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
-        <Icon size={16} />
+      {/* In the four-column layout a long label wraps to two lines. Reserving
+          both lines keeps every tile's number on the same row. */}
+      <span className="flex items-start gap-2 text-xs font-semibold leading-4 text-muted-foreground lg:min-h-8">
+        <Icon size={16} className="shrink-0" />
         {label}
       </span>
       <span

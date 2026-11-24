@@ -319,6 +319,54 @@ _SOURCE_TEXT_CONTENT = (
 _NOTIFICATIONS_BASE_TS = datetime.now(UTC)
 
 
+_NOTIFICATION_KINDS = (
+    "scan_completed",
+    "cve_detected",
+    "policy_gate_failed",
+    "approval_pending",
+    "license_violation",
+)
+# kind -> (English title, English body, params). The kind is
+# also the message_key, so the SPA renders each row from its
+# catalog in the reader's language.
+_NOTIFICATION_TEXTS: dict[str, tuple[str, str, dict[str, str | int]]] = {
+    "scan_completed": (
+        "Scan completed for demo-app",
+        "12 components found, 0 critical vulnerabilities.",
+        {"project_name": "demo-app", "components": 12, "critical": 0},
+    ),
+    "cve_detected": (
+        "New CVE found in example-lib@1.0.0",
+        "CVE-2099-0001 affects example-lib@1.0.0. Open the project to triage it.",
+        {"component": "example-lib@1.0.0", "cve_id": "CVE-2099-0001"},
+    ),
+    "policy_gate_failed": (
+        "Build gate blocked a build",
+        "The build gate blocked demo-app: a forbidden license or a "
+        "critical vulnerability was found.",
+        {"project_name": "demo-app"},
+    ),
+    "approval_pending": (
+        "Component approval waiting",
+        "A component approval request is waiting for your review.",
+        {},
+    ),
+    "license_violation": (
+        "Forbidden license found",
+        "AGPL-3.0-only was found in example-lib@1.0.0. "
+        "Review it before the next release.",
+        {"component": "example-lib@1.0.0", "license_id": "AGPL-3.0-only"},
+    ),
+}
+
+
+def _seeded_notification(index: int) -> tuple[str, str, str, dict[str, str | int]]:
+    """Return ``(kind, title, body, params)`` for the index-th seeded notification."""
+    kind = _NOTIFICATION_KINDS[index % len(_NOTIFICATION_KINDS)]
+    title, body, params = _NOTIFICATION_TEXTS[kind]
+    return kind, title, body, params
+
+
 def _notification_created_at(index: int) -> datetime:
     """``created_at`` of the ``index``-th seeded notification (0-based).
 
@@ -1234,27 +1282,15 @@ async def _seed(  # noqa: PLR0915 — a single linear seed routine reads better 
             if with_notifications > 0:
                 from models import Notification
 
-                _kinds = (
-                    "scan_completed",
-                    "cve_detected",
-                    "policy_gate_failed",
-                    "approval_pending",
-                    "license_violation",
-                )
-                _bodies = {
-                    "scan_completed": "Project scan completed successfully.",
-                    "cve_detected": "New CVE-2099-EXAMPLE detected in component X.",
-                    "policy_gate_failed": "Build gate blocked: forbidden license found.",
-                    "approval_pending": "Component approval request pending review.",
-                    "license_violation": "Conditional license requires legal review.",
-                }
                 for i in range(with_notifications):
-                    kind = _kinds[i % len(_kinds)]
+                    kind, _title, _body, _params = _seeded_notification(i)
                     n = Notification(
                         user_id=user.id,
                         kind=kind,
-                        title=f"{kind.replace('_', ' ').title()} #{i + 1}",
-                        body=_bodies[kind],
+                        title=_title,
+                        body=_body,
+                        message_key=kind,
+                        params=_params,
                         link="/projects" if kind != "approval_pending" else "/approvals",
                         created_at=_notification_created_at(i),
                     )

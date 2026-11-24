@@ -806,27 +806,39 @@ async def _seed(demo_only: bool = False) -> dict[str, Any]:  # noqa: PLR0915 —
             # ── Third project: 3 in-app notifications for the developer ───
             notif_project = projects[2]
             developer_id = developer.id
-            notif_specs: tuple[tuple[str, str, str, bool], ...] = (
+            # (kind, English title, English body, is_read, message_key, params).
+            # The key and params let the SPA render the row in the reader's
+            # language; the English text is the fallback.
+            notif_specs: tuple[
+                tuple[str, str, str, bool, str, dict[str, str | int]], ...
+            ] = (
                 (
                     "scan_completed",
                     f"Scan completed for {notif_project.name}",
-                    "10 components observed, 0 critical CVEs.",
+                    "10 components found, 0 critical vulnerabilities.",
                     True,  # already read
+                    "scan_completed",
+                    {"project_name": notif_project.name, "components": 10, "critical": 0},
                 ),
                 (
                     "cve_detected",
-                    "New critical CVE in dependency",
-                    "CVE-2024-99001 detected in lodash@1.0.0.",
+                    "New CVE found in lodash@1.0.0",
+                    "CVE-2024-99001 affects lodash@1.0.0. Open the project to triage it.",
                     False,  # unread
+                    "cve_detected",
+                    {"component": "lodash@1.0.0", "cve_id": "CVE-2024-99001"},
                 ),
                 (
                     "license_violation",
-                    "Forbidden license detected",
-                    "GPL-3.0-only found in spring-core@1.0.0.",
+                    "Forbidden license found",
+                    "GPL-3.0-only was found in spring-core@1.0.0. "
+                    "Review it before the next release.",
                     False,
+                    "license_violation",
+                    {"component": "spring-core@1.0.0", "license_id": "GPL-3.0-only"},
                 ),
             )
-            for kind, title, body, is_read in notif_specs:
+            for kind, title, body, is_read, message_key, message_params in notif_specs:
                 read_at = now - timedelta(hours=1) if is_read else None
                 session.add(
                     Notification(
@@ -834,6 +846,8 @@ async def _seed(demo_only: bool = False) -> dict[str, Any]:  # noqa: PLR0915 —
                         kind=kind,
                         title=title,
                         body=body,
+                        message_key=message_key,
+                        params=message_params,
                         link=f"/projects/{notif_project.id}",
                         target_table="projects",
                         target_id=notif_project.id,

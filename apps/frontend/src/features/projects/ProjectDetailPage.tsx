@@ -904,12 +904,8 @@ function ProjectDetailHeader({
           </h1>
         )}
         <div className="flex items-center gap-3">
-          <span
-            className="font-mono text-xs text-muted-foreground"
-            data-testid="project-detail-id"
-          >
-            {projectId}
-          </span>
+          {/* The raw project id is not printed: it is the page's data-project-id
+              and in the URL, and a bare uuid under the title is noise. */}
           {/* G0-5 — no release picker for a project that does not load. It
               rendered "No version" next to a "not found" heading, which reads
               as a project that exists and happens to be unscanned. */}

@@ -35,6 +35,7 @@ import { Label } from "@/components/primer/Label";
 import { PrimerDialog } from "@/components/primer/PrimerDialog";
 import { Skeleton } from "@/components/primer/Skeleton";
 import { useToast } from "@/components/primer/toast";
+import { BuiltInRulesPanel } from "@/features/policies/BuiltInRulesPanel";
 import { GatePolicyPanel } from "@/features/policies/GatePolicyPanel";
 import {
   PolicyEditorPanel,
@@ -208,6 +209,7 @@ export function PoliciesPage() {
         </div>
         <Button
           size="sm"
+          variant={pickerTeamId ? "default" : "outline"}
           disabled={!pickerTeamId}
           onClick={() => openDrawer({ scope: "team", id: pickerTeamId })}
           data-testid="policy-edit-team"
@@ -242,6 +244,10 @@ export function PoliciesPage() {
           </Button>
         ) : null}
       </div>
+
+      {/* The built-in rules are what applies before any team policy exists,
+          so they are shown while no team is picked. */}
+      {pickerTeamId ? null : <BuiltInRulesPanel />}
 
       {/* Existing policies. List region. It always renders and carries `aria-busy`, so the
           harness has one node to wait on whether it ends up holding the

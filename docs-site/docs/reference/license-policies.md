@@ -145,6 +145,13 @@ with the defaults — you only send the operators you want to change.
 The **Policies** screen (sidebar → **Policies**, route `/policies`) is the
 no-code way to author a policy — it drives the same REST API documented below.
 
+Before you pick a team, the screen shows the **Built-in rules in effect** panel:
+the Allowed, Conditional, and Forbidden categories with example licenses, and
+the default build gate (a build fails on an open critical vulnerability or a
+component with a forbidden license). It is read-only and applies to every team
+until a policy overrides it. The examples are a summary; the full catalog is
+longer.
+
 1. **Pick a scope.** Use the **Team** picker in the toolbar and click **Edit team
    policy**, or click any row in the policies table to edit that scope. A
    `super_admin` additionally sees **Edit org default** for the organization-wide

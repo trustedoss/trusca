@@ -566,7 +566,14 @@ describe("PoliciesPage — super_admin org default", () => {
     expect(hint).toHaveTextContent(/pick a team first/i);
     expect(hint).toHaveTextContent(/build gate/i);
 
+    // The built-in rules show before a team is picked and leave afterwards.
+    const builtin = screen.getByTestId("policies-builtin");
+    expect(within(builtin).getByText("MIT, Apache-2.0", { exact: false })).toBeInTheDocument();
+    expect(screen.getByTestId("policies-builtin-forbidden")).toHaveTextContent("AGPL-3.0");
+    expect(screen.getByTestId("policies-builtin-gate")).toHaveTextContent(/critical vulnerability/i);
+
     await user.selectOptions(picker, TEAM_ID);
+    expect(screen.queryByTestId("policies-builtin")).not.toBeInTheDocument();
     expect(edit).not.toBeDisabled();
     expect(hint).not.toHaveTextContent(/pick a team first/i);
     expect(hint).toHaveTextContent(/build gate/i);
