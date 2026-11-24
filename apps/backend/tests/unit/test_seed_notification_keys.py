@@ -66,3 +66,20 @@ def test_seed_notifications_pass_message_key_and_params() -> None:
 def test_seed_titles_are_not_title_cased_with_a_counter() -> None:
     source = (ROOT / "scripts" / "seed_e2e_user.py").read_text(encoding="utf-8")
     assert ".title()} #" not in source
+
+
+def test_seeded_notification_cycles_through_every_kind_with_its_params() -> None:
+    from scripts import seed_e2e_user
+
+    kinds = [seed_e2e_user._seeded_notification(i)[0] for i in range(10)]
+    assert kinds[:5] == kinds[5:]
+    assert set(kinds) == {
+        "scan_completed",
+        "cve_detected",
+        "policy_gate_failed",
+        "approval_pending",
+        "license_violation",
+    }
+    kind, title, body, params = seed_e2e_user._seeded_notification(0)
+    assert (kind, params["project_name"]) == ("scan_completed", "demo-app")
+    assert title and body
