@@ -212,9 +212,9 @@ The card shows:
 
 | Element | Meaning |
 |---|---|
-| **Pass / Fail badge** | `Pass` (green, shield-check) when the latest successful scan has no critical CVEs and no forbidden licenses; `Fail` (red, shield-x) otherwise. |
-| **Reason** | On `Fail`, one line per condition that tripped the gate, each with its count. The counts carry the risk colour; the text and the rest of the card keep the normal text colour, so only the badge reads as an alarm. Known-malicious packages come first, with what to do about them. |
-| **Critical CVEs** | Count of open critical-severity findings on the evaluated scan. Open = status not in `not_affected`, `fixed`, `false_positive`. On `Fail`, a count already listed under **Reason** is not repeated as a tile here, and the same goes for the forbidden-license and EPSS counts below. |
+| **Pass / Blocked badge** | `Pass` (green, shield-check) when the latest successful scan has no critical CVEs and no forbidden licenses; `Blocked` (red, shield-x) otherwise. |
+| **Reason** | On `Blocked`, one line per condition that tripped the gate, each with its count. The counts carry the risk colour; the text and the rest of the card keep the normal text colour, so only the badge reads as an alarm. Known-malicious packages come first, with what to do about them. |
+| **Critical CVEs** | Count of open critical-severity findings on the evaluated scan. Open = status not in `not_affected`, `fixed`, `false_positive`. On `Blocked`, a count already listed under **Reason** is not repeated as a tile here, and the same goes for the forbidden-license and EPSS counts below. |
 | **Forbidden licenses** | Count of distinct components carrying at least one forbidden-tier license. |
 | **`EPSS ≥ {threshold}`** | Shown **only** when an operator has enabled the EPSS gate (`GATE_EPSS_THRESHOLD` set on the portal). Count of open findings whose EPSS score meets or exceeds the threshold. Hidden when the EPSS gate is disabled (the default). See [Gate the build on EPSS](../ci-integration/github-actions.md#gate-the-build-on-epss-optional). |
 

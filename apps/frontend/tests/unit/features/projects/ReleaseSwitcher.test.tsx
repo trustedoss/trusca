@@ -189,11 +189,11 @@ describe("ReleaseSwitcher", () => {
     expect(
       items[0].querySelector('[data-testid="release-switcher-item-latest"]'),
     ).not.toBeNull();
-    // A failing gate surfaces a labelled Fail signal, not just a color.
+    // A failing gate surfaces a labelled Blocked signal, not just a color.
     expect(
       items[0].querySelector('[data-testid="release-switcher-item-gate-fail"]')
         ?.textContent,
-    ).toContain("Fail");
+    ).toContain("Blocked");
   });
 
   it("selecting a release item sets the snapshot via onSelectRelease(scan id)", async () => {

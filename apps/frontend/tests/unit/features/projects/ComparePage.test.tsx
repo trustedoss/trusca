@@ -268,7 +268,7 @@ describe("ComparePage", () => {
     expect(screen.getByTestId("compare-gate-base")).toHaveAttribute("data-gate", "pass");
     expect(screen.getByTestId("compare-gate-target")).toHaveAttribute("data-gate", "fail");
     expect(screen.getByTestId("compare-gate-base").textContent).toContain("Pass");
-    expect(screen.getByTestId("compare-gate-target").textContent).toContain("Fail");
+    expect(screen.getByTestId("compare-gate-target").textContent).toContain("Blocked");
 
     // Component count 40 → 88.
     const comps = screen.getByTestId("compare-components-delta");

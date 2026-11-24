@@ -1,7 +1,7 @@
 {
   "app": {
     "name": "TRUSCA",
-    "tagline": "오픈소스 SCA 플랫폼 — CVE·라이선스·SBOM을 한곳에서"
+    "tagline": "오픈소스 SCA 플랫폼: CVE·라이선스·SBOM을 한곳에서"
   },
   "language": {
     "label": "언어",
@@ -30,8 +30,8 @@
       "aria": "필터 추가하기"
     },
     "columns": {
-      "trigger": "컬럼",
-      "aria": "표시 컬럼 선택",
+      "trigger": "열",
+      "aria": "표시할 열 선택",
       "required_hint": "항상 표시"
     }
   },

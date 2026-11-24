@@ -142,7 +142,7 @@
     "eol_chip": {
       "title": "{{count}} component past end-of-life",
       "title_other": "{{count}} components past end-of-life",
-      "body": "End-of-life releases receive no upstream fixes — a future Critical CVE will have no patch.",
+      "body": "End-of-life releases receive no upstream fixes. A future Critical CVE will have no patch.",
       "link": "View EOL components"
     },
     "info_card": {
@@ -275,7 +275,7 @@
         "forbidden": "You do not have permission to view this project's build gate.",
         "unknown": "Could not load the build gate. Please try again."
       },
-      "fail": "Fail",
+      "fail": "Blocked",
       "forbidden_licenses": "Forbidden licenses",
       "malicious_packages": "Known-malicious packages",
       "malicious_unassessed": "Known-malicious packages: not assessed on this scan",
@@ -573,7 +573,7 @@
         "imminent": "Due soon",
         "ok": "On track"
       },
-      "due": "Due {{date}}",
+      "due": "Deadline {{date}}",
       "tooltip": "Remediation SLA — counted from when this finding was first detected in the project, with a per-severity remediation window.",
       "tooltip_with_due": "Remediation SLA due {{date}} — counted from when this finding was first detected in the project, with a per-severity remediation window.",
       "tooltip_filter": "Filter findings by their remediation-SLA state. Findings without an SLA (Info / Unknown severity) never match.",
@@ -1316,7 +1316,7 @@
     },
     "gate": {
       "pass": "Pass",
-      "fail": "Fail"
+      "fail": "Blocked"
     },
     "errors": {
       "load_failed": "Could not load releases. Please try again."
@@ -1333,7 +1333,7 @@
     "latest": "Latest",
     "latest_hint": "Live view of the latest successful scan",
     "latest_tag": "Latest",
-    "gate_fail": "Fail",
+    "gate_fail": "Blocked",
     "item_aria": "View the {{label}} snapshot"
   },
   "snapshot": {
@@ -1404,7 +1404,7 @@
       "delta_decrease_aria": "Decreased by {{delta}}",
       "gate_change_aria": "Gate changed from {{base}} to {{target}}",
       "gate_pass": "Pass",
-      "gate_fail": "Fail",
+      "gate_fail": "Blocked",
       "gate_none": "No gate"
     },
     "components": {

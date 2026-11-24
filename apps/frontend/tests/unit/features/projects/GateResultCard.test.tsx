@@ -100,7 +100,7 @@ describe("GateResultCard", () => {
     });
     expect(screen.getByTestId("gate-card")).toHaveAttribute("data-gate", "fail");
     expect(screen.getByTestId("gate-badge-fail")).toBeInTheDocument();
-    expect(screen.getByTestId("gate-badge-fail").textContent).toMatch(/fail/i);
+    expect(screen.getByTestId("gate-badge-fail").textContent).toMatch(/blocked/i);
 
     const reason = screen.getByTestId("gate-reason");
     // The backend's raw English sentence is gone.
