@@ -31,6 +31,15 @@ import { cn } from "@/lib/utils";
  * a phone into a sideways scroll.
  */
 
+// Column spans inside the band's own width (container queries, not the
+// viewport, so the sidebar's 256px counts): 3 + 2 tiles per row from 40rem,
+// one row of five from 56rem.
+const SPAN_THIRD =
+  "[@container(min-width:40rem)]:col-span-2 [@container(min-width:56rem)]:col-span-1";
+const SPAN_HALF =
+  "[@container(min-width:40rem)]:col-span-3 [@container(min-width:56rem)]:col-span-1";
+const SPAN = [SPAN_THIRD, SPAN_THIRD, SPAN_THIRD, SPAN_HALF, SPAN_HALF];
+
 const SPARK_WIDTH = 96;
 const SPARK_HEIGHT = 24;
 const SPARK_PAD = 2;
@@ -42,6 +51,7 @@ function Tile({
   to,
   tone = "neutral",
   testId,
+  span,
 }: {
   label: string;
   children: React.ReactNode;
@@ -49,6 +59,7 @@ function Tile({
   to?: string;
   tone?: "neutral" | "warning" | "danger" | "ok";
   testId: string;
+  span?: string;
 }) {
   const body = (
     <>
@@ -59,7 +70,10 @@ function Tile({
         {children}
       </span>
       {hint ? (
-        <span className="min-w-0 truncate text-xs text-muted-foreground" title={hint}>
+        <span
+          className="min-w-0 truncate text-xs text-muted-foreground"
+          title={hint}
+        >
           {hint}
         </span>
       ) : null}
@@ -68,10 +82,12 @@ function Tile({
 
   const className = cn(
     "flex min-w-0 items-baseline gap-2 rounded-md border px-3 py-1.5",
+    span,
     // Colour is the last signal, never the only one: each tile's number and
     // hint say the same thing in words.
     tone === "danger" && "border-status-danger-border bg-status-danger-subtle",
-    tone === "warning" && "border-status-warning-border bg-status-warning-subtle",
+    tone === "warning" &&
+      "border-status-warning-border bg-status-warning-subtle",
     tone === "ok" && "border-status-success-border bg-status-success-subtle",
     to &&
       "transition-colors duration-fast ease-out-soft hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
@@ -131,13 +147,15 @@ export function GovernanceBand({ projectId }: { projectId: string | null }) {
 
   if (query.isPending) {
     return (
-      <div
-        className="grid gap-2 px-6 pb-2 pt-3 sm:grid-cols-2 xl:grid-cols-5"
-        data-testid="governance-band-loading"
-      >
-        {[0, 1, 2, 3, 4].map((index) => (
-          <Skeleton key={index} className="h-8" />
-        ))}
+      <div className="[container-type:inline-size]">
+        <div
+          className="grid gap-2 px-6 pb-2 pt-3 [@container(min-width:30rem)]:grid-cols-2 [@container(min-width:40rem)]:grid-cols-6 [@container(min-width:56rem)]:grid-cols-5"
+          data-testid="governance-band-loading"
+        >
+          {[0, 1, 2, 3, 4].map((index) => (
+            <Skeleton key={index} className={cn("h-8", SPAN[index])} />
+          ))}
+        </div>
       </div>
     );
   }
@@ -146,7 +164,10 @@ export function GovernanceBand({ projectId }: { projectId: string | null }) {
   // overdue deadlines. It says nothing rather than something false.
   if (query.isError) {
     return (
-      <p className="px-6 pb-2 pt-3 text-xs text-muted-foreground" data-testid="governance-band-error">
+      <p
+        className="px-6 pb-2 pt-3 text-xs text-muted-foreground"
+        data-testid="governance-band-error"
+      >
         {t("governance.error")}
       </p>
     );
@@ -159,109 +180,133 @@ export function GovernanceBand({ projectId }: { projectId: string | null }) {
   const delta = latest - first;
 
   return (
-    <div
-      className="grid gap-2 px-6 pb-2 pt-3 sm:grid-cols-2 xl:grid-cols-5"
-      data-testid="governance-band"
-      data-scanned={band.scanned ? "true" : "false"}
-    >
-      <Tile
-        label={t("governance.risk")}
-        testId="governance-risk"
-        tone={band.scanned && band.risk_score >= 75 ? "danger" : "neutral"}
-        hint={band.scanned ? undefined : t("governance.never_scanned")}
+    <div className="[container-type:inline-size]">
+      <div
+        className="grid gap-2 px-6 pb-2 pt-3 [@container(min-width:30rem)]:grid-cols-2 [@container(min-width:40rem)]:grid-cols-6 [@container(min-width:56rem)]:grid-cols-5"
+        data-testid="governance-band"
+        data-scanned={band.scanned ? "true" : "false"}
       >
-        {band.scanned ? Math.round(band.risk_score) : "—"}
-      </Tile>
+        <Tile
+          label={t("governance.risk")}
+          testId="governance-risk"
+          span={SPAN[0]}
+          tone={band.scanned && band.risk_score >= 75 ? "danger" : "neutral"}
+          hint={band.scanned ? undefined : t("governance.never_scanned")}
+        >
+          {band.scanned ? Math.round(band.risk_score) : "—"}
+        </Tile>
 
-      <Tile
-        label={t("governance.gate")}
-        testId="governance-gate"
-        tone={
-          band.gate.status === "fail"
-            ? "danger"
-            : band.gate.status === "pass"
-              ? "ok"
-              : "neutral"
-        }
-        // State only. The reasons live once, in the Overview tab's build gate
-        // card; repeating them here put the same counts on screen four times.
-        to={
-          band.gate.status === "fail"
-            ? `/projects/${band.project_id}?tab=vulnerabilities`
-            : undefined
-        }
-      >
-        {/* Null status is its own word. A gate that never ran and a gate that
-         *  passed are the two states most costly to confuse here. */}
-        {band.gate.status === null
-          ? t("governance.gate_unknown")
-          : t(`governance.gate_${band.gate.status}`)}
-      </Tile>
+        <Tile
+          label={t("governance.gate")}
+          testId="governance-gate"
+          span={SPAN[1]}
+          tone={
+            band.gate.status === "fail"
+              ? "danger"
+              : band.gate.status === "pass"
+                ? "ok"
+                : "neutral"
+          }
+          // State only. The reasons live once, in the Overview tab's build gate
+          // card; repeating them here put the same counts on screen four times.
+          to={
+            band.gate.status === "fail"
+              ? `/projects/${band.project_id}?tab=vulnerabilities`
+              : undefined
+          }
+        >
+          {/* Null status is its own word. A gate that never ran and a gate that
+           *  passed are the two states most costly to confuse here. */}
+          {band.gate.status === null
+            ? t("governance.gate_unknown")
+            : t(`governance.gate_${band.gate.status}`)}
+        </Tile>
 
-      <Tile
-        label={t("governance.kev")}
-        testId="governance-kev"
-        tone={band.kev_sla.overdue > 0 ? "danger" : kevTotal > 0 ? "warning" : "neutral"}
-        hint={
-          kevTotal > 0
-            ? t("governance.kev_split", {
-                overdue: band.kev_sla.overdue,
-                dueSoon: band.kev_sla.due_soon,
-              })
-            : undefined
-        }
-        to={kevTotal > 0 ? `/projects/${band.project_id}?tab=vulnerabilities` : undefined}
-      >
-        {kevTotal}
-      </Tile>
+        <Tile
+          label={t("governance.kev")}
+          testId="governance-kev"
+          span={SPAN[2]}
+          tone={
+            band.kev_sla.overdue > 0
+              ? "danger"
+              : kevTotal > 0
+                ? "warning"
+                : "neutral"
+          }
+          hint={
+            kevTotal > 0
+              ? t("governance.kev_split", {
+                  overdue: band.kev_sla.overdue,
+                  dueSoon: band.kev_sla.due_soon,
+                })
+              : undefined
+          }
+          to={
+            kevTotal > 0
+              ? `/projects/${band.project_id}?tab=vulnerabilities`
+              : undefined
+          }
+        >
+          {kevTotal}
+        </Tile>
 
-      {/* B2 - the tile counts this project's open approvals, so the link has
+        {/* B2 - the tile counts this project's open approvals, so the link has
           to arrive at this project's queue. It used to land on the whole
           portfolio's, where the number the user just clicked was nowhere on
           the page. */}
-      <Tile
-        label={t("governance.approvals")}
-        testId="governance-approvals"
-        tone={band.pending_approvals > 0 ? "warning" : "neutral"}
-        to={
-          band.pending_approvals > 0
-            ? `/approvals?project=${band.project_id}`
-            : undefined
-        }
-      >
-        {band.pending_approvals}
-      </Tile>
+        <Tile
+          label={t("governance.approvals")}
+          testId="governance-approvals"
+          span={SPAN[3]}
+          tone={band.pending_approvals > 0 ? "warning" : "neutral"}
+          to={
+            band.pending_approvals > 0
+              ? `/approvals?project=${band.project_id}`
+              : undefined
+          }
+        >
+          {band.pending_approvals}
+        </Tile>
 
-      <div
-        className="flex min-w-0 flex-col gap-1 rounded-md border px-3 py-2"
-        data-testid="governance-trend"
-        data-delta={delta}
-      >
-        <span className="text-xs text-muted-foreground">
-          {t("governance.trend")}
-        </span>
-        {band.trend.length < 2 ? (
+        <div
+          className={cn(
+            "flex min-w-0 flex-col gap-1 rounded-md border px-3 py-2",
+            SPAN[4],
+          )}
+          data-testid="governance-trend"
+          data-delta={delta}
+        >
           <span className="text-xs text-muted-foreground">
-            {t("governance.trend_needs_history")}
+            {t("governance.trend")}
           </span>
-        ) : (
-          <>
-            <span
-              className={cn(
-                "text-xs font-medium tabular-nums",
-                delta > 0 && "text-status-danger-foreground",
-                delta < 0 && "text-status-success-foreground",
-                delta === 0 && "text-muted-foreground",
-              )}
-            >
-              {t("governance.trend_delta", {
-                delta: delta > 0 ? `+${delta}` : delta < 0 ? `−${Math.abs(delta)}` : "0",
-                scans: band.trend.length,
-              })}
+          {band.trend.length < 2 ? (
+            <span className="text-xs text-muted-foreground">
+              {t("governance.trend_needs_history")}
             </span>
-            <TrendSpark points={band.trend} />
-          </>
-        )}
+          ) : (
+            <>
+              <span
+                className={cn(
+                  "text-xs font-medium tabular-nums",
+                  delta > 0 && "text-status-danger-foreground",
+                  delta < 0 && "text-status-success-foreground",
+                  delta === 0 && "text-muted-foreground",
+                )}
+              >
+                {t("governance.trend_delta", {
+                  delta:
+                    delta > 0
+                      ? `+${delta}`
+                      : delta < 0
+                        ? `−${Math.abs(delta)}`
+                        : "0",
+                  scans: band.trend.length,
+                })}
+              </span>
+              <TrendSpark points={band.trend} />
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
