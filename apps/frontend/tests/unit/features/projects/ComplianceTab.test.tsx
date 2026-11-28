@@ -676,6 +676,24 @@ describe("ComplianceTab unified grid", () => {
   });
 
 
+  it("shows at most two obligation chips and a +N marker for the rest", async () => {
+    const ob = (n: number) => ({
+      obligation_id: `ob-${n}`,
+      kind: "source-disclosure",
+      summary: "Disclose.",
+      summary_ko: null,
+    });
+    mockedList.mockResolvedValue(
+      response([row("GPL-3.0-only", { obligations: [ob(1), ob(2), ob(3), ob(4)] })]),
+    );
+    renderTab();
+    await screen.findByTestId("compliance-row");
+    expect(screen.getAllByTestId("compliance-obligation-chip")).toHaveLength(2);
+    expect(screen.getByTestId("compliance-row-obligations-more")).toHaveTextContent(
+      "+2",
+    );
+  });
+
   it("drops the Affected column when no loaded license lists a component", async () => {
     mockedList.mockResolvedValue(
       response([
