@@ -308,7 +308,7 @@
     "outdated_chip": {
       "title": "{{count}} component behind latest patch",
       "title_other": "{{count}} components behind latest patch",
-      "body": "A newer patch is available on the same release line — still supported, just not current.",
+      "body": "A newer patch is available on the same release line. It is still supported, just not current.",
       "link": "View outdated components"
     },
     "malicious_chip": {

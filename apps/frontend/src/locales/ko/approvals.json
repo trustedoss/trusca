@@ -5,8 +5,8 @@
     "filter": {
       "status_open": "미결(대기 중 또는 검토 중)",
       "status_all": "전체 상태",
-      "from_label": "시작일",
-      "to_label": "종료일",
+      "from_label": "시작일 (yyyy-mm-dd)",
+      "to_label": "종료일 (yyyy-mm-dd)",
       "clear": "필터 해제",
       "clear_project": "해제",
       "project_unnamed": "선택한 프로젝트"
