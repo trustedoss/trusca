@@ -80,7 +80,7 @@ describe("GovernanceBand", () => {
     // Not "Pass" — the two states this band must never blur.
     expect(gate.textContent).toContain("Never scanned");
     expect(gate).toHaveAttribute("data-tone", "neutral");
-    expect(screen.getByTestId("governance-risk").textContent).toContain("—");
+    expect(screen.getByTestId("governance-risk").textContent).toContain("-");
   });
 
   it("marks a blocked gate and links to what blocked it", async () => {
