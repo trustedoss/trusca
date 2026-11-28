@@ -458,6 +458,27 @@ describe("ProjectListPage", () => {
     expect(screen.queryByTestId("project-row-severity")).not.toBeInTheDocument();
   });
 
+  it("renders a dash placeholder with a reason for projects without severity counts", async () => {
+    mockedListProjects.mockResolvedValueOnce(
+      listResponse([
+        project("Alpha", { latest_scan_status: null, severity_summary: null }),
+        project("Bravo", {
+          latest_scan_status: "succeeded",
+          severity_summary: { critical: 0, high: 0, medium: 0, low: 0 },
+          license_category_summary: null,
+          created_by_user_name: null,
+          team_name: null,
+        }),
+      ]),
+    );
+    renderPage();
+    const cells = await screen.findAllByTestId("project-row-severity-empty");
+    expect(cells).toHaveLength(2);
+    expect(cells[0]).toHaveTextContent("-");
+    expect(cells[0]).toHaveTextContent("Not scanned");
+    expect(cells[1]).toHaveTextContent("No vulnerabilities found");
+  });
+
   it("renders the scan-meta cluster (Rel · Scn · relative) for scanned rows", async () => {
     // Pin "now" so the relative-time helper is deterministic in jsdom.
     const now = new Date("2026-05-22T10:00:00Z");

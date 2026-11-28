@@ -1052,7 +1052,7 @@ const AFFECTED_COLUMN_RULES: readonly EmptyColumnRule<ComplianceRowItem>[] = [
 ];
 /** Fixed width of the waiver column, shared by header and row. */
 const WAIVE_COLUMN = "flex w-40 shrink-0 justify-end";
-const OBLIGATIONS_PREVIEW_CAP = 3;
+const OBLIGATIONS_PREVIEW_CAP = 2;
 
 /**
  * Exported under a test-only name so `tests/unit/design/gridRowSemantics`

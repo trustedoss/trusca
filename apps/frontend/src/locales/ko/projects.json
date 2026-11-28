@@ -56,6 +56,8 @@
     "idle": "스캔 전"
   },
   "severity": {
+    "not_scanned": "스캔하지 않음",
+    "none_found": "발견된 취약점 없음",
     "summary_aria": "심각도별 취약점 개수",
     "abbrev": {
       "critical": "C",

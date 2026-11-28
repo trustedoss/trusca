@@ -1060,8 +1060,21 @@ function SeveritySummary({
   summary: ProjectSeveritySummary | null;
 }) {
   const { t } = useTranslation("projects");
-  const spacer = <div className={cn("hidden lg:block", SEVERITY_COL)} />;
-  if (summary == null) return spacer;
+  // A dash keeps the cell from reading as a rendering gap; the screen-reader
+  // text says why it is empty (never scanned vs. nothing found).
+  const placeholder = (labelKey: string) => (
+    <div
+      className={cn(
+        "hidden items-center font-mono text-xs text-muted-foreground lg:flex",
+        SEVERITY_COL,
+      )}
+      data-testid="project-row-severity-empty"
+    >
+      <span aria-hidden>-</span>
+      <span className="sr-only">{t(labelKey)}</span>
+    </div>
+  );
+  if (summary == null) return placeholder("severity.not_scanned");
 
   const buckets: SeverityBucket[] = [
     {
@@ -1090,7 +1103,7 @@ function SeveritySummary({
     },
   ];
   const present = buckets.filter((b) => b.count > 0);
-  if (present.length === 0) return spacer;
+  if (present.length === 0) return placeholder("severity.none_found");
 
   return (
     <div
