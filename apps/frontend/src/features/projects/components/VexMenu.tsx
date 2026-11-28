@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Copyright 2026 TRUSCA contributors
-import { ChevronDownIcon } from "@primer/octicons-react";
+import { ChevronDownIcon, ShieldCheckIcon } from "@primer/octicons-react";
 import { ActionList, ActionMenu } from "@primer/react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { IconButton } from "@/components/primer/IconButton";
 import { useVexExport } from "@/features/projects/api/useVexExport";
 import type { TeamScopedRole } from "@/features/projects/api/projectDetailApi";
 import type { VexFormat } from "@/features/projects/api/vexApi";
@@ -25,6 +26,8 @@ export interface VexMenuProps {
   projectName?: string | null;
   projectRole?: TeamScopedRole;
   readOnly?: boolean;
+  /** Icon-only trigger for toolbars short of width; "VEX" stays as the name. */
+  compact?: boolean;
 }
 
 export function VexMenu({
@@ -32,6 +35,7 @@ export function VexMenu({
   projectName,
   projectRole = "developer",
   readOnly = false,
+  compact = false,
 }: VexMenuProps) {
   const { t } = useTranslation("project_detail");
   const exporter = useVexExport(projectId, projectName);
@@ -49,12 +53,22 @@ export function VexMenu({
   return (
     <div className="flex flex-col" data-testid="vex-export">
       <ActionMenu>
-        <ActionMenu.Button
-          trailingAction={ChevronDownIcon}
-          data-testid="vex-menu-trigger"
-        >
-          {t("vulnerabilities.vex.filter_label")}
-        </ActionMenu.Button>
+        {compact ? (
+          <ActionMenu.Anchor>
+            <IconButton
+              icon={ShieldCheckIcon}
+              aria-label={t("vulnerabilities.vex.filter_label")}
+              data-testid="vex-menu-trigger"
+            />
+          </ActionMenu.Anchor>
+        ) : (
+          <ActionMenu.Button
+            trailingAction={ChevronDownIcon}
+            data-testid="vex-menu-trigger"
+          >
+            {t("vulnerabilities.vex.filter_label")}
+          </ActionMenu.Button>
+        )}
         <ActionMenu.Overlay width="small">
           <ActionList>
             <ActionList.Group>

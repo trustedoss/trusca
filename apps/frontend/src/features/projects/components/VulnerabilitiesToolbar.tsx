@@ -421,7 +421,7 @@ export function VulnerabilitiesToolbar({
         // "업그". Wrapping keeps the filters inline, which is the design
         // system's rule for this surface (no modal filter dialogs); it just
         // spends a second line when the first one runs out.
-        "flex flex-col gap-3 border-b bg-background px-6 py-3 lg:flex-row lg:flex-wrap lg:items-end lg:gap-3",
+        "flex flex-col gap-3 border-b bg-background px-6 py-3 lg:flex-row lg:flex-wrap lg:items-end lg:gap-2",
         className,
       )}
       data-testid="vulnerabilities-toolbar"
@@ -449,7 +449,10 @@ export function VulnerabilitiesToolbar({
 
       {groupBy === "flat" ? (
         <>
-      <div className="min-w-[12rem] flex-1">
+      {/* Sort sits beside search: both order or narrow the same list, and
+          the pair takes the slack the row has. */}
+      <div className="flex min-w-0 flex-1 items-end gap-2">
+      <div className="min-w-[8rem] flex-1">
         <label
           htmlFor="vulnerabilities-search"
           className="block text-xs font-medium text-muted-foreground"
@@ -483,7 +486,7 @@ export function VulnerabilitiesToolbar({
           onChange={(event) =>
             onSortKeyChange(event.target.value as VulnerabilitySortKey)
           }
-          className="mt-1 w-40"
+          className="mt-1 w-32"
           data-testid="vulnerabilities-sort-select"
           // The option reads just "Priority" so it fits the control; the
           // ranking it stands for rides on the tooltip.
@@ -509,6 +512,8 @@ export function VulnerabilitiesToolbar({
         </Select>
       </div>
 
+      </div>
+
       <div className="flex flex-col">
         <label
           htmlFor="vulnerabilities-status-filter"
@@ -519,7 +524,7 @@ export function VulnerabilitiesToolbar({
         <MultiSelect
           id="vulnerabilities-status-filter"
           testId="vulnerabilities-status-filter"
-          className="w-44"
+          className="w-36"
           label={t("vulnerabilities.toolbar.status_label")}
           options={STATUS_OPTIONS.map((opt) => ({
             value: opt,
@@ -802,59 +807,48 @@ export function VulnerabilitiesToolbar({
         </div>
       ) : null}
 
-      <div className="flex flex-col lg:ml-auto">
-        <span className="invisible text-xs font-medium" aria-hidden>
-          &nbsp;
-        </span>
+      {/* Everything that leaves the screen or reshapes it, icon-only and
+          right-aligned: add filter, columns, CSV, VEX. Each keeps its tooltip
+          and accessible name. */}
+      <div
+        className="flex items-end gap-2 lg:ml-auto"
+        data-testid="vulnerabilities-toolbar-actions"
+      >
         <MoreFiltersMenu
           availableFilters={availableExtraFilters}
           activeFilterIds={activeFilterIds}
           onSelect={handleMoreFiltersSelect}
           testId="vulnerabilities-more-filters-trigger"
           disabled={readOnly}
+          compact
         />
-      </div>
-
-      <div className="flex flex-col">
-        <span className="invisible text-xs font-medium" aria-hidden>
-          &nbsp;
-        </span>
         <ColumnsPicker
           columns={columnsCatalog}
           visibleColumns={visibleColumns}
           onChange={onVisibleColumnsChange}
           storageKey={columnsStorageKey}
           testId="vulnerabilities-columns-picker-trigger"
+          compact
         />
-      </div>
-
-      {/* B5: the rows as they are filtered right now. Beside the VEX menu
-          because both answer "get this out of the browser", and a reader
-          looking for one will look here for the other. */}
-      <ExportCsvButton
-        onExport={() => onExportCsv()}
-        namespace="project_detail"
-        tooLargeExtension="vulnerabilities_export_too_large"
-        tooLargeMessageKey="export.too_large.vulnerabilities"
-        // The VEX filter narrows rows in the browser, not on the server, so
-        // the file would carry findings the screen is hiding. The whole
-        // promise here is that the file is the screen; where it cannot be,
-        // the honest answer is to refuse rather than to ship a file that
-        // misdescribes itself once it leaves for a ticket or a customer.
-        disabled={vexSuppressedOnly}
-        disabledReason={t("export.unavailable_vex_filter")}
-        data-testid="vulnerabilities-export-csv"
-      />
-
-      <div className="flex flex-col">
-        <span className="invisible text-xs font-medium" aria-hidden>
-          &nbsp;
-        </span>
+        <ExportCsvButton
+          onExport={() => onExportCsv()}
+          namespace="project_detail"
+          tooLargeExtension="vulnerabilities_export_too_large"
+          tooLargeMessageKey="export.too_large.vulnerabilities"
+          // The VEX filter narrows rows in the browser, not on the server, so
+          // the file would carry findings the screen is hiding; refuse rather
+          // than ship a file that misdescribes itself.
+          disabled={vexSuppressedOnly}
+          disabledReason={t("export.unavailable_vex_filter")}
+          data-testid="vulnerabilities-export-csv"
+          compact
+        />
         <VexMenu
           projectId={projectId}
           projectName={projectName}
           projectRole={projectRole}
           readOnly={readOnly}
+          compact
         />
       </div>
       {/* PDF report trigger lives on the Reports tab now — the

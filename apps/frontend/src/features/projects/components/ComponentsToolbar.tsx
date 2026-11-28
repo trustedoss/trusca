@@ -250,12 +250,12 @@ export function ComponentsToolbar({
         // G0-5: `lg:flex-wrap`, same reasoning as VulnerabilitiesToolbar:
         // the row has grown controls since it was written, and the next one,
         // or a longer translation, needs somewhere to go.
-        "flex flex-col gap-3 border-b bg-background px-6 py-3 lg:flex-row lg:flex-wrap lg:items-end",
+        "flex flex-col gap-3 border-b bg-background px-6 py-3 lg:flex-row lg:flex-wrap lg:items-end lg:gap-2",
         className,
       )}
       data-testid="components-toolbar"
     >
-      <div className={cn(FILTER_GROUP, "min-w-[12rem] flex-1")}>
+      <div className={cn(FILTER_GROUP, "min-w-[6rem] flex-1")}>
         <label htmlFor="components-search" className={FILTER_LABEL}>
           {t("components.toolbar.search_label")}
         </label>
@@ -296,7 +296,7 @@ export function ComponentsToolbar({
         <MultiSelect
           id="components-usage-filter"
           testId="components-usage-filter"
-          className="w-32"
+          className="w-28"
           label={t("components.toolbar.usage_label")}
           options={USAGE_OPTIONS.map((opt) => ({
             value: opt,
@@ -424,15 +424,6 @@ export function ComponentsToolbar({
         </div>
       ) : null}
 
-      <div className="flex items-end">
-        <MoreFiltersMenu
-          availableFilters={availableExtraFilters}
-          activeFilterIds={activeFilterIds}
-          onSelect={handleMoreFiltersSelect}
-          testId="components-more-filters-trigger"
-        />
-      </div>
-
       {/* What leaves this screen and how it is drawn: the column picker, the
           CSV of the rows as they are filtered right now (B5), and the Table /
           Graph switch. Icon-only, each named by its tooltip and accessible
@@ -440,9 +431,16 @@ export function ComponentsToolbar({
           sidebar open. One right-aligned cluster, so when the row wraps at a
           narrower width the three move together and stay on the right. */}
       <div
-        className="flex flex-wrap items-end gap-2 lg:ml-auto"
+        className="flex items-end gap-2 lg:ml-auto"
         data-testid="components-toolbar-actions"
       >
+        <MoreFiltersMenu
+          availableFilters={availableExtraFilters}
+          activeFilterIds={activeFilterIds}
+          onSelect={handleMoreFiltersSelect}
+          testId="components-more-filters-trigger"
+          compact
+        />
         <ColumnsPicker
           columns={columnsCatalog}
           visibleColumns={visibleColumns}

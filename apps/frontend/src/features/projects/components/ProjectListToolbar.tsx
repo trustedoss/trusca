@@ -19,6 +19,13 @@ import { cn } from "@/lib/utils";
  * dispatches change events upward; the parent owns all filter state.
  */
 
+/**
+ * The field labels are visible from `xl`. Below it they stay as the accessible
+ * name only, and each "all" option names its field ("All statuses"), so the
+ * row is one line at 1024 px instead of three.
+ */
+const LABEL = "sr-only whitespace-nowrap text-xs font-medium text-muted-foreground xl:not-sr-only";
+
 export type ProjectStatusFilter =
   | "all"
   | "queued"
@@ -86,12 +93,12 @@ export function ProjectListToolbar({
         // off-white canvas so the surrounding white cards visually pop, and
         // the inner spacing standardises on the 12 / 16 / 24 px scale (gap-3,
         // px-6, py-3). Inputs get `shadow-sm` so the row reads as raised.
-        "flex flex-col gap-3 border-b bg-background px-6 py-3 md:flex-row md:flex-wrap md:items-center md:gap-x-4 md:gap-y-2",
+        "flex flex-col gap-3 border-b bg-background px-6 py-3 md:flex-row md:flex-wrap md:items-center md:gap-x-3 md:gap-y-2",
         className,
       )}
       data-testid="project-list-toolbar"
     >
-      <div className="min-w-[14rem] flex-1">
+      <div className="min-w-[10rem] flex-1">
         <label htmlFor="project-search" className="sr-only">
           {t("toolbar.search_placeholder")}
         </label>
@@ -108,8 +115,31 @@ export function ProjectListToolbar({
 
       <div className="flex shrink-0 items-center gap-2">
         <label
+          htmlFor="project-sort"
+          className={LABEL}
+        >
+          {t("toolbar.sort_label")}
+        </label>
+        <Select
+          id="project-sort"
+          value={sort}
+          onChange={(event) =>
+            onSortChange(event.target.value as ProjectSortKey)
+          }
+          data-testid="project-sort"
+        >
+          {SORT_OPTIONS.map((key) => (
+            <option key={key} value={key}>
+              {t(`toolbar.sort_by_${key}`)}
+            </option>
+          ))}
+        </Select>
+      </div>
+
+      <div className="flex shrink-0 items-center gap-2">
+        <label
           htmlFor="project-status-filter"
-          className="whitespace-nowrap text-xs font-medium text-muted-foreground"
+          className={LABEL}
         >
           {t("toolbar.filter_status_label")}
         </label>
@@ -124,7 +154,7 @@ export function ProjectListToolbar({
           {STATUS_OPTIONS.map((opt) => (
             <option key={opt} value={opt}>
               {opt === "all"
-                ? t("toolbar.filter_status_all")
+                ? t("toolbar.filter_status_all_option")
                 : t(`status.${opt}`)}
             </option>
           ))}
@@ -134,7 +164,7 @@ export function ProjectListToolbar({
       <div className="flex shrink-0 items-center gap-2">
         <label
           htmlFor="project-distribution-filter"
-          className="whitespace-nowrap text-xs font-medium text-muted-foreground"
+          className={LABEL}
         >
           {t("toolbar.filter_distribution_label")}
         </label>
@@ -150,7 +180,7 @@ export function ProjectListToolbar({
           }
           data-testid="project-distribution-filter"
         >
-          <option value="">{t("toolbar.filter_distribution_all")}</option>
+          <option value="">{t("toolbar.filter_distribution_all_option")}</option>
           {DISTRIBUTION_MODELS.map((model) => (
             <option key={model} value={model}>
               {t(`toolbar.filter_distribution_option.${model}`)}
@@ -166,7 +196,7 @@ export function ProjectListToolbar({
         <div className="flex shrink-0 items-center gap-2">
           <label
             htmlFor="project-team-filter"
-            className="whitespace-nowrap text-xs font-medium text-muted-foreground"
+            className={LABEL}
           >
             {t("toolbar.filter_team_label")}
           </label>
@@ -186,28 +216,6 @@ export function ProjectListToolbar({
         </div>
       ) : null}
 
-      <div className="flex shrink-0 items-center gap-2">
-        <label
-          htmlFor="project-sort"
-          className="whitespace-nowrap text-xs font-medium text-muted-foreground"
-        >
-          {t("toolbar.sort_label")}
-        </label>
-        <Select
-          id="project-sort"
-          value={sort}
-          onChange={(event) =>
-            onSortChange(event.target.value as ProjectSortKey)
-          }
-          data-testid="project-sort"
-        >
-          {SORT_OPTIONS.map((key) => (
-            <option key={key} value={key}>
-              {t(`toolbar.sort_by_${key}`)}
-            </option>
-          ))}
-        </Select>
-      </div>
     </div>
   );
 }

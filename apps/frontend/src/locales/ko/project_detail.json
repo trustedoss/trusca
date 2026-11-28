@@ -63,7 +63,8 @@
       },
       "order_label": "순서",
       "order_asc": "오름차순",
-      "order_desc": "내림차순"
+      "order_desc": "내림차순",
+      "sort_option": "{{sort}} ({{order}})"
     },
     "row": {
       "no_spdx_id": "—"

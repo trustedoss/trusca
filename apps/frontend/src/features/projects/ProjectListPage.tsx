@@ -926,7 +926,7 @@ export interface ProjectRowProps {
   rowIndex: number;
   writeDisabled?: boolean;
   /**
-   * GitLab-style "{team} / {project}" breadcrumb (vs. a bare project name).
+   * Team name as a secondary line under the project name.
    * The parent turns this on only when the loaded page spans more than one
    * team: the super admin's cross-team view, where identically-named rows
    * otherwise carry no clue which team they belong to.
@@ -961,37 +961,32 @@ export function ProjectRow({
       style={{ height: "var(--table-row)" }}
     >
       <div className={cn("flex min-w-0 flex-1 items-center gap-3", NAME_MIN)}>
-        {/* Team + project were previously one <Link>, with the team name
-            nested inside it as a <span>: invalid HTML (no interactive
-            descendants inside an <a>) and a link that could only ever go to
-            the project. Split into two sibling links: the team segment now
-            goes to that team's group page, the project segment keeps going
-            to the project. */}
-        {showTeamBreadcrumb && project.team_name ? (
-          <>
+        {/* The team is a secondary line under the name, not a "team / name"
+            prefix: the prefix took the width the name needed and truncated
+            it at 1024 px. Two sibling links (team page, project page), never
+            one link nesting the other. */}
+        <div className="flex min-w-0 flex-col justify-center leading-tight">
+          <Link
+            to={`/projects/${project.id}`}
+            className="min-w-[6rem] max-w-[24rem] truncate font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            title={project.name}
+            data-testid="project-row-link"
+            data-project-id={project.id}
+          >
+            {project.name}
+          </Link>
+          {showTeamBreadcrumb && project.team_name ? (
             <Link
               to={`/groups/${project.team_id}`}
-              className="min-w-0 max-w-[8rem] shrink-[4] truncate font-normal text-muted-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              className="min-w-0 max-w-[24rem] truncate text-xs font-normal text-muted-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               title={project.team_name}
               data-testid="project-row-team"
               data-team-id={project.team_id}
             >
               {project.team_name}
             </Link>
-            <span aria-hidden className="shrink-0 font-normal text-muted-foreground">
-              /
-            </span>
-          </>
-        ) : null}
-        <Link
-          to={`/projects/${project.id}`}
-          className="min-w-[6rem] max-w-[24rem] shrink truncate font-medium hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-          title={project.name}
-          data-testid="project-row-link"
-          data-project-id={project.id}
-        >
-          {project.name}
-        </Link>
+          ) : null}
+        </div>
         <span
           // G0-5 — also `lg`-gated. Once the row fitted, the repository URL
           // was taking 121 px of the 169 px available and the project name was

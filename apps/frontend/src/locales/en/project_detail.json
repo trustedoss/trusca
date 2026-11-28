@@ -63,7 +63,8 @@
       },
       "order_label": "Order",
       "order_asc": "Ascending",
-      "order_desc": "Descending"
+      "order_desc": "Descending",
+      "sort_option": "{{sort}} ({{order}})"
     },
     "row": {
       "no_spdx_id": "—"
