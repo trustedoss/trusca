@@ -4,9 +4,9 @@
     "version": "1.4.0"
   },
   "engine": {
-    "version": "1.15.3",
-    "image": "ghcr.io/sktelecom/bomlens:1.15.3",
-    "image_digest": "sha256:9a857b20f348c6b1ceae554c6566165c35cf24a71b12fb488b8a0e39aac7cf89"
+    "version": "1.15.7",
+    "image": "ghcr.io/sktelecom/bomlens:1.15.7",
+    "image_digest": "sha256:f5fd2d0ec129b9b8d0d02b777f1efc0db035d499f6fbcf63de8b40cfb73b8290"
   },
   "input": {
     "kind": "source",
@@ -16,8 +16,8 @@
   "run": {
     "status": "succeeded",
     "reason": null,
-    "started_at": "2026-11-22T22:31:05Z",
-    "ended_at": "2026-11-22T22:31:05Z",
+    "started_at": "2026-11-28T12:23:01Z",
+    "ended_at": "2026-11-28T12:23:01Z",
     "exit_code": 0
   },
   "steps": [
@@ -26,8 +26,8 @@
       "status": "ok",
       "reason": null,
       "detail": null,
-      "started_at": "2026-11-22T22:31:05Z",
-      "ended_at": "2026-11-22T22:31:05Z",
+      "started_at": "2026-11-28T12:23:01Z",
+      "ended_at": "2026-11-28T12:23:01Z",
       "stage": 2
     }
   ],
@@ -43,7 +43,7 @@
     {
       "role": "plan",
       "path": "bomlens-plan.json",
-      "sha256": "cb0be45beb5f5578b884e927aa7ed825bb321c2294863c8e91c658d1187eb3b0",
+      "sha256": "6bd8b1d6052708727a54e4b4547ef15b675fcabf654c42dc6c3799e84e16facc",
       "bytes": 21808
     }
   ]

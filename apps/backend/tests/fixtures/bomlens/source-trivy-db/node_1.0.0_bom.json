@@ -8,21 +8,21 @@
               "name": "OWASP Foundation"
             }
           ],
-          "bom-ref": "pkg:npm/@cdxgen/cdxgen@13.5.0",
+          "bom-ref": "pkg:npm/@cdxgen/cdxgen@13.8.0",
           "group": "@cdxgen",
           "name": "cdxgen",
           "publisher": "OWASP Foundation",
-          "purl": "pkg:npm/%40cdxgen/cdxgen@13.5.0",
+          "purl": "pkg:npm/%40cdxgen/cdxgen@13.8.0",
           "type": "application",
-          "version": "13.5.0"
+          "version": "13.8.0"
         }
       },
       "bom-ref": "metadata-annotations",
       "subjects": [
         "pkg:npm/baseline-e2e-fixture@1.0.0"
       ],
-      "text": "This Software Bill-of-Materials (SBOM) document was created on Sunday, November 22, 2026 with cdxgen. The data was captured during the build lifecycle phase. The document describes an application named 'baseline-e2e-fixture' with version '1.0.0'.",
-      "timestamp": "2026-11-22T22:25:14Z"
+      "text": "This Software Bill-of-Materials (SBOM) document was created on Saturday, November 28, 2026 with cdxgen. The data was captured during the build lifecycle phase. The document describes an application named 'baseline-e2e-fixture' with version '1.0.0'.",
+      "timestamp": "2026-11-28T12:06:07Z"
     }
   ],
   "bomFormat": "CycloneDX",
@@ -87,7 +87,7 @@
   "metadata": {
     "authors": [
       {
-        "name": "BomLens 1.15.3"
+        "name": "BomLens 1.15.7"
       }
     ],
     "component": {
@@ -135,7 +135,7 @@
         "value": "tool"
       }
     ],
-    "timestamp": "2026-11-22T22:25:14Z",
+    "timestamp": "2026-11-28T12:06:07Z",
     "tools": {
       "components": [
         {
@@ -144,24 +144,24 @@
               "name": "OWASP Foundation"
             }
           ],
-          "bom-ref": "pkg:npm/@cdxgen/cdxgen@13.5.0",
+          "bom-ref": "pkg:npm/@cdxgen/cdxgen@13.8.0",
           "group": "@cdxgen",
           "name": "cdxgen",
           "publisher": "OWASP Foundation",
-          "purl": "pkg:npm/%40cdxgen/cdxgen@13.5.0",
+          "purl": "pkg:npm/%40cdxgen/cdxgen@13.8.0",
           "type": "application",
-          "version": "13.5.0"
+          "version": "13.8.0"
         },
         {
           "name": "BomLens",
           "publisher": "SK Telecom",
           "type": "application",
-          "version": "1.15.3"
+          "version": "1.15.7"
         }
       ]
     }
   },
-  "serialNumber": "urn:uuid:6f747054-85de-4d4d-90a3-cb3c3135a7b4",
+  "serialNumber": "urn:uuid:be4ea735-c7de-448c-b345-49bda725a654",
   "services": [],
   "specVersion": "1.6",
   "version": 1,

@@ -3473,7 +3473,7 @@
   "metadata": {
     "authors": [
       {
-        "name": "BomLens 1.15.3"
+        "name": "BomLens 1.15.7"
       }
     ],
     "component": {
@@ -3497,7 +3497,7 @@
         "value": "tool"
       }
     ],
-    "timestamp": "2026-11-22T22:29:02Z",
+    "timestamp": "2026-11-28T12:11:12Z",
     "tools": {
       "components": [
         {
@@ -3510,12 +3510,12 @@
           "name": "BomLens",
           "publisher": "SK Telecom",
           "type": "application",
-          "version": "1.15.3"
+          "version": "1.15.7"
         }
       ]
     }
   },
-  "serialNumber": "urn:uuid:5c95fcd2-6091-424d-bc01-11d7ade6c268",
+  "serialNumber": "urn:uuid:912bce51-e31e-403c-ba8c-8df68802b1ed",
   "specVersion": "1.6",
   "version": 1,
   "compositions": [

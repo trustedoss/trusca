@@ -4,9 +4,9 @@
     "version": "1.4.0"
   },
   "engine": {
-    "version": "1.15.3",
-    "image": "ghcr.io/sktelecom/bomlens:1.15.3",
-    "image_digest": "sha256:9a857b20f348c6b1ceae554c6566165c35cf24a71b12fb488b8a0e39aac7cf89"
+    "version": "1.15.7",
+    "image": "ghcr.io/sktelecom/bomlens:1.15.7",
+    "image_digest": "sha256:f5fd2d0ec129b9b8d0d02b777f1efc0db035d499f6fbcf63de8b40cfb73b8290"
   },
   "input": {
     "kind": "source",
@@ -18,14 +18,14 @@
   "output_file": "app_1.0_bom.json",
   "input_fingerprint": {
     "algorithm": "bomlens-input-1",
-    "sha256": "7d56bf30d88ae3615ebf4c3dc232018abad8cae2367714d59fa452686e84f979",
+    "sha256": "c9b82700eb352c5b2133a137bb6439e84c1c5698f808fe4be30a7c77e7a0966b",
     "reusable": true,
     "reasons": [],
     "components": [
       {
         "kind": "engine",
         "name": "build-prep.sh",
-        "sha256": "1e45b947481e71fae14e3f3aeea9de713e86112b98a906a911a7c03f33bfa261"
+        "sha256": "0c1428196eb3b52696080de0006d34b674ad540e98c2dabbe4cf92c17d0ad8a7"
       },
       {
         "kind": "engine",
@@ -51,12 +51,12 @@
       {
         "kind": "image",
         "name": "bomlens",
-        "sha256": "9a857b20f348c6b1ceae554c6566165c35cf24a71b12fb488b8a0e39aac7cf89"
+        "sha256": "f5fd2d0ec129b9b8d0d02b777f1efc0db035d499f6fbcf63de8b40cfb73b8290"
       },
       {
         "kind": "image",
         "name": "stage1",
-        "sha256": "0fb2e022c564589424f8e6704e3417eae573434e5bb43540cc86fceac8a61d84"
+        "sha256": "0f390da85ee0cd0fe37852f340c004e310604d4173b1f67986912fa832dab884"
       },
       {
         "kind": "setting",
@@ -199,8 +199,8 @@
     {
       "id": "generate",
       "stage": 1,
-      "image": "registry.example/mirror/cdxgen/cdxgen-alpine-node24:13.5.0",
-      "image_digest": "sha256:0fb2e022c564589424f8e6704e3417eae573434e5bb43540cc86fceac8a61d84",
+      "image": "registry.example/mirror/cdxgen/cdxgen-alpine-node24:13.8.0",
+      "image_digest": "sha256:0f390da85ee0cd0fe37852f340c004e310604d4173b1f67986912fa832dab884",
       "user": "0:0",
       "entrypoint": [
         "sh"
@@ -316,14 +316,14 @@
       ],
       "input_fingerprint": {
         "algorithm": "bomlens-input-1",
-        "sha256": "7d56bf30d88ae3615ebf4c3dc232018abad8cae2367714d59fa452686e84f979",
+        "sha256": "c9b82700eb352c5b2133a137bb6439e84c1c5698f808fe4be30a7c77e7a0966b",
         "reusable": true,
         "reasons": [],
         "components": [
           {
             "kind": "engine",
             "name": "build-prep.sh",
-            "sha256": "1e45b947481e71fae14e3f3aeea9de713e86112b98a906a911a7c03f33bfa261"
+            "sha256": "0c1428196eb3b52696080de0006d34b674ad540e98c2dabbe4cf92c17d0ad8a7"
           },
           {
             "kind": "engine",
@@ -349,12 +349,12 @@
           {
             "kind": "image",
             "name": "bomlens",
-            "sha256": "9a857b20f348c6b1ceae554c6566165c35cf24a71b12fb488b8a0e39aac7cf89"
+            "sha256": "f5fd2d0ec129b9b8d0d02b777f1efc0db035d499f6fbcf63de8b40cfb73b8290"
           },
           {
             "kind": "image",
             "name": "stage1",
-            "sha256": "0fb2e022c564589424f8e6704e3417eae573434e5bb43540cc86fceac8a61d84"
+            "sha256": "0f390da85ee0cd0fe37852f340c004e310604d4173b1f67986912fa832dab884"
           },
           {
             "kind": "setting",
@@ -553,8 +553,8 @@
     {
       "id": "postprocess",
       "stage": 2,
-      "image": "ghcr.io/sktelecom/bomlens:1.15.3",
-      "image_digest": "sha256:9a857b20f348c6b1ceae554c6566165c35cf24a71b12fb488b8a0e39aac7cf89",
+      "image": "ghcr.io/sktelecom/bomlens:1.15.7",
+      "image_digest": "sha256:f5fd2d0ec129b9b8d0d02b777f1efc0db035d499f6fbcf63de8b40cfb73b8290",
       "user": null,
       "entrypoint": null,
       "args": [],

@@ -1,7 +1,7 @@
 # Provenance of the BomLens execution plan fixtures
 
 Every `bomlens-plan.json` and `bomlens-result.json` here is unedited output of
-the published BomLens image, captured on 2026-11-23 with a plain
+the published BomLens image, captured on 2026-11-28 with a plain
 `docker run` (no compose). Tests that need a hostile or broken plan copy a capture and
 change the copy (`tests/unit/integrations/bomlens/test_plan.py`).
 
@@ -9,9 +9,9 @@ change the copy (`tests/unit/integrations/bomlens/test_plan.py`).
 
 | | |
 |---|---|
-| Image | `ghcr.io/sktelecom/bomlens:1.15.3` (the BomLens v1.15.3 release) |
-| Index digest | `sha256:9a857b20f348c6b1ceae554c6566165c35cf24a71b12fb488b8a0e39aac7cf89` |
-| Source commit | image label `org.opencontainers.image.revision=87fb64f3`, the commit the `v1.15.3` tag in `sktelecom/bomlens` names. Image label `com.sktelecom.sbom.engine-contract=1.4.0` |
+| Image | `ghcr.io/sktelecom/bomlens:1.15.7` (the BomLens v1.15.7 release) |
+| Index digest | `sha256:f5fd2d0ec129b9b8d0d02b777f1efc0db035d499f6fbcf63de8b40cfb73b8290` |
+| Source commit | image label `org.opencontainers.image.revision=5529d5ab`, the commit the `v1.15.7` tag in `sktelecom/bomlens` names. Image label `com.sktelecom.sbom.engine-contract=1.4.0` |
 | Platform pulled | `linux/arm64` |
 
 The plans and the result manifests both say contract `1.4.0`. Until BomLens
@@ -20,8 +20,8 @@ The plans and the result manifests both say contract `1.4.0`. Until BomLens
 role); #208 gives the plan the engine contract version. The reader still does
 not use the version to decide which mount roles to expect.
 
-`engine-plan-1.json` is `schemas/engine-plan-1.json` at the `v1.15.3` tag,
-copied byte for byte. Against the `v1.13.2` copy it replaced, it adds the
+`engine-plan-1.json` is `schemas/engine-plan-1.json` at the `v1.15.7` tag,
+copied byte for byte (unchanged since `v1.15.3`). Against the `v1.13.2` copy it replaced, it adds the
 `input_fingerprint` object (at the top level and on each stage) and the six
 settings mount roles. The vocabulary test compares the reader's enums to it.
 
@@ -40,17 +40,17 @@ docker run --rm --read-only --network none --cap-drop ALL \
   --workdir /host-output \
   -e MODE=PLAN -e PROJECT_NAME=app -e PROJECT_VERSION=1.0 -e HOST_OUTPUT_DIR=/host-output \
   -e FETCH_LICENSE=false \
-  -e BOMLENS_IMAGE_REF=ghcr.io/sktelecom/bomlens:1.15.3 \
-  -e BOMLENS_IMAGE_DIGEST=sha256:9a857b20f348c6b1ceae554c6566165c35cf24a71b12fb488b8a0e39aac7cf89 \
+  -e BOMLENS_IMAGE_REF=ghcr.io/sktelecom/bomlens:1.15.7 \
+  -e BOMLENS_IMAGE_DIGEST=sha256:f5fd2d0ec129b9b8d0d02b777f1efc0db035d499f6fbcf63de8b40cfb73b8290 \
   -e HOST_UID=<uid> -e HOST_GID=<gid> \
-  ghcr.io/sktelecom/bomlens:1.15.3@sha256:9a857b20f348c6b1ceae554c6566165c35cf24a71b12fb488b8a0e39aac7cf89
+  ghcr.io/sktelecom/bomlens:1.15.7@sha256:f5fd2d0ec129b9b8d0d02b777f1efc0db035d499f6fbcf63de8b40cfb73b8290
 ```
 
 | Case | Source | Exit | Result |
 |---|---|---|---|
-| `node-ok` | `tests/e2e/golden/fixtures/node` (npm, `lodash` 4.17.21) | 0 | `ok`; stage 1 `ghcr.io/cdxgen/cdxgen-alpine-node24:13.5.0@sha256:0fb2e022...` with the two caches and six settings files as optional mounts, stage 2 the image above with the `trivy-db` mount (`/trivy-db`, read-only, optional), `SECURITY_ENRICH=false` in its `env`, and the proxy, `TRIVY_*`, `BOMLENS_TRIVY_DB_MAX_AGE_DAYS`, `EPSS_API` and `KEV_URL` names in its `env_passthrough` |
+| `node-ok` | `tests/e2e/golden/fixtures/node` (npm, `lodash` 4.17.21) | 0 | `ok`; stage 1 `ghcr.io/cdxgen/cdxgen-alpine-node24:13.8.0@sha256:0f390da8...` with the two caches and six settings files as optional mounts, stage 2 the image above with the `trivy-db` mount (`/trivy-db`, read-only, optional), `SECURITY_ENRICH=false` in its `env`, and the proxy, `TRIVY_*`, `BOMLENS_TRIVY_DB_MAX_AGE_DAYS`, `EPSS_API` and `KEV_URL` names in its `env_passthrough` |
 | `android-unsupported` | BomLens `tests/fixtures/android-kotlin-dsl` at the `v1.13.5` tag | 0 | `unsupported`, reason `android-sdk-image`, no stages; the manifest records the `plan` step `skipped` (`not_installed`) and the run `succeeded_degraded` |
-| `node-mirror-prefix` | the same `node` source, with `-e CDXGEN_IMAGE_PREFIX=registry.example/mirror/cdxgen/` added | 0 | `ok`; stage 1 `registry.example/mirror/cdxgen/cdxgen-alpine-node24:13.5.0` with the same digest as `node-ok` (`sha256:0fb2e022...`) |
+| `node-mirror-prefix` | the same `node` source, with `-e CDXGEN_IMAGE_PREFIX=registry.example/mirror/cdxgen/` added | 0 | `ok`; stage 1 `registry.example/mirror/cdxgen/cdxgen-alpine-node24:13.8.0` with the same digest as `node-ok` (`sha256:0fb2e022...`) |
 
 `node-mirror-prefix` differs from `node-ok` in the stage 1 `image` only; in
 its result manifest, the size and digest of the plan file. On the `1.13.2`
@@ -65,6 +65,12 @@ same image, copied byte for byte (identical to the `1.13.4` copy) with
 It is the list the offline-install guide tells an operator to read and copy;
 `tests/unit/test_bomlens_stage1_prefix_doc_contract.py` runs the guide's
 commands on it.
+
+Against the `1.15.3` captures (2026-11-23) these replaced, the plans differ in
+the image fields, the digests in `input_fingerprint` and stage 1's image, now
+`cdxgen-alpine-node24:13.8.0` (the cdxgen language images moved from `13.5.0`
+to `13.8.0`, so every digest in `cdxgen-images.json` changed). The contract
+version (`1.4.0`), the stages, the mount roles and the schema are the same.
 
 Against the `1.13.5` captures (2026-10-15) the first `1.4.0` captures replaced, the plans differ
 in the image fields, the contract version (`1.4.0`), the digests in

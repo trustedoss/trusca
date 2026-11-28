@@ -103,22 +103,22 @@ days in the stale database's detail.
 
 ### Contract 1.4.0 images
 
-The BomLens v1.15.3 release, both images built from the same commit:
+The BomLens v1.15.7 release, both images built from the same commit:
 
 | | |
 |---|---|
-| Image | `ghcr.io/sktelecom/bomlens:1.15.3` |
-| Digest | `sha256:9a857b20f348c6b1ceae554c6566165c35cf24a71b12fb488b8a0e39aac7cf89` (index; the linux/arm64 manifest ran) |
-| Deep-license image | `ghcr.io/sktelecom/bomlens-deep-license:1.15.3` |
-| Deep-license digest | `sha256:4f5bacb77ef12ffe2c768c3a297671fe373db20c23d0753fd8e15a432e0a705f` (index; the linux/arm64 manifest ran) |
-| Source commit | image label `org.opencontainers.image.revision=87fb64f3`, the commit the `v1.15.3` tag in `sktelecom/bomlens` names (engine contract `1.4.0`) |
+| Image | `ghcr.io/sktelecom/bomlens:1.15.7` |
+| Digest | `sha256:f5fd2d0ec129b9b8d0d02b777f1efc0db035d499f6fbcf63de8b40cfb73b8290` (index; the linux/arm64 manifest ran) |
+| Deep-license image | `ghcr.io/sktelecom/bomlens-deep-license:1.15.7` |
+| Deep-license digest | `sha256:dbd0ae41530c514d720a2aa5c5ab2716a5f0e3c5a110023ff9a72f8f870ccc15` (index; the linux/arm64 manifest ran) |
+| Source commit | image label `org.opencontainers.image.revision=5529d5ab`, the commit the `v1.15.7` tag in `sktelecom/bomlens` names (engine contract `1.4.0`) |
 | Trivy in the image | 0.75.0 |
 | Trivy database | schema 2, `UpdatedAt` 2026-11-22T19:00Z, downloaded with Trivy 0.76.1 `trivy image --download-db-only`, mounted read-only at `/trivy-db` |
 
 Used for `image-os-licenses`, `source-trivy-db`, `source-trivy-db-stale`,
 `image-registry-alpine` and `source-deep-license-trivy-db`, captured on
-2026-11-23. The source cases ran through the `bomlens-runner` package
-`1.15.3` from PyPI on Docker, which runs the plan's stages with the same
+2026-11-28. The source cases ran through the `bomlens-runner` package
+`1.15.7` from PyPI on Docker, which runs the plan's stages with the same
 mounts and limits as before, with `fetch_license=False` and `BOMLENS_TRIVY_DB_MAX_AGE_DAYS=9` for stage 2
 and, for the deep-license case, `LICENSE_REGISTRY=true` and
 `LICENSE_REGISTRY_BUDGET=0`. The image cases ran through the same package's
@@ -129,10 +129,19 @@ records its path. `source-trivy-db-stale`
 used a copy of the same database whose `metadata.json` dates are twelve days
 earlier (`UpdatedAt` 2026-11-10T19:00Z).
 
-They replace captures of the same cases from the `1.13.5` release
+They replace captures of the same cases from the `1.15.3` release (2026-11-23,
+same database). The steps, statuses, reasons and details are the same, and so are
+the SBOM components, licences and Trivy findings. The differences are the image
+fields in every manifest and SBOM, the run times, the serial numbers and
+timestamps, the report IDs and the output digests. The manifests say contract
+`1.4.0` and the engine `1.15.7`. Stage 1 of the source cases is
+`cdxgen-alpine-node24:13.8.0`, and `source-go-vulndb` ran with the Go module
+proxy served from a local cache.
+
+Before that they replaced captures of the same cases from the `1.13.5` release
 (2026-10-15). The steps, statuses, reasons and details are the same, with one
 new step in every manifest: `go-vulndb`, `skipped` (`no_input`, "no Go module
-in the SBOM"). The manifests say contract `1.4.0` and the engine `1.15.3`.
+in the SBOM"). The manifests of that capture said contract `1.4.0` and the engine `1.15.3`.
 The stage 1 image of the source cases is `cdxgen-alpine-node24:13.5.0`. The
 findings follow the newer database: `node` has two CVEs (`CVE-2025-13465`,
 `CVE-2026-4800`; `CVE-2026-2950` is no longer reported), and the distroless
