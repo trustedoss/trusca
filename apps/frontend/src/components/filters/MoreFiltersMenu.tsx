@@ -4,6 +4,8 @@ import { CheckIcon, PlusIcon } from "@primer/octicons-react";
 import { ActionList, ActionMenu } from "@primer/react";
 import { useTranslation } from "react-i18next";
 
+import { IconButton } from "@/components/primer/IconButton";
+
 /**
  * MoreFiltersMenu — W9 #52 generic "+ Add filter" affordance.
  *
@@ -54,6 +56,8 @@ export interface MoreFiltersMenuProps {
   testId?: string;
   /** Trigger width utility (matches the surrounding toolbar controls). */
   className?: string;
+  /** Icon-only trigger for toolbars short of width; the name stays as the tooltip. */
+  compact?: boolean;
 }
 
 export function MoreFiltersMenu({
@@ -63,6 +67,7 @@ export function MoreFiltersMenu({
   disabled = false,
   testId = "more-filters-trigger",
   className,
+  compact = false,
 }: MoreFiltersMenuProps) {
   const { t } = useTranslation("common");
 
@@ -74,15 +79,27 @@ export function MoreFiltersMenu({
 
   return (
     <ActionMenu>
-      <ActionMenu.Button
-        leadingVisual={PlusIcon}
-        disabled={disabled}
-        aria-label={t("filters.more_filters.aria")}
-        data-testid={testId}
-        className={className}
-      >
-        {t("filters.more_filters.trigger")}
-      </ActionMenu.Button>
+      {compact ? (
+        <ActionMenu.Anchor>
+          <IconButton
+            icon={PlusIcon}
+            disabled={disabled}
+            aria-label={t("filters.more_filters.trigger")}
+            data-testid={testId}
+            className={className}
+          />
+        </ActionMenu.Anchor>
+      ) : (
+        <ActionMenu.Button
+          leadingVisual={PlusIcon}
+          disabled={disabled}
+          aria-label={t("filters.more_filters.aria")}
+          data-testid={testId}
+          className={className}
+        >
+          {t("filters.more_filters.trigger")}
+        </ActionMenu.Button>
+      )}
       <ActionMenu.Overlay width="small">
         <ActionList>
           {availableFilters.map((option) => (

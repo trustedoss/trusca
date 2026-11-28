@@ -843,6 +843,8 @@ function ComplianceToolbar({
         </div>
       ) : null}
 
+      {/* One select for key and direction: two selects side by side took a
+          line of their own at 1024 px. The value is "key:order". */}
       <div className="flex shrink-0 flex-col">
         <label
           htmlFor="compliance-sort"
@@ -852,37 +854,25 @@ function ComplianceToolbar({
         </label>
         <Select block
           id="compliance-sort"
-          value={sort}
-          onChange={(event) =>
-            onSortChange(event.target.value as ComplianceSortKey)
-          }
-          className="mt-1 min-w-[10.5rem]"
+          value={`${sort}:${order}`}
+          onChange={(event) => {
+            const [nextSort, nextOrder] = event.target.value.split(":");
+            onSortChange(nextSort as ComplianceSortKey);
+            onOrderChange(nextOrder as SortOrder);
+          }}
+          className="mt-1 min-w-[12rem]"
           data-testid="compliance-sort"
         >
-          {SORT_OPTIONS.map((key) => (
-            <option key={key} value={key}>
-              {t(`compliance.filter.sort.${key}`)}
-            </option>
-          ))}
-        </Select>
-      </div>
-
-      <div className="flex shrink-0 flex-col">
-        <label
-          htmlFor="compliance-order"
-          className="whitespace-nowrap text-xs font-medium text-muted-foreground"
-        >
-          {t("compliance.filter.order_label")}
-        </label>
-        <Select block
-          id="compliance-order"
-          value={order}
-          onChange={(event) => onOrderChange(event.target.value as SortOrder)}
-          className="mt-1 min-w-[7rem]"
-          data-testid="compliance-order"
-        >
-          <option value="asc">{t("compliance.filter.order_asc")}</option>
-          <option value="desc">{t("compliance.filter.order_desc")}</option>
+          {SORT_OPTIONS.flatMap((key) =>
+            (["asc", "desc"] as const).map((dir) => (
+              <option key={`${key}:${dir}`} value={`${key}:${dir}`}>
+                {t("compliance.filter.sort_option", {
+                  sort: t(`compliance.filter.sort.${key}`),
+                  order: t(`compliance.filter.order_${dir}`),
+                })}
+              </option>
+            )),
+          )}
         </Select>
       </div>
 
@@ -923,7 +913,7 @@ function ComplianceNoticeDownload({
   const [format, setFormat] = useState<NoticeFormat>("text");
   return (
     <div
-      className="flex shrink-0 flex-col lg:border-l lg:pl-4"
+      className="flex shrink-0 flex-col lg:pl-1"
       data-testid="compliance-notice-download"
     >
       <label

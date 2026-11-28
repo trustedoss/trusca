@@ -299,10 +299,12 @@ export function AdminAuditPage() {
       />
 
       <div
+        // Row 1: actor, table, action. Row 2: the two dates and the text search.
+        // Each row fits a 720 px pane, so the toolbar stops at two rows at 1024 px.
         className="flex flex-wrap items-end gap-3 border-b bg-card px-6 py-3"
         data-testid="admin-audit-toolbar"
       >
-        <div className="w-52">
+        <div className="w-48">
           <Label
             htmlFor="admin-audit-actor"
             className="text-xs text-muted-foreground"
@@ -315,7 +317,7 @@ export function AdminAuditPage() {
             onSelect={(id) => updateFilterParam("actor", id)}
           />
         </div>
-        <div className="w-40">
+        <div className="w-36">
           <Label
             htmlFor="admin-audit-target-table"
             className="text-xs text-muted-foreground"
@@ -343,7 +345,7 @@ export function AdminAuditPage() {
             ))}
           </Select>
         </div>
-        <div className="w-44">
+        <div className="w-40">
           <Label
             htmlFor="admin-audit-action"
             className="text-xs text-muted-foreground"
@@ -369,7 +371,7 @@ export function AdminAuditPage() {
             ))}
           </Select>
         </div>
-        <div className="w-44">
+        <div className="w-48 shrink-0">
           <Label
             htmlFor="admin-audit-from"
             className="text-xs text-muted-foreground"
@@ -385,7 +387,7 @@ export function AdminAuditPage() {
             className="h-8 font-mono text-xs"
           />
         </div>
-        <div className="w-44">
+        <div className="w-48 shrink-0">
           <Label
             htmlFor="admin-audit-to"
             className="text-xs text-muted-foreground"
@@ -401,7 +403,7 @@ export function AdminAuditPage() {
             className="h-8 font-mono text-xs"
           />
         </div>
-        <div className="min-w-40 flex-1">
+        <div className="min-w-48 flex-1">
           <Label
             htmlFor="admin-audit-q"
             className="text-xs text-muted-foreground"
