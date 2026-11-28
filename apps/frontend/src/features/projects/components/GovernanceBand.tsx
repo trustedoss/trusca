@@ -193,7 +193,7 @@ export function GovernanceBand({ projectId }: { projectId: string | null }) {
           tone={band.scanned && band.risk_score >= 75 ? "danger" : "neutral"}
           hint={band.scanned ? undefined : t("governance.never_scanned")}
         >
-          {band.scanned ? Math.round(band.risk_score) : "—"}
+          {band.scanned ? Math.round(band.risk_score) : "-"}
         </Tile>
 
         <Tile
