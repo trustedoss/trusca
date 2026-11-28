@@ -526,37 +526,23 @@ def test_an_image_scan_gives_the_same_run_record(
     assert captured["deep_license"] is False
 
 
-def test_inspect_asks_for_a_container_only() -> None:
+def test_the_package_asks_the_daemon_for_a_container_only() -> None:
     """``docker inspect <name>`` with no type goes on to ask for an image, a
     network and a volume once there is no such container. Behind the
     docker-socket-proxy those requests are refused, not answered "not found",
-    so the package's removal check never saw the container gone and every scan
-    failed after its first container."""
-    from bomlens_runner.docker import DockerCli
+    so the removal check never saw the container gone and every scan failed
+    after its first container. The package fixed this in 1.15.4; this keeps a
+    later release from asking without the type again."""
+    import inspect
 
-    seen: list[list[str]] = []
+    from bomlens_runner import docker
 
-    def record(self: Any, argv: list[str], timeout: float) -> Any:  # noqa: ARG001
-        seen.append(argv)
-        return SimpleNamespace(returncode=0, stdout=b"", stderr=b"")
-
-    cli = engine._ContainerOnlyCli("docker")
-    original = DockerCli.run
-    DockerCli.run = record  # type: ignore[method-assign,assignment]
-    try:
-        cli.run(["inspect", "--format", "{{.Id}}", "abc"], 60)
-        cli.run(["image", "inspect", "--format", "{{.Id}}", "img"], 60)
-        cli.run(["container", "inspect", "abc"], 60)
-        cli.run(["ps", "--all", "--quiet"], 60)
-    finally:
-        DockerCli.run = original  # type: ignore[method-assign]
-    assert seen == [
-        ["container", "inspect", "--format", "{{.Id}}", "abc"],
-        ["image", "inspect", "--format", "{{.Id}}", "img"],
-        ["container", "inspect", "abc"],
-        ["ps", "--all", "--quiet"],
-    ]
-
+    source = inspect.getsource(docker)
+    lines = (line.strip() for line in source.splitlines())
+    calls = [line for line in lines if "inspect" in line and "cli.run(" in line]
+    assert calls, "found no inspect call, so this check would pass on anything"
+    untyped = [line for line in calls if 'run(["inspect"' in line]
+    assert not untyped, untyped
 
 def test_every_container_logs_its_start_and_exit_for_the_comparison_report(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path

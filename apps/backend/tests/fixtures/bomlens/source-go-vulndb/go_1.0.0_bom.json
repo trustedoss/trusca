@@ -8,21 +8,21 @@
               "name": "OWASP Foundation"
             }
           ],
-          "bom-ref": "pkg:npm/@cdxgen/cdxgen@13.5.0",
+          "bom-ref": "pkg:npm/@cdxgen/cdxgen@13.8.0",
           "group": "@cdxgen",
           "name": "cdxgen",
           "publisher": "OWASP Foundation",
-          "purl": "pkg:npm/%40cdxgen/cdxgen@13.5.0",
+          "purl": "pkg:npm/%40cdxgen/cdxgen@13.8.0",
           "type": "application",
-          "version": "13.5.0"
+          "version": "13.8.0"
         }
       },
       "bom-ref": "metadata-annotations",
       "subjects": [
         "library:baseline-go-vuln:"
       ],
-      "text": "This Software Bill-of-Materials (SBOM) document was created on Sunday, November 22, 2026 with cdxgen. The data was captured during the build lifecycle phase. The document describes an application named 'baseline-go-vuln'. The package type in this SBOM is golang with a single purl namespace 'golang.org/x' described under components. The components were identified from the source files: go.mod.",
-      "timestamp": "2026-11-22T22:30:18Z"
+      "text": "This Software Bill-of-Materials (SBOM) document was created on Saturday, November 28, 2026. The xBOM tools used are: go, pnpm, and cdxgen. The data was captured during the build lifecycle phase. The document describes an application named 'baseline-go-vuln'. The package type in this SBOM is golang with a single purl namespace 'golang.org/x' described under components. The components were identified from the source files: go.mod.",
+      "timestamp": "2026-11-28T12:19:06Z"
     }
   ],
   "bomFormat": "CycloneDX",
@@ -249,7 +249,7 @@
   "metadata": {
     "authors": [
       {
-        "name": "BomLens 1.15.3"
+        "name": "BomLens 1.15.7"
       }
     ],
     "component": {
@@ -317,33 +317,43 @@
         "value": "tool"
       }
     ],
-    "timestamp": "2026-11-22T22:30:18Z",
+    "timestamp": "2026-11-28T12:19:06Z",
     "tools": {
       "components": [
+        {
+          "name": "go",
+          "type": "application",
+          "version": "unknown"
+        },
+        {
+          "name": "pnpm",
+          "type": "application",
+          "version": "unknown"
+        },
         {
           "authors": [
             {
               "name": "OWASP Foundation"
             }
           ],
-          "bom-ref": "pkg:npm/@cdxgen/cdxgen@13.5.0",
+          "bom-ref": "pkg:npm/@cdxgen/cdxgen@13.8.0",
           "group": "@cdxgen",
           "name": "cdxgen",
           "publisher": "OWASP Foundation",
-          "purl": "pkg:npm/%40cdxgen/cdxgen@13.5.0",
+          "purl": "pkg:npm/%40cdxgen/cdxgen@13.8.0",
           "type": "application",
-          "version": "13.5.0"
+          "version": "13.8.0"
         },
         {
           "name": "BomLens",
           "publisher": "SK Telecom",
           "type": "application",
-          "version": "1.15.3"
+          "version": "1.15.7"
         }
       ]
     }
   },
-  "serialNumber": "urn:uuid:78d3ad06-2f32-4417-942d-7d5851fb7404",
+  "serialNumber": "urn:uuid:c6132bad-9fb1-4122-9b15-320eca412de6",
   "services": [],
   "specVersion": "1.6",
   "version": 1,

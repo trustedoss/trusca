@@ -4,9 +4,9 @@
     "version": "1.4.0"
   },
   "engine": {
-    "version": "1.15.3",
-    "image": "ghcr.io/sktelecom/bomlens:1.15.3",
-    "image_digest": "sha256:9a857b20f348c6b1ceae554c6566165c35cf24a71b12fb488b8a0e39aac7cf89"
+    "version": "1.15.7",
+    "image": "ghcr.io/sktelecom/bomlens:1.15.7",
+    "image_digest": "sha256:f5fd2d0ec129b9b8d0d02b777f1efc0db035d499f6fbcf63de8b40cfb73b8290"
   },
   "input": {
     "kind": "source",
@@ -28,7 +28,7 @@
       {
         "kind": "engine",
         "name": "build-prep.sh",
-        "sha256": "1e45b947481e71fae14e3f3aeea9de713e86112b98a906a911a7c03f33bfa261"
+        "sha256": "0c1428196eb3b52696080de0006d34b674ad540e98c2dabbe4cf92c17d0ad8a7"
       },
       {
         "kind": "engine",
@@ -54,7 +54,7 @@
       {
         "kind": "image",
         "name": "bomlens",
-        "sha256": "9a857b20f348c6b1ceae554c6566165c35cf24a71b12fb488b8a0e39aac7cf89"
+        "sha256": "f5fd2d0ec129b9b8d0d02b777f1efc0db035d499f6fbcf63de8b40cfb73b8290"
       },
       {
         "kind": "image",

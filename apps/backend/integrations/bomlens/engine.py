@@ -54,7 +54,7 @@ from bomlens_runner import (
 from bomlens_runner import (
     EngineWroteNoResult as PackageWroteNoResult,
 )
-from bomlens_runner.docker import DockerBackend, DockerCli, DockerOptions
+from bomlens_runner.docker import DockerBackend, DockerOptions
 from bomlens_runner.kubernetes import KubeApi, KubernetesBackend, KubernetesOptions
 
 from core.config import (
@@ -502,24 +502,8 @@ def _failure(exc: PackageError, output: _Output) -> Exception:
     return BomLensEngineError(_message(exc))
 
 
-class _ContainerOnlyCli(DockerCli):  # type: ignore[misc]  # the package has no type hints
-    """The package's docker commands, with ``docker inspect`` asking for a container only.
-
-    ``docker inspect <name>`` with no type asks the daemon for a container, then
-    an image, a network, a volume and so on. Behind the docker-socket-proxy the
-    later requests are refused (403, not 404), so the removal check, which waits
-    for "no such container", never saw it and failed every scan after the first
-    container.
-    """
-
-    def run(self, argv: list[str], timeout: float) -> Any:
-        if argv[:1] == ["inspect"]:
-            argv = ["container", *argv]
-        return super().run(argv, timeout)
-
-
 def _docker_backend(options: DockerOptions) -> Any:
-    return DockerBackend(options, cli=_ContainerOnlyCli(options.docker))
+    return DockerBackend(options)
 
 
 def _kubernetes_backend(options: KubernetesOptions) -> Any:
