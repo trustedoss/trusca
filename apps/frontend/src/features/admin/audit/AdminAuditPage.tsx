@@ -432,7 +432,7 @@ export function AdminAuditPage() {
         harnesses wait on this attribute either way.
       */}
       <div
-        className="flex-1 overflow-y-auto"
+        className="flex-1 overflow-x-auto overflow-y-auto"
         data-testid="admin-audit-table"
         aria-busy={auditQuery.isLoading}
       >
@@ -452,7 +452,7 @@ export function AdminAuditPage() {
             data-testid="admin-audit-empty"
           />
         ) : (
-        <table className="w-full text-sm">
+        <table className="w-full min-w-[56rem] text-sm">
           <thead className="sticky top-0 bg-card">
             <tr className="border-b text-left text-xs font-semibold text-muted-foreground">
               <th className="px-6 py-2">{t("admin.audit.column.created_at")}</th>
@@ -528,7 +528,7 @@ export function AdminAuditPage() {
                       {entry.target_id ?? "—"}
                     </td>
                     <td
-                      className="truncate pl-3 pr-6 font-mono text-xs text-muted-foreground"
+                      className="max-w-[14rem] truncate pl-3 pr-6 font-mono text-xs text-muted-foreground"
                       title={entry.request_id ?? undefined}
                     >
                       {entry.request_id ?? "—"}

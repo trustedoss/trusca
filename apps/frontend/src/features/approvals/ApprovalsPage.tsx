@@ -656,7 +656,7 @@ export function ApprovalsPage() {
                       </td>
 
                       {/* Actions */}
-                      <td className="sticky right-0 whitespace-nowrap bg-card pl-3 pr-6 text-right">
+                      <td className="sticky right-0 whitespace-nowrap bg-background pl-3 pr-6 text-right">
                         <Button
                           size="sm"
                           variant="ghost"

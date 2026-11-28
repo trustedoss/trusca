@@ -1803,7 +1803,7 @@ function SlaDueCell({ status, dueDate }: SlaDueCellProps) {
   const { t } = useTranslation("project_detail");
   return (
     <span
-      className="flex w-44 items-center"
+      className="flex w-44 min-w-0 items-center"
       role="cell"
       data-testid="vulnerability-row-sla"
       data-sla-status={status ?? "none"}
@@ -1813,6 +1813,7 @@ function SlaDueCell({ status, dueDate }: SlaDueCellProps) {
           status={status}
           dueDate={dueDate}
           showDueDate
+          bareDueDate
           className="px-1.5 py-0 text-xs"
         />
       ) : (

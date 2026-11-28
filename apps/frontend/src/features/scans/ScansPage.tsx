@@ -39,6 +39,7 @@ import { useScans } from "@/features/scans/useScans";
 import { useClampPage, usePageParam, useUrlEnum } from "@/hooks/useUrlState";
 import RelativeTime from "@/components/RelativeTime";
 import { type ScanPublic, type ScanStatus } from "@/lib/projectsApi";
+import { cn } from "@/lib/utils";
 
 const PAGE_SIZE = 20;
 
@@ -156,7 +157,7 @@ export function ScansPage() {
         />
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-x-auto overflow-y-auto">
         {scansQuery.isError ? (
           <div className="px-6 py-4">
             <Alert variant="destructive" data-testid="scans-error">
@@ -176,7 +177,9 @@ export function ScansPage() {
               <th className="px-3 py-2">{t("page.column.kind")}</th>
               <th className="px-3 py-2">{t("page.column.status")}</th>
               <th className="px-3 py-2">{t("page.column.started")}</th>
-              <th className="px-3 py-2 text-right">
+              <th
+                className={cn("px-3 py-2 text-right", !showActions && "pr-6")}
+              >
                 {t("page.column.duration")}
               </th>
               {showActions ? (
@@ -268,7 +271,12 @@ export function ScansPage() {
                           "—"
                         )}
                       </td>
-                      <td className="px-3 text-right text-xs text-muted-foreground">
+                      <td
+                        className={cn(
+                          "px-3 text-right text-xs text-muted-foreground",
+                          !showActions && "pr-6",
+                        )}
+                      >
                         {dur == null ? "—" : `${dur}s`}
                       </td>
                       {showActions ? (
