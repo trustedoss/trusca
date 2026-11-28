@@ -48,6 +48,12 @@ export interface SlaBadgeProps {
    * surfaces). Default `false`: list rows carry the date via tooltip only.
    */
   showDueDate?: boolean;
+  /**
+   * With `showDueDate`, drop the "Deadline" prefix and show the bare date.
+   * Dense list cells use this so the chip fits the column in English; the
+   * "due {{date}}" wording stays on the tooltip.
+   */
+  bareDueDate?: boolean;
   className?: string;
 }
 
@@ -86,6 +92,7 @@ export function SlaBadge({
   status,
   dueDate,
   showDueDate = false,
+  bareDueDate = false,
   className,
 }: SlaBadgeProps) {
   const { t } = useTranslation("project_detail");
@@ -106,7 +113,7 @@ export function SlaBadge({
       data-sla-status={status}
       data-sla-due-date={date ?? undefined}
       title={tooltip}
-      className={cn("gap-1.5 font-semibold", visuals.badge, className)}
+      className={cn("gap-1.5 whitespace-nowrap font-semibold", visuals.badge, className)}
     >
       <span
         aria-hidden
@@ -118,7 +125,7 @@ export function SlaBadge({
           className="font-mono text-xs font-normal tabular-nums"
           data-testid="sla-badge-due-date"
         >
-          {t("vulnerabilities.sla.due", { date })}
+          {bareDueDate ? date : t("vulnerabilities.sla.due", { date })}
         </span>
       ) : null}
     </Badge>

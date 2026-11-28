@@ -95,4 +95,21 @@ describe("SlaBadge", () => {
     expect(badge).toHaveAttribute("data-sla-status", "overdue");
     expect(badge.textContent).toContain("Overdue");
   });
+
+  it("bareDueDate shows the date without the Deadline prefix, tooltip keeps it", () => {
+    render(
+      <SlaBadge
+        status="imminent"
+        dueDate="2026-12-05T00:00:00Z"
+        showDueDate
+        bareDueDate
+      />,
+    );
+    const due = screen.getByTestId("sla-badge-due-date");
+    expect(due.textContent).toBe("2026-12-05");
+    expect(screen.getByTestId("sla-badge")).toHaveAttribute(
+      "title",
+      expect.stringContaining("2026-12-05"),
+    );
+  });
 });
